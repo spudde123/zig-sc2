@@ -1,5 +1,5 @@
 // Generated with util/generate_ids.zig
-pub const UnitID = enum(u32) {
+pub const UnitId = enum(u32) {
     NotAUnit = 0,
     System_Snapshot_Dummy = 1,
     Ball = 2,

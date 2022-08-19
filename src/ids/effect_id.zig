@@ -1,5 +1,5 @@
 // Generated with util/generate_ids.zig
-pub const EffectID = enum(u32) {
+pub const EffectId = enum(u32) {
     Null = 0,
     PsiStormPersistent = 1,
     GuardianShieldPersistent = 2,

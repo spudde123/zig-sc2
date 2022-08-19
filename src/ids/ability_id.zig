@@ -1,5 +1,5 @@
 // Generated with util/generate_ids.zig
-pub const AbilityID = enum(u32) {
+pub const AbilityId = enum(u32) {
     Null_Null = 0,
     Smart = 1,
     Taunt_Taunt = 2,

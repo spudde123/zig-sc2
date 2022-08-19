@@ -92,7 +92,7 @@ pub const ResponseCreateGame = struct {
 };
 
 pub const RequestJoinGame = struct {
-    race: ProtoField(1, StarcraftRace) = .{},
+    race: ProtoField(1, Race) = .{},
     options: ProtoField(3, InterfaceOptions) = .{},
     server_ports: ProtoField(4, PortSet) = .{},
     client_ports: ProtoField(5, PortSet) = .{},
@@ -462,11 +462,11 @@ pub const ActionRawToggleAutocast = struct {
 pub const PlayerInfo = struct {
     player_id: ProtoField(1, u32) = .{},
     player_type: ProtoField(2, PlayerType) = .{},
-    race_requested: ProtoField(3, StarcraftRace) = .{},
-    race_actual: ProtoField(4, StarcraftRace) = .{},
-    difficulty: ProtoField(5, AIDifficulty) = .{},
+    race_requested: ProtoField(3, Race) = .{},
+    race_actual: ProtoField(4, Race) = .{},
+    difficulty: ProtoField(5, AiDifficulty) = .{},
     player_name: ProtoField(6, []const u8) = .{},
-    ai_build: ProtoField(7, AIBuild) = .{},
+    ai_build: ProtoField(7, AiBuild) = .{},
 };
 
 pub const InterfaceOptions = struct {
@@ -496,7 +496,7 @@ pub const PlayerType = enum(u8) {
     observer = 3,
 };
 
-pub const StarcraftRace = enum(u8) {
+pub const Race = enum(u8) {
     none = 0,
     terran = 1,
     zerg = 2,
@@ -504,7 +504,7 @@ pub const StarcraftRace = enum(u8) {
     random = 4
 };
 
-pub const AIDifficulty = enum(u8) {
+pub const AiDifficulty = enum(u8) {
     very_easy = 1,
     easy = 2,
     medium = 3,
@@ -517,7 +517,7 @@ pub const AIDifficulty = enum(u8) {
     cheat_insane = 10
 };
 
-pub const AIBuild = enum(u8) {
+pub const AiBuild = enum(u8) {
     random = 1,
     rush = 2,
     timing = 3,
@@ -530,10 +530,10 @@ pub const PlayerSetup = struct {
     player_type: ProtoField(1, PlayerType) = .{},
 
     // For computer players
-    race: ProtoField(2, StarcraftRace) = .{},
-    difficulty: ProtoField(3, AIDifficulty) = .{},
+    race: ProtoField(2, Race) = .{},
+    difficulty: ProtoField(3, AiDifficulty) = .{},
     name: ProtoField(4, []const u8) = .{},
-    ai_build: ProtoField(5, AIBuild) = .{},
+    ai_build: ProtoField(5, AiBuild) = .{},
 };
 
 pub const Size2DI = struct {
@@ -943,13 +943,3 @@ pub const DebugSetUnitValue = struct {
     value: ProtoField(2, f32) = .{},
     unit_tag: ProtoField(3, u64) = .{},
 };
-
-test "sc2proto" {
-    var buffer: [2048]u8 = undefined;
-    const res = generatePingRequest(buffer[0..]);
-    for (res) |byte| {
-        std.debug.print("{b} ", .{byte});
-    }
-    std.debug.print("\n", .{});
-
-}

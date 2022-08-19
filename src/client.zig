@@ -41,14 +41,14 @@ pub const Ping = struct {
 };
 
 pub const ComputerSetup = struct {
-    difficulty: sc2p.AIDifficulty = .very_hard,
-    build: sc2p.AIBuild = .random,
-    race: sc2p.StarcraftRace = .random,
+    difficulty: sc2p.AiDifficulty = .very_hard,
+    build: sc2p.AiBuild = .random,
+    race: sc2p.Race = .random,
 };
 
 pub const BotSetup = struct {
     name: []const u8 = "Bot",
-    race: sc2p.StarcraftRace,
+    race: sc2p.Race,
 };
 
 pub const GameJoin = struct {
@@ -61,26 +61,31 @@ pub const WebSocketClient = struct {
     addr: net.Address,
     socket: net.Stream,
     prng: rand.Random,
-    allocator: mem.Allocator,
+    perm_allocator: mem.Allocator,
+    step_allocator: mem.Allocator,
     req_buffer: []u8,
     storage: []u8,
     storage_cursor: usize,
 
-    pub fn init(host: []const u8, port: u16, allocator: mem.Allocator) !WebSocketClient {
+    /// perm_alloc should not be freed from the outside
+    /// while the client is in use.
+    /// step_alloc is meant to be freed after each game loop
+    pub fn init(host: []const u8, port: u16, perm_alloc: mem.Allocator, step_alloc: mem.Allocator) !WebSocketClient {
 
         const addr = try net.Address.parseIp(host, port);
         const socket = try net.tcpConnectToAddress(addr);
 
         const seed = @truncate(u64, @bitCast(u128, time.nanoTimestamp()));
         const prng = std.rand.DefaultPrng.init(seed).random();
-        var req_buffer = try allocator.alloc(u8, 1024*1000);
-        var storage = try allocator.alloc(u8, 1024*1000);
+        var req_buffer = try perm_alloc.alloc(u8, 1024*1000);
+        var storage = try perm_alloc.alloc(u8, 5*1024*1000);
 
         return WebSocketClient{
             .addr = addr,
             .socket = socket,
             .prng = prng,
-            .allocator = allocator,
+            .perm_allocator = perm_alloc,
+            .step_allocator = step_alloc,
             .req_buffer = req_buffer,
             .storage = storage,
             .storage_cursor = 0,
@@ -89,6 +94,8 @@ pub const WebSocketClient = struct {
 
     pub fn deinit(self: *WebSocketClient) void {
         self.socket.close();
+        self.perm_allocator.free(self.storage);
+        self.perm_allocator.free(self.req_buffer);
     }
 
     pub fn completeHandshake(self: *WebSocketClient, path: []const u8) !bool {
@@ -159,7 +166,7 @@ pub const WebSocketClient = struct {
 
     pub fn writeMessageWithBinaryPayload(self: *WebSocketClient, payload: []u8, mask_payload: bool) !void {
         const max_len = 6 + payload.len + 8;
-        var bytes = try self.allocator.alloc(u8, max_len);
+        var bytes = try self.step_allocator.alloc(u8, max_len);
         bytes[0] = @enumToInt(OpCode.binary);
         bytes[0] |= 0x80;
 
@@ -329,19 +336,63 @@ pub const WebSocketClient = struct {
         return false;
     }
 
-    pub fn getObservation(self: *WebSocketClient) bool {
-        _ = self;
-        return false;
+    pub fn getObservation(self: *WebSocketClient) sc2p.ResponseObservation {
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+        const obs_req = sc2p.RequestObservation{
+            .disable_fog = .{.data = false},
+        };
+
+        const base_req = sc2p.Request{
+            .observation = .{.data = obs_req},
+        };
+
+        var payload = writer.encodeBaseStruct(base_req);
+        var res = self.writeAndWaitForMessage(payload) catch return .{};
+
+        if (res.observation.data) |obs| {
+            return obs;
+        }
+        return .{};
     }
 
-    pub fn step(self: *WebSocketClient) bool {
-        _ = self;
-        return false;
+    pub fn getGameInfo(self: *WebSocketClient) sc2p.ResponseGameInfo {
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+        var request = sc2p.Request{.game_info = .{.data = {}}};
+        var payload = writer.encodeBaseStruct(request);
+
+        var res = self.writeAndWaitForMessage(payload) catch return .{};
+
+        return res;
+    }
+
+    pub fn step(self: *WebSocketClient, count: u32) bool {
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+        const step_req = sc2p.RequestStep{
+            .count = .{.data = count},
+        };
+
+        const base_req = sc2p.Request{
+            .step = .{.data = step_req},
+        };
+
+        var payload = writer.encodeBaseStruct(base_req);
+        _ = self.writeAndWaitForMessage(payload) catch false;
+
+        return true;
     }
 
     pub fn leave(self: *WebSocketClient) bool {
-        _ = self;
-        return false;
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+        var request = sc2p.Request{.leave_game = .{.data = {}}};
+        var payload = writer.encodeBaseStruct(request);
+
+        _ = self.writeAndWaitForMessage(payload) catch false;
+
+        return true;
     }
 
     pub fn quit(self: *WebSocketClient) bool {
@@ -375,7 +426,7 @@ pub const WebSocketClient = struct {
 
         {
             const max_len = 2 + payload.len + 8;
-            var bytes = try self.allocator.alloc(u8, max_len);
+            var bytes = try self.step_allocator.alloc(u8, max_len);
             bytes[0] = @enumToInt(OpCode.binary);
             bytes[0] |= 0x80;
 
@@ -400,15 +451,14 @@ pub const WebSocketClient = struct {
         }
 
         var res: sc2p.Response = undefined;
-        var buf = try self.allocator.alloc(u8, 1024*1000);
 
         while (true) {
-            var read_length = try self.socket.read(buf);
+            var read_length = try self.socket.read(self.storage);
             if (read_length == 0) continue;
-            std.debug.print("Got read length 1: {d}\n", .{read_length});
+
             var start: usize = 0;
             var found_ws_start = false;
-            for (buf[0..read_length]) |byte, i| {
+            for (self.storage[0..read_length]) |byte, i| {
                 if (byte == 130) {
                     start = i;
                     found_ws_start = true;
@@ -418,13 +468,10 @@ pub const WebSocketClient = struct {
 
             if (!found_ws_start) continue;
 
-            mem.copy(u8, self.storage[self.storage_cursor..], buf[start..read_length]);
             self.storage_cursor += read_length - start;
             
             while (!self.messageReceived()) {
-                read_length = try self.socket.read(buf);
-                std.debug.print("Got read length 2: {d}\n", .{read_length});
-                mem.copy(u8, self.storage[self.storage_cursor..], buf[0..read_length]);
+                read_length = try self.socket.read(self.storage[self.storage_cursor..]);
                 self.storage_cursor += read_length - start;
             }
 
@@ -440,11 +487,7 @@ pub const WebSocketClient = struct {
                 payload_start += 8;
             }
 
-            for (self.storage[payload_start .. (payload_start + payload_length)]) |byte| {
-                std.debug.print("{b} ", .{byte});
-            }
-            std.debug.print("\n", .{});
-            res = try sc2p.decodeResponse(self.storage[payload_start .. (payload_start + payload_length)], self.allocator);
+            res = try sc2p.decodeResponse(self.storage[payload_start .. (payload_start + payload_length)], self.step_allocator);
             break;
         }
 

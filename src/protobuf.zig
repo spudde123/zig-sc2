@@ -80,7 +80,7 @@ pub const ProtoReader = struct {
                 const field_num = obj_field.field_num;
 
                 if (header.field_number == field_num) {
-                    std.debug.print("{s}\n", .{field.name});
+                    //std.debug.print("{s}\n", .{field.name});
                     const data_info = @typeInfo(@TypeOf(obj_field.data));
                     const child_type = data_info.Optional.child;
                     const child_info = @typeInfo(child_type);
@@ -121,7 +121,6 @@ pub const ProtoReader = struct {
                                             },
                                             .Enum => {
                                                 const enum_int = try self.decodeUInt64();
-                                                std.debug.print("{d}\n", .{enum_int});
                                                 try obj_field.list.?.append(@intToEnum(ptr.child, enum_int));
                                             },
                                             else => {

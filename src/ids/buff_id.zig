@@ -1,5 +1,5 @@
 // Generated with util/generate_ids.zig
-pub const BuffID = enum(u32) {
+pub const BuffId = enum(u32) {
     Null = 0,
     Radar25 = 1,
     Tauntb = 2,
@@ -299,11 +299,10 @@ pub const BuffID = enum(u32) {
     AmorphousArmorcloud = 296,
     RavenShredderMissileArmorReductionUISubtruct = 297,
     BatteryOvercharge = 298,
-    DummyBuff001 = 299,
-    DummyBuff002 = 300,
-    DummyBuff003 = 301,
-    DummyBuff004 = 302,
+    LoadOutSprayTracker = 299,
+    NydusCreepGrowth = 300,
+    DummyBuff002 = 301,
+    DummyBuff001 = 302,
     OnCreepVisible = 303,
-    LoadOutSprayTracker = 305,
     _,
 };

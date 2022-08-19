@@ -15,11 +15,11 @@ const titles = [_][]const u8 {
 };
 
 const enum_names = [_][]const u8 {
-    "AbilityID",
-    "BuffID",
-    "EffectID",
-    "UnitID",
-    "UpgradeID"
+    "AbilityId",
+    "BuffId",
+    "EffectId",
+    "UnitId",
+    "UpgradeId"
 };
 
 const file_names = [_][]const u8 {

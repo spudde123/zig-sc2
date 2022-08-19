@@ -1,5 +1,5 @@
 // Generated with util/generate_ids.zig
-pub const UpgradeID = enum(u32) {
+pub const UpgradeId = enum(u32) {
     Null = 0,
     CarrierLaunchSpeedUpgrade = 1,
     GlialReconstitution = 2,
