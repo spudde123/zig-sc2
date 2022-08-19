@@ -396,8 +396,10 @@ pub const WebSocketClient = struct {
     }
 
     pub fn quit(self: *WebSocketClient) bool {
-        var quit_req = sc2p.generateQuitRequest(self.req_buffer);
-        var res = self.writeAndWaitForMessage(quit_req) catch return false;
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var request = sc2p.Request{.quit = .{.data = {}}};
+        var payload = writer.encodeBaseStruct(request);
+        var res = self.writeAndWaitForMessage(payload) catch return false;
         if (res.quit.data) |_| {
             return true;
         }
@@ -406,8 +408,10 @@ pub const WebSocketClient = struct {
     }
 
     pub fn ping(self: *WebSocketClient) Ping {
-        var ping_req = sc2p.generatePingRequest(self.req_buffer);
-        var res = self.writeAndWaitForMessage(ping_req) catch return Ping{};
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var request = sc2p.Request{.ping = .{.data = {}}};
+        var payload = writer.encodeBaseStruct(request);
+        var res = self.writeAndWaitForMessage(payload) catch return Ping{};
 
         if (res.ping.data) |ping_res| {
             return Ping{
@@ -487,7 +491,8 @@ pub const WebSocketClient = struct {
                 payload_start += 8;
             }
 
-            res = try sc2p.decodeResponse(self.storage[payload_start .. (payload_start + payload_length)], self.step_allocator);
+            var reader = proto.ProtoReader{.bytes = self.storage[payload_start .. (payload_start + payload_length)]};
+            res = try reader.decodeStruct(reader.bytes.len, sc2p.Response, self.step_allocator);
             break;
         }
 

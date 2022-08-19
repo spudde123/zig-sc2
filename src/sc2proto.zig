@@ -2,23 +2,6 @@ const std = @import("std");
 const proto = @import("protobuf.zig");
 const ProtoField = proto.ProtoField;
 
-pub fn generatePingRequest(buffer: []u8) []u8 {
-    var writer = proto.ProtoWriter{.buffer = buffer};
-    var request = Request{.ping = .{.data = {}}};
-    return writer.encodeBaseStruct(request);
-}
-
-pub fn generateQuitRequest(buffer: []u8) []u8 {
-    var writer = proto.ProtoWriter{.buffer = buffer};
-    var request = Request{.quit = .{.data = {}}};
-    return writer.encodeBaseStruct(request);
-}
-
-pub fn decodeResponse(bytes: []u8, allocator: std.mem.Allocator) !Response {
-    var reader = proto.ProtoReader{.bytes = bytes};
-    return reader.decodeStruct(bytes.len, Response, allocator);
-}
-
 pub const Status = enum(u8) {
     default = 0,
     launched = 1,

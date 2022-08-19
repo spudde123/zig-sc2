@@ -154,7 +154,7 @@ pub const Bot = struct {
 
     game_loop: u32,
     time: f32,
-    result: ?Result = null,
+    result: ?Result,
 
     pub fn fromProto(response: sc2p.ResponseObservation, player_id: u32, allocator: mem.Allocator) !Bot {
 
