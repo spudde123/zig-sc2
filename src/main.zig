@@ -13,18 +13,34 @@ const TestBot = struct {
     name: []const u8,
     race: bot_data.Race,
 
-    pub fn onStart(self: *TestBot, bot: bot_data.Bot) void {
+    pub fn onStart(
+        self: *TestBot,
+        bot: bot_data.Bot,
+        game_info: bot_data.GameInfo
+    ) void {
         _ = self;
+        _ = game_info;
         _ = bot;
     }
 
-    pub fn onStep(self: *TestBot, bot: bot_data.Bot) void {
+    pub fn onStep(
+        self: *TestBot,
+        bot: bot_data.Bot,
+        game_info: bot_data.GameInfo
+    ) void {
         _ = bot;
+        _ = game_info;
         _ = self;
     }
 
-    pub fn onResult(self: *TestBot, bot: bot_data.Bot, result: bot_data.Result) void {
+    pub fn onResult(
+        self: *TestBot,
+        bot: bot_data.Bot,
+        game_info: bot_data.GameInfo,
+        result: bot_data.Result
+    ) void {
         _ = bot;
+        _ = game_info;
         _ = result;
         _ = self;
     }

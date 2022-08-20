@@ -18,6 +18,7 @@ pub const DisplayType = sc2p.DisplayType;
 pub const Alliance = sc2p.Alliance;
 pub const CloakState = sc2p.CloakState;
 pub const Race = sc2p.Race;
+pub const Channel = sc2p.Channel;
 
 pub const GridSize = struct {
     w: i32,
@@ -102,7 +103,7 @@ pub const Unit = struct {
     is_burrowed: bool,
     is_hallucination: bool,
 
-    //orders: []UnitOrder,
+    orders: []UnitOrder,
     addon_tag: u64,
     passengers: []u64,
     cargo_space_taken: i32,
@@ -114,7 +115,7 @@ pub const Unit = struct {
     engaged_target_tag: u64,
     buff_duration_remain: i32,
     buff_duration_max: i32,
-    //rally_targets: []RallyTarget
+    rally_targets: []RallyTarget,
 };
 
 pub const Grid = struct {
@@ -122,6 +123,29 @@ pub const Grid = struct {
     w: i32,
     h: i32,
 
+};
+
+pub const OrderType = enum(u8) {
+    empty,
+    position,
+    tag,
+};
+
+pub const OrderTarget = union(OrderType) {
+    empty: void,
+    position: Point2d,
+    tag: u64,
+};
+
+pub const UnitOrder = struct {
+    ability_id: AbilityId,
+    target: OrderTarget,
+    progress: f32,
+};
+
+pub const RallyTarget = struct {
+    point: Point2d,
+    tag: ?u64,
 };
 
 pub const GameInfo = struct {
@@ -138,13 +162,19 @@ pub const GameInfo = struct {
 
     map_size: GridSize,
     playable_area: Rectangle,
+    start_location: Point2d,
     enemy_start_locations: []Point2d,
 
     
 
     //allocator: mem.Allocator,
 
-    pub fn fromProto(proto_data: sc2p.ResponseGameInfo, player_id: u32, allocator: mem.Allocator) !GameInfo {
+    pub fn fromProto(
+        proto_data: sc2p.ResponseGameInfo,
+        player_id: u32,
+        start_location: Point2d,
+        allocator: mem.Allocator
+    ) !GameInfo {
         
         var received_map_name = proto_data.map_name.data.?;
         var map_name = try allocator.alloc(u8, received_map_name.len);
@@ -225,9 +255,10 @@ pub const GameInfo = struct {
             .map_name = map_name,
             .enemy_name = enemy_name orelse "Unknown",
             .enemy_requested_race = enemy_requested_race,
-            .enemy_race = if (enemy_requested_race != Race.random) enemy_requested_race else Race.none,
+            .enemy_race = enemy_requested_race,
             .map_size = map_size,
             .playable_area = playable_area,
+            .start_location = start_location,
             .enemy_start_locations = start_locations.toOwnedSlice(),
             .terrain_height = Grid{.data = terrain_slice, .w = map_size.w, .h = map_size.h},
             .pathing_grid = Grid{.data = pathing_slice, .w = map_size.w, .h = map_size.h},
@@ -302,6 +333,53 @@ pub const Bot = struct {
                     passenger_tags = try std.ArrayList(u64).initCapacity(allocator, 0);
                 }
 
+                var orders: std.ArrayList(UnitOrder) = undefined;
+
+                if (unit.orders.data) |orders_proto| {
+                    orders = try std.ArrayList(UnitOrder).initCapacity(allocator, orders_proto.len);
+                    for (orders_proto) |order_proto| {
+                        var target: OrderTarget = undefined;
+                        if (order_proto.target_world_space_pos.data) |pos_target| {
+                            target = OrderTarget{
+                                .position = .{.x = pos_target.x.data.?, .y = pos_target.y.data.?},
+                            };
+                        } else if (order_proto.target_unit_tag.data) |tag_target| {
+                            target = OrderTarget{
+                                .tag = tag_target,
+                            };
+                        } else {
+                            target = OrderTarget{
+                                .empty = {},
+                            };
+                        }
+
+                        var order = UnitOrder{
+                            .ability_id = @intToEnum(AbilityId, order_proto.ability_id.data orelse 0),
+                            .target = target,
+                            .progress = order_proto.progress.data orelse 0,
+                        };
+                        orders.appendAssumeCapacity(order);
+                    }
+                } else {
+                    orders = try std.ArrayList(UnitOrder).initCapacity(allocator, 0);
+                }
+
+                var rally_targets: std.ArrayList(RallyTarget) = undefined;
+                if (unit.rally_targets.data) |proto_rally_targets| {
+                    rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, proto_rally_targets.len);
+
+                    for (proto_rally_targets) |proto_target| {
+                        var proto_point = proto_target.point.data.?;
+                        var rally_target = RallyTarget{
+                            .point = .{.x = proto_point.x.data.?, .y = proto_point.y.data.?},
+                            .tag = proto_target.tag.data,
+                        };
+                        rally_targets.appendAssumeCapacity(rally_target);
+                    }
+                } else {
+                    rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, 0);
+                }
+
                 var u = Unit{
                     .display_type = unit.display_type.data.?,
                     .alliance = unit.alliance.data.?,
@@ -341,7 +419,7 @@ pub const Bot = struct {
                     .is_burrowed = unit.is_burrowed.data orelse false,
                     .is_hallucination = unit.is_hallucination.data orelse false,
 
-                    //.orders =
+                    .orders = orders.toOwnedSlice(),
                     .addon_tag = unit.addon_tag.data orelse 0,
                     .passengers = passenger_tags.toOwnedSlice(),
                     .cargo_space_taken = unit.cargo_space_taken.data orelse 0,
@@ -353,7 +431,7 @@ pub const Bot = struct {
                     .engaged_target_tag = unit.engaged_target_tag.data orelse 0,
                     .buff_duration_remain = unit.buff_duration_remain.data orelse 0,
                     .buff_duration_max = unit.buff_duration_max.data orelse 0,
-                    //.rally_targets = unit.rally_targets.data orelse 0,
+                    .rally_targets = rally_targets.toOwnedSlice(),
                 };
                 
                 switch (u.alliance) {
@@ -429,4 +507,230 @@ pub const Bot = struct {
         };
     }
     
+};
+
+pub const Actions = struct {
+
+    const ActionData = struct {
+        ability_id: AbilityId,
+        target: OrderTarget,
+        queue: bool
+    };
+
+    const BotAction = struct {
+        unit: u64,
+        data: ActionData,
+    };
+
+    const ChatAction = struct {
+        message: []const u8,
+        channel: Channel,
+    };
+
+    temp_allocator: mem.Allocator,
+    order_list: std.ArrayList(BotAction),
+    chat_messages: std.ArrayList(ChatAction),
+
+    pub fn init(perm_allocator: mem.Allocator, temp_allocator: mem.Allocator) !Actions {
+
+        _ = std.AutoHashMap(ActionData, u32).init(perm_allocator);
+        return Actions{
+            .temp_allocator = temp_allocator,
+            .order_list = try std.ArrayList(BotAction).initCapacity(perm_allocator, 400),
+            .chat_messages = try std.ArrayList(ChatAction).initCapacity(perm_allocator, 10),
+        };
+    }
+
+    pub fn clear(self: *Actions) void {
+        self.order_list.clearRetainingCapacity();
+        self.chat_messages.clearRetainingCapacity();
+    }
+
+    fn addAction(self: *Actions, order: BotAction) void {
+        try self.order_list.append(order) catch {
+            log.err("Failed to add bot action\n", .{});
+            return;
+        };
+    }
+
+    pub fn train(self: *Actions, structure_tag: u64, unit_type: UnitId, queue: bool) void {
+        _ = self;
+        _ = structure_tag;
+        _ = unit_type;
+        _ = queue;
+    }
+
+    pub fn build(self: *Actions, unit_tag: u64, structure_to_build: UnitId, pos: Point2d, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = structure_to_build;
+        _ = pos;
+        _ = queue;
+    }
+
+    /// This is mainly for building gas structures. target_tag needs to be the geysir tag
+    pub fn buildOnUnit(self: *Actions, unit_tag: u64, structure_to_build: UnitId, target_tag: u64, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = structure_to_build;
+        _ = target_tag;
+        _ = queue;
+    }
+
+    pub fn moveToPosition(self: *Actions, unit_tag: u64, pos: Point2d, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = pos;
+        _ = queue;
+    }
+
+    pub fn moveToUnit(self: *Actions, unit_tag: u64, target_tag: u64, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = target_tag;
+        _ = queue;
+    }
+
+    pub fn attackPosition(self: *Actions, unit_tag: u64, pos: Point2d, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = pos;
+        _ = queue;
+    }
+
+    pub fn attackUnit(self: *Actions, unit_tag: u64, target_tag: u64, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = target_tag;
+        _ = queue;
+    }
+
+    pub fn holdPosition(self: *Actions, unit_tag: u64, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = queue;
+    }
+
+    pub fn patrol(self: *Actions, unit_tag: u64, target: Point2d, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = target;
+        _ = queue;
+    }
+
+    pub fn research(self: *Actions, structure_tag: u64, upgrade: UpgradeId, queue: bool) void {
+        _ = self;
+        _ = structure_tag;
+        _ = upgrade;
+        _ = queue;
+    }
+
+    pub fn stop(self: *Actions, unit_tag: u64, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = queue;
+    }
+
+    pub fn repair(self: *Actions, unit_tag: u64, target_tag: u64, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = target_tag;
+        _ = queue;
+    }
+
+    pub fn useAbility(self: *Actions, unit_tag: u64, ability: AbilityId, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = ability;
+        _ = queue;
+    }
+
+    pub fn useAbilityOnPosition(self: *Actions, unit_tag: u64, ability: AbilityId, target: Point2d, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = ability;
+        _ = target;
+        _ = queue;
+    }
+
+    pub fn useAbilityOnUnit(self: *Actions, unit_tag: u64, ability: AbilityId, target: u64, queue: bool) void {
+        _ = self;
+        _ = unit_tag;
+        _ = ability;
+        _ = target;
+        _ = queue;
+    }
+
+    pub fn chat(self: *Actions, channel: Channel, message: []const u8) void {
+        var msg_copy = self.temp_allocator.alloc(u8, message.len) catch return;
+        mem.copy(u8, msg_copy, message);.
+        self.chat_messages.append(.{.channel = channel, .message = msg_copy}) catch return;
+    }
+
+    pub fn toProto(self: *Actions) ?sc2p.RequestAction {
+        if (self.order_list.items.len == 0) return null;
+
+        // Combine repeat orders
+
+        const combined_length = self.order_list.items.len + self.chat_messages.items.len;
+        var action_list = std.ArrayList(sc2p.Action).initCapacity(self.temp_allocator, combined_length) catch return null;
+        
+        for (self.chat_messages.items) |msg| {
+            var action_chat = sc2p.ActionChat{
+                .channel = .{.data = msg.channel},
+                .message = .{.data = msg.message},
+            };
+            var action = sc2p.Action{.action_chat = .{.data = action_chat}};
+            action_list.appendAssumeCapacity(action);
+        }
+
+        // Hashing based on the ActionData, value is the index in the next array list
+        var action_hashmap = std.AutoHashMap(ActionData, usize).init(self.temp_allocator);
+        var raw_unit_commands = std.ArrayList(sc2p.ActionRawUnitCommand).init(self.temp_allocator);
+
+        for (self.order_list.items) |order| {
+
+            var maybe_index = action_hashmap.get(order.data);
+
+            if (maybe_index) |index| {
+                raw_unit_commands.items[index].unit_tags.list.?.append(order.unit) catch break;
+            } else {
+                var unit_command = sc2p.ActionRawUnitCommand{
+                    .ability_id = .{.data = @intCast(i32, @enumToInt(order.data.ability_id))},
+                    .queue_command = .{.data = order.data.queue},
+                };
+                switch (order.data.target) {
+                    .position => |pos| {
+                        unit_command.target_world_space_pos.data = .{
+                            .x = .{.data = pos.x},
+                            .y = .{.data = pos.y},
+                        };
+                    },
+                    .tag => |tag| {
+                        unit_command.target_unit_tag.data = tag;
+                    },
+                    else => {}
+                }
+
+                unit_command.unit_tags.list = std.ArrayList(u64).initCapacity(self.temp_allocator, 1) catch break;
+                unit_command.unit_tags.list.?.appendAssumeCapacity(order.unit);
+                raw_unit_commands.append(unit_command) catch break;
+                action_hashmap.put(order.data, raw_unit_commands.items.len - 1) catch break;
+            }
+        }
+
+        for (raw_unit_commands.items) |command| {
+            command.data = command.list.items;
+            var action_raw = sc2p.ActionRaw{.unit_command = .{.data = command}};
+            var action = sc2p.Action{.action_raw = .{.data = action_raw}};
+            action_list.appendAssumeCapacity(action);
+        }
+
+        var action_request = sc2p.RequestAction{
+            .actions = .{.data = action_list.toOwnedSlice()},
+        };
+
+        return action_request;
+    }
+
 };

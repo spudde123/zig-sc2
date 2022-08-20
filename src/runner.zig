@@ -237,7 +237,7 @@ pub fn run(
         }
 
         if (bot.result) |res| {
-            user_bot.onResult(bot, res);
+            user_bot.onResult(bot, game_info, res);
             break;
         }
 
@@ -246,18 +246,29 @@ pub fn run(
                 log.err("Error getting game info\n", .{});
                 break;
             };
-            game_info = try bot_data.GameInfo.fromProto(game_info_proto, player_id, arena);
+
+            var start_location: bot_data.Point2d = undefined;
+            for (bot.own_units) |unit| {
+                if (unit.unit_type == bot_data.UnitId.CommandCenter
+                    or unit.unit_type == bot_data.UnitId.Hatchery
+                    or unit.unit_type == bot_data.UnitId.Nexus) {
+                        start_location = unit.position;
+                        break;
+                }
+            }
+
+            game_info = try bot_data.GameInfo.fromProto(
+                game_info_proto, 
+                player_id, 
+                start_location,
+                arena
+            );
             
-            user_bot.onStart(bot);
+            user_bot.onStart(bot, game_info);
             first_step_done = true;
         }
 
-        if (first_step_done) {
-            std.debug.print("{s}\n", .{game_info.map_name});
-            std.debug.print("{s}\n", .{game_info.enemy_name});
-        }
-        user_bot.onStep(bot);
-
+        user_bot.onStep(bot, game_info);
         _ = client.step(step_count);
         
         fixed_buffer_instance.reset();
