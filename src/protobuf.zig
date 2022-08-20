@@ -250,22 +250,43 @@ pub const ProtoWriter = struct {
                         self.cursor += self.encodeElementStruct(data);
                     },
                     .Pointer => |ptr| {
-                        const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
                         if (ptr.child == u8) {
+                            const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
+
                             self.cursor += self.encodeProtoHeader(field_header);
                             self.cursor += self.encodeBytes(data);
                         } else if (ptr.child == []const u8) {
+                            const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
+
                             for (data) |string| {
                                 self.cursor += self.encodeProtoHeader(field_header);
                                 self.cursor += self.encodeBytes(string);
                             }
                         } else {
                             const child_info = @typeInfo(ptr.child);
-                            if (child_info == .Struct) {
-                                for (data) |d| {
-                                    self.cursor += self.encodeProtoHeader(field_header);
-                                    self.cursor += self.encodeElementStruct(d);
-                                }
+                            switch (child_info) {
+                                .Struct => {
+                                    const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
+
+                                    for (data) |d| {
+                                        self.cursor += self.encodeProtoHeader(field_header);
+                                        self.cursor += self.encodeElementStruct(d);
+                                    }
+                                },
+                                .Int => |int| {
+                                    const field_header = ProtoHeader{.wire_type = .varint, .field_number = field_num};
+
+                                    for (data) |integer_val| {
+                                        self.cursor += self.encodeProtoHeader(field_header);
+                                        if (int.signedness == .unsigned) {
+                                            self.cursor += self.encodeUInt64(@as(u64, integer_val));
+                                        } else {
+                                            self.cursor += self.encodeInt64(@as(i64, integer_val));
+
+                                        }
+                                    }
+                                },
+                                else => {}
                             }
                         }
                     },

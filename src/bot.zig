@@ -162,11 +162,11 @@ pub const GameInfo = struct {
 
     map_size: GridSize,
     playable_area: Rectangle,
+
     start_location: Point2d,
     enemy_start_locations: []Point2d,
 
-    
-
+    //expansion_locations: []Point2d,
     //allocator: mem.Allocator,
 
     pub fn fromProto(
@@ -265,6 +265,10 @@ pub const GameInfo = struct {
             .placement_grid = Grid{.data = placement_slice, .w = map_size.w, .h = map_size.h},
         };
     }
+
+    //fn generateExpansionLocations() []Point2d {
+    //
+    //}
 
     pub fn deinit() void {
 
@@ -533,7 +537,6 @@ pub const Actions = struct {
 
     pub fn init(perm_allocator: mem.Allocator, temp_allocator: mem.Allocator) !Actions {
 
-        _ = std.AutoHashMap(ActionData, u32).init(perm_allocator);
         return Actions{
             .temp_allocator = temp_allocator,
             .order_list = try std.ArrayList(BotAction).initCapacity(perm_allocator, 400),
@@ -547,7 +550,7 @@ pub const Actions = struct {
     }
 
     fn addAction(self: *Actions, order: BotAction) void {
-        try self.order_list.append(order) catch {
+        self.order_list.append(order) catch {
             log.err("Failed to add bot action\n", .{});
             return;
         };
@@ -578,44 +581,75 @@ pub const Actions = struct {
     }
 
     pub fn moveToPosition(self: *Actions, unit_tag: u64, pos: Point2d, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = pos;
-        _ = queue;
+       var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = AbilityId.Move_Move,
+                .target = .{.position = pos},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn moveToUnit(self: *Actions, unit_tag: u64, target_tag: u64, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = target_tag;
-        _ = queue;
+        var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = AbilityId.Move_Move,
+                .target = .{.tag = target_tag},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn attackPosition(self: *Actions, unit_tag: u64, pos: Point2d, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = pos;
-        _ = queue;
+        var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = AbilityId.Attack,
+                .target = .{.position = pos},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn attackUnit(self: *Actions, unit_tag: u64, target_tag: u64, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = target_tag;
-        _ = queue;
+       var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = AbilityId.Attack,
+                .target = .{.tag = target_tag},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn holdPosition(self: *Actions, unit_tag: u64, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = queue;
+        var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = AbilityId.HoldPosition,
+                .target = .{.empty = {}},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn patrol(self: *Actions, unit_tag: u64, target: Point2d, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = target;
-        _ = queue;
+        var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = AbilityId.Patrol,
+                .target = .{.position = target},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn research(self: *Actions, structure_tag: u64, upgrade: UpgradeId, queue: bool) void {
@@ -626,39 +660,63 @@ pub const Actions = struct {
     }
 
     pub fn stop(self: *Actions, unit_tag: u64, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = queue;
+        var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = AbilityId.Stop,
+                .target = .{.empty = {}},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn repair(self: *Actions, unit_tag: u64, target_tag: u64, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = target_tag;
-        _ = queue;
+        var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = AbilityId.Effect_Repair,
+                .target = .{.tag = target_tag},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn useAbility(self: *Actions, unit_tag: u64, ability: AbilityId, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = ability;
-        _ = queue;
+        var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = ability,
+                .target = .{.empty = {}},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn useAbilityOnPosition(self: *Actions, unit_tag: u64, ability: AbilityId, target: Point2d, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = ability;
-        _ = target;
-        _ = queue;
+        var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = ability,
+                .target = .{.position = target},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn useAbilityOnUnit(self: *Actions, unit_tag: u64, ability: AbilityId, target: u64, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = ability;
-        _ = target;
-        _ = queue;
+        var action = BotAction{
+            .unit = unit_tag,
+            .data = .{
+                .ability_id = ability,
+                .target = .{.tag = target},
+                .queue = queue
+            },
+        };
+        self.addAction(action);
     }
 
     pub fn chat(self: *Actions, channel: Channel, message: []const u8) void {
@@ -685,12 +743,12 @@ pub const Actions = struct {
         }
 
         // Hashing based on the ActionData, value is the index in the next array list
-        var action_hashmap = std.AutoHashMap(ActionData, usize).init(self.temp_allocator);
+        var action_hashmap = std.AutoHashMap(u64, usize).init(self.temp_allocator);
         var raw_unit_commands = std.ArrayList(sc2p.ActionRawUnitCommand).init(self.temp_allocator);
 
         for (self.order_list.items) |order| {
 
-            var maybe_index = action_hashmap.get(order.data);
+            var maybe_index = action_hashmap.get(order.unit);
 
             if (maybe_index) |index| {
                 raw_unit_commands.items[index].unit_tags.list.?.append(order.unit) catch break;
@@ -715,13 +773,13 @@ pub const Actions = struct {
                 unit_command.unit_tags.list = std.ArrayList(u64).initCapacity(self.temp_allocator, 1) catch break;
                 unit_command.unit_tags.list.?.appendAssumeCapacity(order.unit);
                 raw_unit_commands.append(unit_command) catch break;
-                action_hashmap.put(order.data, raw_unit_commands.items.len - 1) catch break;
+                action_hashmap.put(order.unit, raw_unit_commands.items.len - 1) catch break;
             }
         }
 
-        for (raw_unit_commands.items) |command| {
-            command.data = command.list.items;
-            var action_raw = sc2p.ActionRaw{.unit_command = .{.data = command}};
+        for (raw_unit_commands.items) |*command| {
+            command.unit_tags.data = command.unit_tags.list.?.items;
+            var action_raw = sc2p.ActionRaw{.unit_command = .{.data = command.*}};
             var action = sc2p.Action{.action_raw = .{.data = action_raw}};
             action_list.appendAssumeCapacity(action);
         }

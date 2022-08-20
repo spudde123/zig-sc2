@@ -433,6 +433,16 @@ pub const WebSocketClient = struct {
         }
     }
 
+    pub fn sendActions(self: *WebSocketClient, action_proto: sc2p.RequestAction) !void {
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+        var request = sc2p.Request{.action = .{.data = action_proto}};
+        var payload = writer.encodeBaseStruct(request);
+
+        _ = try self.writeAndWaitForMessage(payload);
+
+    }
+
     pub fn step(self: *WebSocketClient, count: u32) bool {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 

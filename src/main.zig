@@ -16,21 +16,30 @@ const TestBot = struct {
     pub fn onStart(
         self: *TestBot,
         bot: bot_data.Bot,
-        game_info: bot_data.GameInfo
+        game_info: bot_data.GameInfo,
+        actions: *bot_data.Actions
     ) void {
         _ = self;
         _ = game_info;
-        _ = bot;
+        const enemy_start_location = game_info.enemy_start_locations[0];
+
+        for (bot.own_units) |unit| {
+            if (unit.unit_type == bot_data.UnitId.SCV) {
+                actions.attackPosition(unit.tag, enemy_start_location, false);
+            }
+        }
     }
 
     pub fn onStep(
         self: *TestBot,
         bot: bot_data.Bot,
-        game_info: bot_data.GameInfo
+        game_info: bot_data.GameInfo,
+        actions: *bot_data.Actions
     ) void {
         _ = bot;
         _ = game_info;
         _ = self;
+        _ = actions;
     }
 
     pub fn onResult(

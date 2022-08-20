@@ -219,6 +219,8 @@ pub fn run(
 
     var first_step_done = false;
 
+    var actions = try bot_data.Actions.init(arena, fixed_buffer);
+
     while (true) {
 
         const obs = client.getObservation();
@@ -229,7 +231,7 @@ pub fn run(
         }
         const bot = try bot_data.Bot.fromProto(obs, player_id, fixed_buffer);
 
-        if (bot.game_loop > 300) {
+        if (bot.game_loop > 500) {
             _ = client.leave();
             break;
         } else {
@@ -264,13 +266,20 @@ pub fn run(
                 arena
             );
             
-            user_bot.onStart(bot, game_info);
+            user_bot.onStart(bot, game_info, &actions);
             first_step_done = true;
         }
 
-        user_bot.onStep(bot, game_info);
+        user_bot.onStep(bot, game_info, &actions);
+
+        const maybe_action_proto = actions.toProto();
+        if (maybe_action_proto) |action_proto| {
+            try client.sendActions(action_proto);
+        }
+
         _ = client.step(step_count);
-        
+
+        actions.clear();
         fixed_buffer_instance.reset();
     }
     //const term = sc2_process.kill();
