@@ -5,11 +5,13 @@ const cp = std.ChildProcess;
 const time = std.time;
 
 const ws = @import("client.zig");
-const sc2p = @import("sc2proto.zig");
 const runner = @import("runner.zig");
 const bot_data = @import("bot.zig");
 
 const TestBot = struct {
+
+    name: []const u8,
+    race: bot_data.Race,
 
     pub fn onStart(self: *TestBot, bot: bot_data.Bot) void {
         _ = self;
@@ -29,7 +31,7 @@ const TestBot = struct {
 };
 
 pub fn main() !void {
-    var my_bot = TestBot{};
+    var my_bot = TestBot{.name = "zig-spudde", .race = .terran};
 
     try runner.run(&my_bot, 2);
 }

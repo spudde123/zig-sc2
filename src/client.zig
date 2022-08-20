@@ -33,6 +33,10 @@ pub const SocketInitError = error {
     TCPConnect,
 };
 
+pub const ClientError = error {
+    BadResponse,
+};
+
 pub const Ping = struct {
     game_version: []const u8 = "",
     data_version: []const u8 = "",
@@ -127,12 +131,13 @@ pub const WebSocketClient = struct {
             }
         }
 
-        const string_to_find = "Sec-WebSocket-Accept: ";
+        const string_to_find = "sec-websocket-accept: ";
 
         var key_ok = false;
         while (split_iter.next()) |line| {
-
-            if (mem.startsWith(u8, line, string_to_find)) {
+            var line_lowered = try self.step_allocator.alloc(u8, line.len);
+            _ = ascii.lowerString(line_lowered, line);
+            if (mem.startsWith(u8, line_lowered, string_to_find)) {
                 const received_key = line[string_to_find.len..line.len];
                 if (checkHandshakeKey(handshake_key[0..handshake_key_length_b64], received_key)) {
                     key_ok = true;
@@ -331,9 +336,66 @@ pub const WebSocketClient = struct {
         return false;
     }
 
-    pub fn joinLadderGame(self: *WebSocketClient) bool {
-        _ = self;
-        return false;
+    pub fn joinLadderGame(
+        self: *WebSocketClient,
+        bot_setup: BotSetup,
+        start_port: u16,
+
+    ) GameJoin {
+
+        const interface = sc2p.InterfaceOptions{
+            .raw = .{.data = true},
+            .score = .{.data = true},
+            .show_cloaked = .{.data = true},
+            .raw_affects_selection = .{.data = false},
+            .raw_crop_to_playable_area = .{.data = false},
+            .show_placeholders = .{.data = true},
+            .show_burrowed_shadows = .{.data = true},
+        };
+
+        var int_port = @as(i32, start_port);
+
+        const server_ports = sc2p.PortSet{
+            .game_port = .{.data = int_port + 1},
+            .base_port = .{.data = int_port + 2},
+        };
+
+        const client_ports = sc2p.PortSet{
+            .game_port = .{.data = int_port + 3},
+            .base_port = .{.data = int_port + 4},
+        };
+        
+        const join_game = sc2p.RequestJoinGame{
+            .race = .{.data = bot_setup.race},
+            .options = .{.data = interface},
+            .server_ports = .{.data = server_ports},
+            .client_ports = .{.data = client_ports},
+            .player_name = .{.data = bot_setup.name},
+        };
+
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+
+        const join_game_req = sc2p.Request{.join_game = .{.data = join_game}};
+        const join_game_payload = writer.encodeBaseStruct(join_game_req);
+
+        var join_game_res = self.writeAndWaitForMessage(join_game_payload) catch return .{};
+        if (join_game_res.join_game.data == null) {
+            std.debug.print("Did not get join game response\n", .{});
+            return .{};
+        }
+
+        var jg_data = join_game_res.join_game.data.?;
+
+        if (jg_data.error_code.data) |code| {
+            std.debug.print("Join game error: {d}\n", .{code});
+            if (jg_data.error_details.data) |details| {
+                std.debug.print("{s}\n", .{details});
+            }
+            return .{};
+        }
+
+        return GameJoin{.success = true, .player_id = jg_data.player_id.data.?};
     }
 
     pub fn getObservation(self: *WebSocketClient) sc2p.ResponseObservation {
@@ -356,15 +418,19 @@ pub const WebSocketClient = struct {
         return .{};
     }
 
-    pub fn getGameInfo(self: *WebSocketClient) sc2p.ResponseGameInfo {
+    pub fn getGameInfo(self: *WebSocketClient) !sc2p.ResponseGameInfo {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 
         var request = sc2p.Request{.game_info = .{.data = {}}};
         var payload = writer.encodeBaseStruct(request);
 
-        var res = self.writeAndWaitForMessage(payload) catch return .{};
+        var res = try self.writeAndWaitForMessage(payload);
 
-        return res;
+        if (res.game_info.data) |game_info| {
+            return game_info;
+        } else {
+            return ClientError.BadResponse;
+        }
     }
 
     pub fn step(self: *WebSocketClient, count: u32) bool {

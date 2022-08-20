@@ -1,6 +1,9 @@
 const std = @import("std");
+const assert = std.debug.assert;
+
 const mem = std.mem;
 const log = std.log;
+const PackedIntIo = std.packed_int_array.PackedIntIo;
 
 const ws = @import("client.zig");
 const sc2p = @import("sc2proto.zig");
@@ -14,6 +17,7 @@ pub const Result = sc2p.Result;
 pub const DisplayType = sc2p.DisplayType;
 pub const Alliance = sc2p.Alliance;
 pub const CloakState = sc2p.CloakState;
+pub const Race = sc2p.Race;
 
 pub const GridSize = struct {
     w: i32,
@@ -115,24 +119,120 @@ pub const Unit = struct {
 
 pub const Grid = struct {
     data: []u8,
-    width: i32,
-    height: i32,
+    w: i32,
+    h: i32,
 
 };
 
-pub const MapData = struct {
+pub const GameInfo = struct {
 
-    //pathing_grid: Grid,
-    //placement_grid: Grid,
-    //terrain_height: Grid,
+    pathing_grid: Grid,
+    placement_grid: Grid,
+    terrain_height: Grid,
+
+    map_name: []const u8,
+    enemy_name: []const u8,
+    // These can be different for a random opponent
+    enemy_requested_race: Race,
+    enemy_race: Race,
+
+    map_size: GridSize,
+    playable_area: Rectangle,
+    enemy_start_locations: []Point2d,
+
+    
 
     //allocator: mem.Allocator,
 
-    pub fn fromProto(proto_data: sc2p.StartRaw, allocator: mem.Allocator) MapData {
-        _ = proto_data;
-        _ = allocator;
+    pub fn fromProto(proto_data: sc2p.ResponseGameInfo, player_id: u32, allocator: mem.Allocator) !GameInfo {
         
-        return .{};
+        var received_map_name = proto_data.map_name.data.?;
+        var map_name = try allocator.alloc(u8, received_map_name.len);
+        mem.copy(u8, map_name, received_map_name);
+
+        var enemy_requested_race: Race = Race.none;
+        var enemy_name: ?[]u8 = null;
+
+        for (proto_data.player_info.data.?) |player_info| {
+            if (player_info.player_id.data.? != player_id) {
+                enemy_requested_race = player_info.race_requested.data.?;
+
+                if (player_info.player_name.data) |received_enemy_name| {
+                    enemy_name = try allocator.alloc(u8, received_enemy_name.len);
+                    mem.copy(u8, enemy_name.?, received_enemy_name);
+                }
+
+                break;
+            }
+        }
+
+        var raw_proto = proto_data.start_raw.data.?;
+
+        var map_size_proto = raw_proto.map_size.data.?;
+        var map_size = GridSize{.w = map_size_proto.x.data.?, .h = map_size_proto.y.data.?};
+
+        var playable_area_proto = raw_proto.playable_area.data.?;
+        var rect_p0 = playable_area_proto.p0.data.?;
+        var rect_p1 = playable_area_proto.p1.data.?;
+
+        var playable_area = Rectangle{
+            .p0 = .{.x = rect_p0.x.data.?, .y = rect_p0.y.data.?},
+            .p1 = .{.x = rect_p1.x.data.?, .y = rect_p1.y.data.?},
+        };
+
+        var start_locations = std.ArrayList(Point2d).init(allocator);
+        for (raw_proto.start_locations.data.?) |loc_proto| {
+            try start_locations.append(.{
+                .x = loc_proto.x.data.?,
+                .y = loc_proto.y.data.?,
+            });
+        }
+
+        var terrain_proto = raw_proto.terrain_height.data.?;
+        assert(terrain_proto.bits_per_pixel.data.? == 8);
+        assert(terrain_proto.size.data.?.x.data.? == map_size.w);
+        assert(terrain_proto.size.data.?.y.data.? == map_size.h);
+        var terrain_proto_slice = terrain_proto.image.data.?;
+        var terrain_slice = try allocator.alloc(u8, terrain_proto_slice.len);
+        mem.copy(u8, terrain_slice, terrain_proto_slice);
+
+        var pathing_proto = raw_proto.pathing_grid.data.?;
+        assert(pathing_proto.bits_per_pixel.data.? == 1);
+        assert(pathing_proto.size.data.?.x.data.? == map_size.w);
+        assert(pathing_proto.size.data.?.y.data.? == map_size.h);
+        var pathing_proto_slice = pathing_proto.image.data.?;
+        var pathing_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
+        
+        const packed_int_type = PackedIntIo(u1, .Big);
+        
+        var index: usize = 0;
+        while (index < map_size.w * map_size.h) : (index += 1) {
+            pathing_slice[index] = packed_int_type.get(pathing_proto_slice, index, 0);
+        }
+
+        var placement_proto = raw_proto.placement_grid.data.?;
+        assert(placement_proto.bits_per_pixel.data.? == 1);
+        assert(placement_proto.size.data.?.x.data.? == map_size.w);
+        assert(placement_proto.size.data.?.y.data.? == map_size.h);
+        var placement_proto_slice = placement_proto.image.data.?;
+        var placement_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
+        index = 0;
+        while (index < map_size.w * map_size.h) : (index += 1) {
+            placement_slice[index] = packed_int_type.get(placement_proto_slice, index, 0);
+        }
+
+        return GameInfo{
+            .map_name = map_name,
+            .enemy_name = enemy_name orelse "Unknown",
+            .enemy_requested_race = enemy_requested_race,
+            .enemy_race = if (enemy_requested_race != Race.random) enemy_requested_race else Race.none,
+            .map_size = map_size,
+            .playable_area = playable_area,
+            .enemy_start_locations = start_locations.toOwnedSlice(),
+            .terrain_height = Grid{.data = terrain_slice, .w = map_size.w, .h = map_size.h},
+            .pathing_grid = Grid{.data = pathing_slice, .w = map_size.w, .h = map_size.h},
+            .placement_grid = Grid{.data = placement_slice, .w = map_size.w, .h = map_size.h},
+        };
     }
 
     pub fn deinit() void {

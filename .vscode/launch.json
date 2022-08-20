@@ -8,7 +8,7 @@
             "name": "(Windows) Launch",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/zig-out/bin/zspudde.exe",
+            "program": "${workspaceFolder}/zig-out/bin/zig-spudde.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

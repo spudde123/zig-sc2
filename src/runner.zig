@@ -1,7 +1,7 @@
 const std = @import("std");
 const mem = std.mem;
 const fmt = std.fmt;
-const cp = std.ChildProcess;
+const ChildProcess = std.ChildProcess;
 const time = std.time;
 const log = std.log;
 
@@ -23,15 +23,15 @@ const InputType = enum(u8) {
 
 const ProgramArguments = struct {
     ladder_server: ?[]const u8 = null,
-    game_port: ?i32 = null,
-    start_port: ?i32 = null,
+    game_port: ?u16 = null,
+    start_port: ?u16 = null,
     opponent_id: ?[]const u8 = null,
     real_time: bool = false,
 
     computer_race: sc2p.Race = .random,
     computer_difficulty: sc2p.AiDifficulty = .very_hard,
     computer_build: sc2p.AiBuild = .random,
-    map: ?[]u8 = null
+    map: ?[]const u8 = null
 };
 
 fn readArguments(allocator: mem.Allocator) ProgramArguments {
@@ -57,7 +57,6 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
 
     while (arg_iter.next(allocator)) |arg| {
         const argument = arg catch break;
-        defer allocator.free(argument);
         
         if (mem.startsWith(u8, argument, "-")) {
             if (mem.eql(u8, argument, "--LadderServer")) {
@@ -80,10 +79,10 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     program_args.ladder_server = argument;
                 },
                 InputType.game_port => {
-                    program_args.game_port = fmt.parseInt(i32, argument, 0) catch continue;
+                    program_args.game_port = fmt.parseUnsigned(u16, argument, 0) catch continue;
                 },
                 InputType.start_port => {
-                    program_args.start_port = fmt.parseInt(i32, argument, 0) catch continue;
+                    program_args.start_port = fmt.parseUnsigned(u16, argument, 0) catch continue;
                 },
                 InputType.opponent_id => {
                     program_args.opponent_id = argument;
@@ -109,6 +108,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
 pub fn run(
     user_bot: anytype,
     step_count: u32,
+
 ) !void {
     
     var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -122,37 +122,47 @@ pub fn run(
     
     var program_args = readArguments(arena);
     
-    if (program_args.ladder_server) |ladder_server| {
-        std.debug.print("LadderServer: {s}\n", .{ladder_server});
-    }
-    if (program_args.opponent_id) |opponent_id| {
-        std.debug.print("OpponentId: {s}\n", .{opponent_id});
-    }
-    if (program_args.start_port) |start_port| {
-        std.debug.print("StartPort: {d}\n", .{start_port});
-    }
-
-    if (program_args.game_port) |game_port| {
-        std.debug.print("GamePort: {d}\n", .{game_port});
-    }
-
-    const a = [_] []const u8{
-        "C:/Program Files (x86)/StarCraft II/Versions/Base88500/SC2_X64.exe",
-        "-listen",
-        "127.0.0.1",
-        "-port",
-        "5001",
-        "-dataDir",
-        "C:/Program Files (x86)/StarCraft II"
-    };
+    var ladder_game = false;
+    var host: []const u8 = "127.0.0.1";
+    var game_port: u16 = 5001;
+    var start_port: u16 = 5002;
+    var opponent_id: []const u8 = "Unknown";
+    var sc2_process: ?*ChildProcess = null;
     
-    const sc2_process = cp.init(a[0..], arena) catch |err| {
-        return err;
-    };
-    sc2_process.cwd = "C:/Program Files (x86)/StarCraft II/Support64";
-    defer sc2_process.deinit();
+    if (program_args.ladder_server) |ladder_server| {
+        ladder_game = true;
+        host = ladder_server;
 
-    try sc2_process.spawn();
+        if (program_args.opponent_id) |opp_id| {
+            opponent_id = opp_id;
+        }
+        start_port = program_args.start_port orelse {
+            log.err("Start port is missing\n", .{});
+            return;
+        };
+        
+        game_port = program_args.game_port orelse {
+            log.err("Game port is missing\n", .{});
+            return;
+        };
+    } else {
+        const sc2_args = [_] []const u8{
+            "C:/Program Files (x86)/StarCraft II/Versions/Base88500/SC2_X64.exe",
+            "-listen",
+            host,
+            "-port",
+            try fmt.allocPrint(arena, "{d}", .{game_port}),
+            "-dataDir",
+            "C:/Program Files (x86)/StarCraft II"
+        };
+        
+        sc2_process = ChildProcess.init(sc2_args[0..], arena) catch |err| {
+            return err;
+        };
+        sc2_process.?.cwd = "C:/Program Files (x86)/StarCraft II/Support64";
+
+        try sc2_process.?.spawn();
+    }
 
     const seconds_to_try = 10;
 
@@ -161,9 +171,9 @@ pub fn run(
     var client: ws.WebSocketClient = undefined;
     var connection_ok = false;
     while (!connection_ok and attempt < seconds_to_try) : (attempt += 1) {
-        time.sleep(time.ns_per_s);
-        std.debug.print("Doing loop {d}\n", .{attempt});
-        client = ws.WebSocketClient.init("127.0.0.1", 5001, arena, fixed_buffer) catch {
+        std.debug.print("Doing ws connection loop {d}\n", .{attempt});
+        client = ws.WebSocketClient.init(host, game_port, arena, fixed_buffer) catch {
+            time.sleep(time.ns_per_s);
             continue;
         };
         connection_ok = true;
@@ -182,20 +192,31 @@ pub fn run(
         return;
     }
 
-    var game_join = client.createGameVsComputer(
-        .{.name = "spudde", .race = .terran},
-        "C:/Program Files (x86)/StarCraft II/Maps/LightshadeAIE.SC2Map",
-        .{},
-        false
-    );
+    var game_join: ws.GameJoin = undefined;
 
+    const bot_setup: ws.BotSetup = .{
+        .name = user_bot.name, 
+        .race = user_bot.race
+    };
+    if (ladder_game) {
+        game_join = client.joinLadderGame(bot_setup, start_port);
+    } else {
+        game_join = client.createGameVsComputer(
+            bot_setup,
+            "C:/Program Files (x86)/StarCraft II/Maps/LightshadeAIE.SC2Map",
+            .{},
+            false
+        );
+    }
+    
     if (!game_join.success) {
         log.err("Failed to join the game\n", .{});
         return;
     }
 
     var player_id = game_join.player_id;
-    
+    var game_info: bot_data.GameInfo = undefined;
+
     var first_step_done = false;
 
     while (true) {
@@ -208,7 +229,8 @@ pub fn run(
         }
         const bot = try bot_data.Bot.fromProto(obs, player_id, fixed_buffer);
 
-        if (bot.game_loop > 100) {
+        if (bot.game_loop > 300) {
+            _ = client.leave();
             break;
         } else {
             std.debug.print("Game loop {d}\n", .{bot.game_loop});
@@ -220,20 +242,31 @@ pub fn run(
         }
 
         if (!first_step_done) {
+            var game_info_proto = client.getGameInfo() catch {
+                log.err("Error getting game info\n", .{});
+                break;
+            };
+            game_info = try bot_data.GameInfo.fromProto(game_info_proto, player_id, arena);
+            
             user_bot.onStart(bot);
             first_step_done = true;
         }
 
+        if (first_step_done) {
+            std.debug.print("{s}\n", .{game_info.map_name});
+            std.debug.print("{s}\n", .{game_info.enemy_name});
+        }
         user_bot.onStep(bot);
 
         _ = client.step(step_count);
         
         fixed_buffer_instance.reset();
     }
-
-    _ = client.quit();
-
     //const term = sc2_process.kill();
 
+    if (sc2_process) |sc2| {
+        _ = client.quit();
+        sc2.deinit();
+    }
     //std.debug.print("Term status: {d}\n", .{term});
 }
