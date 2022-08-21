@@ -32,7 +32,7 @@ const ProgramArguments = struct {
     computer_race: sc2p.Race = .random,
     computer_difficulty: sc2p.AiDifficulty = .very_hard,
     computer_build: sc2p.AiBuild = .random,
-    map: ?[]const u8 = null
+    map_file_name: []const u8 = "LightshadeAIE"
 };
 
 const race_map = std.ComptimeStringMap(sc2p.Race, .{
@@ -65,18 +65,7 @@ const build_map = std.ComptimeStringMap(sc2p.AiBuild, .{
 });
 
 fn readArguments(allocator: mem.Allocator) ProgramArguments {
-    var program_args = ProgramArguments{
-        .ladder_server = null,
-        .game_port = null,
-        .start_port = null,
-        .opponent_id = null,
-        .real_time = false,
-        
-        .computer_race = .random,
-        .computer_difficulty = .very_hard,
-        .computer_build = .random,
-        .map = null
-    };
+    var program_args = ProgramArguments{};
 
     var arg_iter = std.process.args();
 
@@ -106,6 +95,8 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                 current_input_type = InputType.computer_difficulty;
             } else if (mem.eql(u8, argument, "--CompBuild")) {
                 current_input_type = InputType.computer_build;
+            } else if (mem.eql(u8, argument, "--Map")) {
+                current_input_type = InputType.map;
             } else {
                 current_input_type = InputType.none;
             }
@@ -160,7 +151,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     }
                 },
                 InputType.map => {
-                    program_args.map = argument;
+                    program_args.map_file_name = argument;
                 },
                 else => {}
             }
@@ -249,6 +240,12 @@ pub fn run(
     }
     
     defer client.deinit();
+    defer {
+        if (sc2_process) |sc2| {
+            _ = client.quit();
+            sc2.deinit();
+        }
+    }
 
     const handshake_ok = try client.completeHandshake("/sc2api");
     if (!handshake_ok) {
@@ -256,7 +253,7 @@ pub fn run(
         return;
     }
 
-    var game_join: ws.GameJoin = undefined;
+    var game_join: ws.GameJoin = .{};
 
     const bot_setup: ws.BotSetup = .{
         .name = user_bot.name, 
@@ -264,10 +261,19 @@ pub fn run(
     };
     if (ladder_game) {
         game_join = client.joinLadderGame(bot_setup, start_port);
-    } else {
+    } else create_game_block: {
+        
+        const map_folder = "C:/Program Files (x86)/StarCraft II/Maps/";
+        var strings_to_concat = [_][]const u8{map_folder, program_args.map_file_name, ".SC2Map"};
+        var concat_result = try mem.concat(arena, u8, &strings_to_concat);
+        std.fs.accessAbsolute(concat_result, .{}) catch {
+            log.err("Map file {s} was not found\n", .{concat_result});
+            break :create_game_block;
+        };
+
         game_join = client.createGameVsComputer(
             bot_setup,
-            "C:/Program Files (x86)/StarCraft II/Maps/LightshadeAIE.SC2Map",
+            concat_result,
             ws.ComputerSetup{
                 .difficulty = program_args.computer_difficulty,
                 .build = program_args.computer_build,
@@ -275,6 +281,7 @@ pub fn run(
             },
             false
         );
+        
     }
     
     if (!game_join.success) {
@@ -298,13 +305,6 @@ pub fn run(
             break;
         }
         const bot = try bot_data.Bot.fromProto(obs, player_id, fixed_buffer);
-
-        if (bot.game_loop > 500) {
-            _ = client.leave();
-            break;
-        } else {
-            std.debug.print("Game loop {d}\n", .{bot.game_loop});
-        }
 
         if (bot.result) |res| {
             user_bot.onResult(bot, game_info, res);
@@ -360,11 +360,6 @@ pub fn run(
         fixed_buffer_instance.reset();
     }
     //const term = sc2_process.kill();
-
-    if (sc2_process) |sc2| {
-        _ = client.quit();
-        sc2.deinit();
-    }
     //std.debug.print("Term status: {d}\n", .{term});
 }
 
@@ -400,10 +395,9 @@ test "runner_test" {
             game_info: bot_data.GameInfo,
             actions: *bot_data.Actions
         ) void {
-            _ = bot;
             _ = game_info;
             _ = self;
-            _ = actions;
+            if (bot.game_loop > 500) actions.leaveGame();
         }
 
         pub fn onResult(

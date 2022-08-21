@@ -13,6 +13,7 @@
                 "--CompRace", "random",
                 "--CompDifficulty", "very_hard",
                 "--CompBuild", "random",
+                "--Map", "BlackburnAIE"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

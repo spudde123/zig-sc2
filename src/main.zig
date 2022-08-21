@@ -36,10 +36,9 @@ const TestBot = struct {
         game_info: bot_data.GameInfo,
         actions: *bot_data.Actions
     ) void {
-        _ = bot;
         _ = game_info;
         _ = self;
-        _ = actions;
+        if (bot.game_loop > 500) actions.leaveGame();
     }
 
     pub fn onResult(
