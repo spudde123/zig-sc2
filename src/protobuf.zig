@@ -1,10 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
 
-pub const max_varint_length: usize = 10;
-pub const float_length: usize = 4;
-pub const header_length: usize = 1;
-
 pub const WireType = enum(u8) {
     varint = 0,
     _64bit = 1,
@@ -177,6 +173,7 @@ pub const ProtoReader = struct {
             }
 
             value += @intCast(u64, 0x7F & byte) << (7 * @intCast(u6, i));
+            // If msb is 0 we've reached the last byte
             if (byte & 0x80 == 0) {
                 self.bytes_read += i + 1;
                 return value;
@@ -358,11 +355,13 @@ pub const ProtoWriter = struct {
         var i: usize = 0;
         var value = data;
 
+        // MSB of all bytes before last to 1
         while (value > 0) : (i += 1) {
             self.buffer[self.cursor + i] = @as(u8, 0x80) + @truncate(u7, value);
             value >>= 7;
         }
 
+        // Set MSB of last byte to 0
         self.buffer[self.cursor + i - 1] &= 0x7F;
         return i;
     }
