@@ -4,7 +4,6 @@ const fmt = std.fmt;
 const cp = std.ChildProcess;
 const time = std.time;
 
-const ws = @import("client.zig");
 const runner = @import("runner.zig");
 const bot_data = @import("bot.zig");
 
