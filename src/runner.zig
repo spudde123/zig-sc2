@@ -220,7 +220,6 @@ pub fn run(
     }
 
     const seconds_to_try = 10;
-
     var attempt: u32 = 0;
 
     var client: ws.WebSocketClient = undefined;
@@ -236,6 +235,9 @@ pub fn run(
 
     if (!connection_ok) {
         log.err("Failed to connect to sc2\n", .{});
+        if (sc2_process) |sc2| {
+            _ = try sc2.kill();
+        }
         return;
     }
     
@@ -265,15 +267,15 @@ pub fn run(
         
         const map_folder = "C:/Program Files (x86)/StarCraft II/Maps/";
         var strings_to_concat = [_][]const u8{map_folder, program_args.map_file_name, ".SC2Map"};
-        var concat_result = try mem.concat(arena, u8, &strings_to_concat);
-        std.fs.accessAbsolute(concat_result, .{}) catch {
-            log.err("Map file {s} was not found\n", .{concat_result});
+        var map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
+        std.fs.accessAbsolute(map_absolute_path, .{}) catch {
+            log.err("Map file {s} was not found\n", .{map_absolute_path});
             break :create_game_block;
         };
 
         game_join = client.createGameVsComputer(
             bot_setup,
-            concat_result,
+            map_absolute_path,
             ws.ComputerSetup{
                 .difficulty = program_args.computer_difficulty,
                 .build = program_args.computer_build,
