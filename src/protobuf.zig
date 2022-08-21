@@ -528,6 +528,7 @@ test "protobuf_struct" {
         j: ProtoField(5, []Test5) = .{},
         k: ProtoField(6, [][]const u8) = .{},
         l: ProtoField(7, TestEnum) = .{},
+        m: ProtoField(8, []u64) = .{},
     };
 
     var t3 = Test3{
@@ -547,6 +548,8 @@ test "protobuf_struct" {
 
     var string_array = [_][]const u8{"string1", "string2", "string3"};
 
+    var tag_array = [_]u64{32, 66, 128, 256, 1000};
+
     var t4 = Test4{
         .f = .{.data = 1.5},
         .g = .{.data = "testing"},
@@ -555,6 +558,7 @@ test "protobuf_struct" {
         .j = .{.data = t5_array[0..]},
         .k = .{.data = string_array[0..]},
         .l = .{.data = .opt2},
+        .m = .{.data = tag_array[0..]},
     };
 
     const res = writer.encodeBaseStruct(t4);
@@ -574,7 +578,7 @@ test "protobuf_struct" {
     defer arena_instance.deinit();
     const arena = arena_instance.allocator();
     const decoded_t4 = try reader2.decodeStruct(res.len, Test4, arena);
-    std.debug.print("{any}\n", .{decoded_t4});
+    //std.debug.print("{any}\n", .{decoded_t4});
     
     try std.testing.expectEqual(t4.f.data.?, decoded_t4.f.data.?);
     try std.testing.expectEqualSlices(u8, t4.g.data.?, decoded_t4.g.data.?);
@@ -585,5 +589,6 @@ test "protobuf_struct" {
     try std.testing.expectEqualSlices(u8, t4.k.data.?[0], decoded_t4.k.data.?[0]);
     std.debug.print("{s}\n", .{decoded_t4.k.data.?[0]});
     try std.testing.expectEqual(t4.l.data.?, decoded_t4.l.data.?);
+    try std.testing.expectEqual(t4.m.data.?[3], decoded_t4.m.data.?[3]);
 
 }

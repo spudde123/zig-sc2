@@ -3,7 +3,9 @@ const assert = std.debug.assert;
 
 const mem = std.mem;
 const log = std.log;
+const math = std.math;
 const PackedIntIo = std.packed_int_array.PackedIntIo;
+const EnumSet = std.enums.EnumSet;
 
 const ws = @import("client.zig");
 const sc2p = @import("sc2proto.zig");
@@ -277,6 +279,19 @@ pub const GameInfo = struct {
     pub fn update(bot: Bot) void {
         _ = bot;
     }
+
+    pub fn getTerrainZ(self: GameInfo, pos: Point2d) f32 {
+        const x = @floatToInt(i32, math.floor(pos.x));
+        const y = @floatToInt(i32, math.floor(pos.y));
+        
+        assert(x >= 0 and x < self.terrain_height.w);
+        assert(y >= 0 and y < self.terrain_height.h);
+
+        const terrain_grid_height = self.terrain_height.h;
+        const grid_index = y + x * terrain_grid_height;
+        const terrain_value = @intToFloat(f32, self.terrain_height.data[grid_index]);
+        return -16 + 32*terrain_value / 255;
+    }
 };
 
 pub const Bot = struct {
@@ -518,7 +533,50 @@ pub const Actions = struct {
     const ActionData = struct {
         ability_id: AbilityId,
         target: OrderTarget,
-        queue: bool
+        queue: bool,
+
+        const HashablePoint2d = struct {
+            x: i32,
+            y: i32,
+        };
+        
+        const HashableOrderTarget = union(OrderType) {
+            empty: void,
+            position: HashablePoint2d,
+            tag: u64,
+        };
+
+        const HashableActionData = struct {
+            ability_id: AbilityId,
+            target: HashableOrderTarget,
+            queue: bool
+        };
+
+        fn toHashable(self: ActionData) HashableActionData {
+            
+            var target: HashableOrderTarget = undefined;
+            switch (self.target) {
+                .empty => {
+                    target = .{.empty = {}};
+                },
+                .tag => |tag| {
+                    target = .{.tag = tag};
+                },
+                .position => |pos| {
+                    var point = HashablePoint2d{
+                        .x = @floatToInt(i32, math.round(pos.x * 100)),
+                        .y = @floatToInt(i32, math.round(pos.y * 100)),
+                    };
+                    target = .{.position = point};
+                }
+            }
+
+            return HashableActionData{
+                .ability_id = self.ability_id,
+                .target = target,
+                .queue = self.queue,
+            };
+        }
     };
 
     const BotAction = struct {
@@ -534,10 +592,45 @@ pub const Actions = struct {
     temp_allocator: mem.Allocator,
     order_list: std.ArrayList(BotAction),
     chat_messages: std.ArrayList(ChatAction),
+    // Couldn't use an EnumSet due to the enum being non-exhaustive
+    // And even if we make it exhaustive it was a problem seemingly
+    // due to the size of the underlying enum
+    combinable_abilities: std.AutoHashMap(AbilityId, void),
+    leave_game: bool = false,
 
     pub fn init(perm_allocator: mem.Allocator, temp_allocator: mem.Allocator) !Actions {
 
+        var ca = std.AutoHashMap(AbilityId, void).init(perm_allocator);
+        
+        try ca.put(AbilityId.Move, {});
+        try ca.put(AbilityId.Move_Move, {});
+        try ca.put(AbilityId.Attack, {});
+        try ca.put(AbilityId.Scan_Move, {});
+        try ca.put(AbilityId.Smart, {});
+        try ca.put(AbilityId.Stop, {});
+        try ca.put(AbilityId.HoldPosition, {});
+        try ca.put(AbilityId.Patrol, {});
+        try ca.put(AbilityId.Harvest_Gather, {});
+        try ca.put(AbilityId.Harvest_Return, {});
+        try ca.put(AbilityId.Effect_Repair, {});
+        try ca.put(AbilityId.Rally_Building, {});
+        try ca.put(AbilityId.Rally_Units, {});
+        try ca.put(AbilityId.Rally_Workers, {});
+        try ca.put(AbilityId.Rally_Morphing_Unit, {});
+        try ca.put(AbilityId.Lift, {});
+        try ca.put(AbilityId.BurrowDown, {});
+        try ca.put(AbilityId.BurrowUp, {});
+        try ca.put(AbilityId.SiegeMode_SiegeMode, {});
+        try ca.put(AbilityId.Unsiege_Unsiege, {});
+        try ca.put(AbilityId.Morph_LiberatorAAMode, {});
+        try ca.put(AbilityId.Effect_Stim, {});
+        try ca.put(AbilityId.Effect_Stim_Marine, {});
+        try ca.put(AbilityId.Effect_Stim_Marauder, {});
+        try ca.put(AbilityId.Morph_Uproot, {});
+        try ca.put(AbilityId.Morph_Archon, {});
+        
         return Actions{
+            .combinable_abilities = ca,
             .temp_allocator = temp_allocator,
             .order_list = try std.ArrayList(BotAction).initCapacity(perm_allocator, 400),
             .chat_messages = try std.ArrayList(ChatAction).initCapacity(perm_allocator, 10),
@@ -554,6 +647,10 @@ pub const Actions = struct {
             log.err("Failed to add bot action\n", .{});
             return;
         };
+    }
+
+    pub fn leaveGame(self: *Actions) void {
+        self.leave_game = true;
     }
 
     pub fn train(self: *Actions, structure_tag: u64, unit_type: UnitId, queue: bool) void {
@@ -728,7 +825,6 @@ pub const Actions = struct {
     pub fn toProto(self: *Actions) ?sc2p.RequestAction {
         if (self.order_list.items.len == 0) return null;
 
-        // Combine repeat orders
 
         const combined_length = self.order_list.items.len + self.chat_messages.items.len;
         var action_list = std.ArrayList(sc2p.Action).initCapacity(self.temp_allocator, combined_length) catch return null;
@@ -742,13 +838,15 @@ pub const Actions = struct {
             action_list.appendAssumeCapacity(action);
         }
 
+        // Combine repeat orders
         // Hashing based on the ActionData, value is the index in the next array list
-        var action_hashmap = std.AutoHashMap(u64, usize).init(self.temp_allocator);
+        var action_hashmap = std.AutoHashMap(ActionData.HashableActionData, usize).init(self.temp_allocator);
         var raw_unit_commands = std.ArrayList(sc2p.ActionRawUnitCommand).init(self.temp_allocator);
 
         for (self.order_list.items) |order| {
-
-            var maybe_index = action_hashmap.get(order.unit);
+            
+            var hashable = order.data.toHashable();
+            var maybe_index = action_hashmap.get(hashable);
 
             if (maybe_index) |index| {
                 raw_unit_commands.items[index].unit_tags.list.?.append(order.unit) catch break;
@@ -773,7 +871,10 @@ pub const Actions = struct {
                 unit_command.unit_tags.list = std.ArrayList(u64).initCapacity(self.temp_allocator, 1) catch break;
                 unit_command.unit_tags.list.?.appendAssumeCapacity(order.unit);
                 raw_unit_commands.append(unit_command) catch break;
-                action_hashmap.put(order.unit, raw_unit_commands.items.len - 1) catch break;
+                
+                if (self.combinable_abilities.contains(order.data.ability_id)) {
+                    action_hashmap.put(hashable, raw_unit_commands.items.len - 1) catch break;
+                }
             }
         }
 

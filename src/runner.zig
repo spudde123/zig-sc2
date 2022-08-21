@@ -108,14 +108,15 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
 pub fn run(
     user_bot: anytype,
     step_count: u32,
-
+    base_allocator: mem.Allocator
 ) !void {
     
-    var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    // Arena allocator that is freed at the end of each step
+    var arena_instance = std.heap.ArenaAllocator.init(base_allocator);
+    // Arena allocator that is freed at the end of the game
     const arena = arena_instance.allocator();
     defer arena_instance.deinit();
 
+    // Fixed buffer which is reset at the end of each step
     var step_bytes = try arena.alloc(u8, 30*1024*1024);
     var fixed_buffer_instance = std.heap.FixedBufferAllocator.init(step_bytes);
     const fixed_buffer = fixed_buffer_instance.allocator();
@@ -272,6 +273,12 @@ pub fn run(
 
         user_bot.onStep(bot, game_info, &actions);
 
+        if (actions.leave_game) {
+            _ = client.leave();
+            user_bot.onResult(bot, game_info, .defeat);
+            break;
+        }
+
         const maybe_action_proto = actions.toProto();
         if (maybe_action_proto) |action_proto| {
             try client.sendActions(action_proto);
@@ -289,4 +296,60 @@ pub fn run(
         sc2.deinit();
     }
     //std.debug.print("Term status: {d}\n", .{term});
+}
+
+
+test "runner_test" {
+    // Mainly checking that memory isn't leaking
+    
+    const TestBot = struct {
+        const Self = @This();
+        name: []const u8,
+        race: bot_data.Race,
+
+        pub fn onStart(
+            self: *Self,
+            bot: bot_data.Bot,
+            game_info: bot_data.GameInfo,
+            actions: *bot_data.Actions
+        ) void {
+            _ = self;
+            _ = game_info;
+            const enemy_start_location = game_info.enemy_start_locations[0];
+
+            for (bot.own_units) |unit| {
+                if (unit.unit_type == bot_data.UnitId.SCV) {
+                    actions.attackPosition(unit.tag, enemy_start_location, false);
+                }
+            }
+        }
+
+        pub fn onStep(
+            self: *Self,
+            bot: bot_data.Bot,
+            game_info: bot_data.GameInfo,
+            actions: *bot_data.Actions
+        ) void {
+            _ = bot;
+            _ = game_info;
+            _ = self;
+            _ = actions;
+        }
+
+        pub fn onResult(
+            self: *Self,
+            bot: bot_data.Bot,
+            game_info: bot_data.GameInfo,
+            result: bot_data.Result
+        ) void {
+            _ = bot;
+            _ = game_info;
+            _ = result;
+            _ = self;
+        }
+    };
+
+    var test_bot = TestBot{.name = "tester", .race = .terran};
+
+    try run(&test_bot, 2, std.testing.allocator);
 }

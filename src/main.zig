@@ -58,5 +58,5 @@ const TestBot = struct {
 pub fn main() !void {
     var my_bot = TestBot{.name = "zig-spudde", .race = .terran};
 
-    try runner.run(&my_bot, 2);
+    try runner.run(&my_bot, 2, std.heap.page_allocator);
 }

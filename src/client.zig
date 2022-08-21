@@ -71,7 +71,7 @@ pub const WebSocketClient = struct {
     storage: []u8,
     storage_cursor: usize,
 
-    /// perm_alloc should not be freed from the outside
+    /// perm_alloc should not be freed from the outside while client is in use
     /// while the client is in use.
     /// step_alloc is meant to be freed after each game loop
     pub fn init(host: []const u8, port: u16, perm_alloc: mem.Allocator, step_alloc: mem.Allocator) !WebSocketClient {
@@ -150,6 +150,8 @@ pub const WebSocketClient = struct {
         return key_ok;
     }
 
+    /// Write websocket protocol control messages without a payload.
+    /// These don't seem needed when communicating with sc2.
     pub fn writeEmptyControlMessage(self: *WebSocketClient, op: OpCode) !void {
         var bytes: [6]u8 = undefined;
 
@@ -167,64 +169,6 @@ pub const WebSocketClient = struct {
 
         const stream = self.socket.writer();
         try stream.writeAll(bytes[0..]);
-    }
-
-    pub fn writeMessageWithBinaryPayload(self: *WebSocketClient, payload: []u8, mask_payload: bool) !void {
-        const max_len = 6 + payload.len + 8;
-        var bytes = try self.step_allocator.alloc(u8, max_len);
-        bytes[0] = @enumToInt(OpCode.binary);
-        bytes[0] |= 0x80;
-
-        var payload_start: usize = undefined;
-
-        var mask_start: usize = 2;
-        if (payload.len <= 125) {
-            bytes[1] = @truncate(u8, payload.len);
-        } else if (payload.len <= 65535) {
-            bytes[1] = 126;
-            mem.writeIntBig(u16, bytes[2..4], @truncate(u16, payload.len));
-            mask_start += 2;
-        } else {
-            bytes[1] = 127;
-            mem.writeIntBig(u64, bytes[2..10], payload.len);
-            mask_start += 8;
-        }
-
-        if (mask_payload) {
-            var mask: [4]u8 = undefined;
-            self.prng.bytes(&mask);
-            // Mask bit to 1
-            bytes[1] |= 0x80;
-
-            mem.copy(u8, bytes[mask_start..(mask_start + 4)], mask[0..]);
-            payload_start = mask_start + 4;
-
-            var insert_index = payload_start;
-            for (payload) |char, index| {
-                bytes[insert_index] = char ^ mask[index % 4];
-                insert_index += 1;
-            }
-        } else {
-            payload_start = mask_start;
-            mem.copy(u8, bytes[payload_start..], payload);
-        }
-
-        const stream = self.socket.writer();
-        try stream.writeAll(bytes[0..(payload_start + payload.len)]);
-    }
-
-    // According to the spec pong should include the same payload as the ping
-    // Not sure what to do in terms of whether it should be masked or not?
-    pub fn writePong(self: *WebSocketClient) !void {
-        try self.writeEmptyControlMessage(OpCode.pong);
-    }
-
-    pub fn writePing(self: *WebSocketClient) !void {
-        try self.writeEmptyControlMessage(OpCode.ping);
-    }
-
-    pub fn writeCloseFrame(self: *WebSocketClient) !void {
-        try self.writeEmptyControlMessage(OpCode.close);
     }
 
     pub fn createGameVsComputer(
