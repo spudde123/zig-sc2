@@ -827,7 +827,7 @@ pub const Actions = struct {
 
     pub fn chat(self: *Actions, channel: Channel, message: []const u8) void {
         var msg_copy = self.temp_allocator.alloc(u8, message.len) catch return;
-        mem.copy(u8, msg_copy, message);.
+        mem.copy(u8, msg_copy, message);
         self.chat_messages.append(.{.channel = channel, .message = msg_copy}) catch return;
     }
 

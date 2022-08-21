@@ -389,6 +389,8 @@ test "runner_test" {
                     actions.attackPosition(unit.tag, enemy_start_location, false);
                 }
             }
+            actions.chat(.broadcast, "Testing all chat!");
+            actions.chat(.team, "Testing team chat!");
         }
 
         pub fn onStep(
