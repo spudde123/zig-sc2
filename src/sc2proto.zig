@@ -22,9 +22,9 @@ pub const Request = struct {
     observation: ProtoField(10, RequestObservation) = .{},
     action: ProtoField(11, RequestAction) = .{},
     step: ProtoField(12, RequestStep) = .{},
-    //data: ProtoField(13, RequestData) = .{},
+    data: ProtoField(13, RequestData) = .{},
     //query: ProtoField(14, RequestQuery) = .{},
-    //save_replay: ProtoField(15, RequestSaveReplay) = .{},
+    save_replay: ProtoField(15, void) = .{},
     ping: ProtoField(19, void) = .{},
     debug: ProtoField(20, RequestDebug) = .{},
 
@@ -40,9 +40,9 @@ pub const Response = struct {
     observation: ProtoField(10, ResponseObservation) = .{},
     action: ProtoField(11, ResponseAction) = .{},
     step: ProtoField(12, ResponseStep) = .{},
-    //data: ProtoField(13, ResponseData) = .{},
+    data: ProtoField(13, ResponseData) = .{},
     //query: ProtoField(14, ResponseQuery) = .{},
-    //save_replay: ProtoField(15, ResponseSaveReplay) = .{},
+    save_replay: ProtoField(15, ResponseSaveReplay) = .{},
     ping: ProtoField(19, ResponsePing) = .{},
     debug: ProtoField(20, void) = .{},
 
@@ -142,6 +142,10 @@ pub const ResponsePing = struct {
     data_version: ProtoField(2, []const u8) = .{},
     data_build: ProtoField(3, u32) = .{},
     base_build: ProtoField(4, u32) = .{},
+};
+
+pub const ResponseSaveReplay = struct {
+    bytes: ProtoField(1, []u8) = .{},
 };
 
 pub const ResponseObservation = struct {
@@ -926,3 +930,88 @@ pub const DebugSetUnitValue = struct {
     value: ProtoField(2, f32) = .{},
     unit_tag: ProtoField(3, u64) = .{},
 };
+
+pub const RequestData = struct {
+    ability_id: ProtoField(1, bool) = .{},
+    unit_id: ProtoField(2, bool) = .{},
+    upgrade_id: ProtoField(3, bool) = .{},
+    buff_id: ProtoField(4, bool) = .{},
+    effect_id: ProtoField(5, bool) = .{},
+};
+
+pub const ResponseData = struct {
+    //abilities: ProtoField(1, []AbilityData) = .{},
+    units: ProtoField(2, []UnitTypeData) = .{},
+    upgrades: ProtoField(3, []UpgradeData) = .{},
+    //buffs: ProtoField(4, []BuffData) = .{},
+    //effects: ProtoField(5, []EffectData) = .{},
+};
+
+pub const Attribute = enum(u8) {
+    light = 1,
+    armored = 2,
+    biological = 3,
+    mechanical = 4,
+    robotic = 5,
+    psionic = 6,
+    massive = 7,
+    structure = 8,
+    hover = 9,
+    heroic = 10,
+    summoned = 11,
+};
+
+pub const TargetType = enum(u8) {
+    ground = 1,
+    air = 2,
+    any = 3,
+};
+
+pub const DamageBonus = struct {
+    attribute: ProtoField(1, Attribute) = .{},
+    bonus: ProtoField(2, f32) = .{},
+};
+
+pub const Weapon = struct {
+    target_type: ProtoField(1, TargetType) = .{},
+    damage: ProtoField(2, f32) = .{},
+    damage_bonus: ProtoField(3, []DamageBonus) = .{},
+    attacks: ProtoField(4, u32) = .{},
+    range: ProtoField(5, f32) = .{},
+    speed: ProtoField(6, f32) = .{},
+};
+
+pub const UpgradeData = struct {
+    upgrade_id: ProtoField(1, u32) = .{},
+    name: ProtoField(2, []const u8) = .{},
+    mineral_cost: ProtoField(3, u32) = .{},
+    vespene_cost: ProtoField(4, u32) = .{},
+    research_time: ProtoField(5, f32) = .{},
+    ability_id: ProtoField(6, u32) = .{},
+};
+
+pub const UnitTypeData = struct {
+    unit_id: ProtoField(1, u32) = .{},
+    name: ProtoField(2, []const u8) = .{},
+    available: ProtoField(3, bool) = .{},
+    cargo_size: ProtoField(4, u32) = .{},
+    attributes: ProtoField(8, []Attribute) = .{},
+    movement_speed: ProtoField(9, f32) = .{},
+    armor: ProtoField(10, f32) = .{},
+    weapons: ProtoField(11, []Weapon) = .{},
+    mineral_cost: ProtoField(12, u32) = .{},
+    vespene_cost: ProtoField(13, u32) = .{},
+    food_required: ProtoField(14, f32) = .{},
+    ability_id: ProtoField(15, u32) = .{},
+    race: ProtoField(16, Race) = .{},
+    build_time: ProtoField(17, f32) = .{},
+    food_provided: ProtoField(18, f32) = .{},
+    has_vespene: ProtoField(19, bool) = .{},
+    has_minerals: ProtoField(20, bool) = .{},
+    sight_range: ProtoField(25, f32) = .{},
+    tech_alias: ProtoField(21, []u32) = .{},
+    unit_alias: ProtoField(22, u32) = .{},
+    tech_requirement: ProtoField(23, u32) = .{},
+    require_attached: ProtoField(24, bool) = .{},
+};
+
