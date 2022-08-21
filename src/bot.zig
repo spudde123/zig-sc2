@@ -33,15 +33,15 @@ pub const Rectangle = struct {
     // Top right
     p1: GridPoint,
 
-    pub fn width(self: *Rectangle) i32 {
+    pub fn width(self: Rectangle) i32 {
         return self.p1.x - self.p0.x + 1;
     }
 
-    pub fn height(self: *Rectangle) i32 {
+    pub fn height(self: Rectangle) i32 {
         return self.p1.y - self.p0.y + 1;
     }
 
-    pub fn pointIsInside(self: *Rectangle, point: GridPoint) bool {
+    pub fn pointIsInside(self: Rectangle, point: GridPoint) bool {
         return (
             point.x >= self.p0.x
             and point.x <= self.p1.x
