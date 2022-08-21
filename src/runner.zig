@@ -194,16 +194,12 @@ pub fn run(
     var host: []const u8 = "127.0.0.1";
     var game_port: u16 = 5001;
     var start_port: u16 = 5002;
-    var opponent_id: []const u8 = "Unknown";
     var sc2_process: ?*ChildProcess = null;
     
     if (program_args.ladder_server) |ladder_server| {
         ladder_game = true;
         host = ladder_server;
 
-        if (program_args.opponent_id) |opp_id| {
-            opponent_id = opp_id;
-        }
         start_port = program_args.start_port orelse {
             log.err("Start port is missing\n", .{});
             return;
@@ -333,7 +329,8 @@ pub fn run(
 
             game_info = try bot_data.GameInfo.fromProto(
                 game_info_proto, 
-                player_id, 
+                player_id,
+                program_args.opponent_id,
                 start_location,
                 arena
             );
@@ -341,6 +338,8 @@ pub fn run(
             user_bot.onStart(bot, game_info, &actions);
             first_step_done = true;
         }
+
+        //@TODO: Set game_info race to the observed race
 
         user_bot.onStep(bot, game_info, &actions);
 

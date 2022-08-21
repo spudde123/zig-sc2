@@ -12,7 +12,7 @@
             "args": [
                 "--CompRace", "random",
                 "--CompDifficulty", "very_hard",
-                "--CompBuild", "random"
+                "--CompBuild", "random",
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

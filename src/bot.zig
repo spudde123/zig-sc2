@@ -158,6 +158,7 @@ pub const GameInfo = struct {
 
     map_name: []const u8,
     enemy_name: []const u8,
+    opponent_id: ?[]const u8,
     // These can be different for a random opponent
     enemy_requested_race: Race,
     enemy_race: Race,
@@ -174,6 +175,7 @@ pub const GameInfo = struct {
     pub fn fromProto(
         proto_data: sc2p.ResponseGameInfo,
         player_id: u32,
+        opponent_id: ?[]const u8,
         start_location: Point2d,
         allocator: mem.Allocator
     ) !GameInfo {
@@ -181,6 +183,12 @@ pub const GameInfo = struct {
         var received_map_name = proto_data.map_name.data.?;
         var map_name = try allocator.alloc(u8, received_map_name.len);
         mem.copy(u8, map_name, received_map_name);
+
+        var opp_id: ?[]u8 = null;
+        if (opponent_id) |received_opponent_id| {
+            opp_id = try allocator.alloc(u8, received_opponent_id.len);
+            mem.copy(u8, opp_id.?, received_opponent_id);
+        } 
 
         var enemy_requested_race: Race = Race.none;
         var enemy_name: ?[]u8 = null;
@@ -255,6 +263,7 @@ pub const GameInfo = struct {
 
         return GameInfo{
             .map_name = map_name,
+            .opponent_id = opponent_id,
             .enemy_name = enemy_name orelse "Unknown",
             .enemy_requested_race = enemy_requested_race,
             .enemy_race = enemy_requested_race,

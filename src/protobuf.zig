@@ -65,7 +65,7 @@ pub const ProtoReader = struct {
 
 
     /// Use an arena allocator and free all allocations afterwards when the results aren't needed anymore
-    // @TODO: Need to skip stuff in the buffer we don't recognize
+    // @TODO: Need to skip stuff in the buffer we don't recognize?
     pub fn decodeStruct(self: *ProtoReader, size: usize, comptime T: type, allocator: mem.Allocator) ParseError!T {
         var res = T{};
 
