@@ -1,8 +1,4 @@
 const std = @import("std");
-const mem = std.mem;
-const fmt = std.fmt;
-const cp = std.ChildProcess;
-const time = std.time;
 
 const runner = @import("runner.zig");
 const bot_data = @import("bot.zig");
