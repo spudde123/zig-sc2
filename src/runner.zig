@@ -18,6 +18,7 @@ const InputType = enum(u8) {
     real_time,
     computer_race,
     computer_difficulty,
+    computer_build,
     map
 };
 
@@ -34,6 +35,35 @@ const ProgramArguments = struct {
     map: ?[]const u8 = null
 };
 
+const race_map = std.ComptimeStringMap(sc2p.Race, .{
+    .{"terran", .terran},
+    .{"zerg", .zerg},
+    .{"protoss", .protoss},
+    .{"random", .random},
+});
+
+const difficulty_map = std.ComptimeStringMap(sc2p.AiDifficulty, .{
+    .{"very_easy", .very_easy},
+    .{"easy", .easy},
+    .{"medium", .medium},
+    .{"medium_hard", .medium_hard},
+    .{"hard", .hard},
+    .{"harder", .harder},
+    .{"very_hard", .very_hard},
+    .{"cheat_vision", .cheat_vision},
+    .{"cheat_money", .cheat_money},
+    .{"cheat_insane", .cheat_insane},
+});
+
+const build_map = std.ComptimeStringMap(sc2p.AiBuild, .{
+    .{"random", .random},
+    .{"rush", .rush},
+    .{"timing", .timing},
+    .{"power", .power},
+    .{"macro", .macro},
+    .{"air", .air}
+});
+
 fn readArguments(allocator: mem.Allocator) ProgramArguments {
     var program_args = ProgramArguments{
         .ladder_server = null,
@@ -43,7 +73,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
         .real_time = false,
         
         .computer_race = .random,
-        .computer_difficulty = .easy,
+        .computer_difficulty = .very_hard,
         .computer_build = .random,
         .map = null
     };
@@ -70,6 +100,12 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
             } else if (mem.eql(u8, argument, "--RealTime")) {
                 current_input_type = InputType.real_time;
                 program_args.real_time = true;
+            } else if (mem.eql(u8, argument, "--CompRace")) {
+                current_input_type = InputType.computer_race;
+            } else if (mem.eql(u8, argument, "--CompDifficulty")) {
+                current_input_type = InputType.computer_difficulty;
+            } else if (mem.eql(u8, argument, "--CompBuild")) {
+                current_input_type = InputType.computer_build;
             } else {
                 current_input_type = InputType.none;
             }
@@ -88,9 +124,40 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     program_args.opponent_id = argument;
                 },
                 InputType.computer_difficulty => {
-
+                    var opt_difficulty = difficulty_map.get(argument);
+                    if (opt_difficulty) |difficulty| {
+                        program_args.computer_difficulty = difficulty;
+                    } else {
+                        log.info("Unknown difficulty {s}\n", .{argument});
+                        log.info("Available difficulties:\n", .{});
+                        for (difficulty_map.kvs) |kv| {
+                            log.info("{s}\n", .{kv.key});
+                        }
+                    }
                 },
                 InputType.computer_race => {
+                    var opt_race = race_map.get(argument);
+                    if (opt_race) |race| {
+                        program_args.computer_race = race;
+                    } else {
+                        log.info("Unknown race {s}\n", .{argument});
+                        log.info("Available races:\n", .{});
+                        for (race_map.kvs) |kv| {
+                            log.info("{s}\n", .{kv.key});
+                        }
+                    }
+                },
+                InputType.computer_build => {
+                    var opt_build = build_map.get(argument);
+                    if (opt_build) |build| {
+                        program_args.computer_build = build;
+                    } else {
+                        log.info("Unknown build {s}\n", .{argument});
+                        log.info("Available builds:\n", .{});
+                        for (build_map.kvs) |kv| {
+                            log.info("{s}\n", .{kv.key});
+                        }
+                    }
                 },
                 InputType.map => {
                     program_args.map = argument;
@@ -205,7 +272,11 @@ pub fn run(
         game_join = client.createGameVsComputer(
             bot_setup,
             "C:/Program Files (x86)/StarCraft II/Maps/LightshadeAIE.SC2Map",
-            .{},
+            ws.ComputerSetup{
+                .difficulty = program_args.computer_difficulty,
+                .build = program_args.computer_build,
+                .race = program_args.computer_race,
+            },
             false
         );
     }

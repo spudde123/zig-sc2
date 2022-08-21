@@ -9,7 +9,11 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/zig-out/bin/zig-spudde.exe",
-            "args": [],
+            "args": [
+                "--CompRace", "random",
+                "--CompDifficulty", "very_hard",
+                "--CompBuild", "random"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
