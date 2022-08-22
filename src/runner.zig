@@ -4,6 +4,7 @@ const fmt = std.fmt;
 const ChildProcess = std.ChildProcess;
 const time = std.time;
 const log = std.log;
+const fs = std.fs;
 
 const sc2p = @import("sc2proto.zig");
 const ws = @import("client.zig");
@@ -63,6 +64,44 @@ const build_map = std.ComptimeStringMap(sc2p.AiBuild, .{
     .{"macro", .macro},
     .{"air", .air}
 });
+
+const Sc2Paths = struct {
+    base_folder: []const u8,
+    map_folder: []const u8,
+    latest_binary: []const u8,
+    support64_folder: []const u8,
+};
+
+const LocalRunSetup = struct {
+    sc2_base_folder: []const u8 = "C:/Program Files (x86)/StarCraft II/",
+    game_port: u16 = 5001,
+};
+
+fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
+    const map_concat = [_][]const u8{base_folder, "/Maps/"};
+    const support64_concat = [_][]const u8{base_folder, "/Support64/"};
+    const versions_concat = [_][]const u8{base_folder, "/Versions/"};
+    const versions_path = try mem.concat(allocator, u8, &versions_concat);
+    var dir = try fs.openDirAbsolute(versions_path, .{.iterate = true});
+    defer dir.close();
+
+    var iter = dir.iterate();
+    var max_version: u64 = 0;
+    while (try iter.next()) |version| {
+        const version_num_string = version.name[4..];
+        const num = try fmt.parseUnsigned(u32, version_num_string, 0);
+        if (num > max_version) max_version = num;
+    }
+
+    log.info("Using game version {d}\n", .{max_version});
+
+    return Sc2Paths{
+        .base_folder = base_folder,
+        .map_folder = try mem.concat(allocator, u8, &map_concat),
+        .support64_folder = try mem.concat(allocator, u8, &support64_concat),
+        .latest_binary = try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{versions_path, max_version}),
+    };
+}
 
 fn readArguments(allocator: mem.Allocator) ProgramArguments {
     var program_args = ProgramArguments{};
@@ -166,7 +205,8 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
 pub fn run(
     user_bot: anytype,
     step_count: u32,
-    base_allocator: mem.Allocator
+    base_allocator: mem.Allocator,
+    local_run: LocalRunSetup
 ) !void {
     
     var arena_instance = std.heap.ArenaAllocator.init(base_allocator);
@@ -183,9 +223,10 @@ pub fn run(
     
     var ladder_game = false;
     var host: []const u8 = "127.0.0.1";
-    var game_port: u16 = 5001;
+    var game_port: u16 = local_run.game_port;
     var start_port: u16 = 5002;
     var sc2_process: ?*ChildProcess = null;
+    var sc2_paths: Sc2Paths = undefined;
     
     if (program_args.ladder_server) |ladder_server| {
         ladder_game = true;
@@ -201,20 +242,25 @@ pub fn run(
             return;
         };
     } else {
+        
+        sc2_paths = getSc2Paths(local_run.sc2_base_folder, arena) catch {
+            log.err("Couldn't form SC2 paths\n", .{});
+            return;
+        };
         const sc2_args = [_] []const u8{
-            "C:/Program Files (x86)/StarCraft II/Versions/Base88500/SC2_X64.exe",
+            sc2_paths.latest_binary,
             "-listen",
             host,
             "-port",
             try fmt.allocPrint(arena, "{d}", .{game_port}),
             "-dataDir",
-            "C:/Program Files (x86)/StarCraft II"
+            sc2_paths.base_folder
         };
         
         sc2_process = ChildProcess.init(sc2_args[0..], arena) catch |err| {
             return err;
         };
-        sc2_process.?.cwd = "C:/Program Files (x86)/StarCraft II/Support64";
+        sc2_process.?.cwd = sc2_paths.support64_folder;
 
         try sc2_process.?.spawn();
     }
@@ -265,8 +311,7 @@ pub fn run(
         game_join = client.joinLadderGame(bot_setup, start_port);
     } else create_game_block: {
         
-        const map_folder = "C:/Program Files (x86)/StarCraft II/Maps/";
-        var strings_to_concat = [_][]const u8{map_folder, program_args.map_file_name, ".SC2Map"};
+        var strings_to_concat = [_][]const u8{sc2_paths.map_folder, program_args.map_file_name, ".SC2Map"};
         var map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
         std.fs.accessAbsolute(map_absolute_path, .{}) catch {
             log.err("Map file {s} was not found\n", .{map_absolute_path});
@@ -486,5 +531,5 @@ test "runner_test" {
 
     var test_bot = TestBot{.name = "tester", .race = .terran};
 
-    try run(&test_bot, 2, std.testing.allocator);
+    try run(&test_bot, 2, std.testing.allocator, .{});
 }

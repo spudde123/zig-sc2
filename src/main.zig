@@ -50,7 +50,7 @@ const TestBot = struct {
 };
 
 pub fn main() !void {
-    var my_bot = TestBot{.name = "zig-spudde", .race = .terran};
+    var my_bot = TestBot{.name = "zig-bot", .race = .terran};
 
-    try runner.run(&my_bot, 2, std.heap.page_allocator);
+    try runner.run(&my_bot, 2, std.heap.page_allocator, .{});
 }
