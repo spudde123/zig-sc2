@@ -180,7 +180,7 @@ pub const GameInfo = struct {
         allocator: mem.Allocator
     ) !GameInfo {
         
-        var received_map_name = proto_data.map_name.data.?;
+        const received_map_name = proto_data.map_name.data.?;
         var map_name = try allocator.alloc(u8, received_map_name.len);
         mem.copy(u8, map_name, received_map_name);
 
@@ -206,16 +206,16 @@ pub const GameInfo = struct {
             }
         }
 
-        var raw_proto = proto_data.start_raw.data.?;
+        const raw_proto = proto_data.start_raw.data.?;
 
-        var map_size_proto = raw_proto.map_size.data.?;
-        var map_size = GridSize{.w = map_size_proto.x.data.?, .h = map_size_proto.y.data.?};
+        const map_size_proto = raw_proto.map_size.data.?;
+        const map_size = GridSize{.w = map_size_proto.x.data.?, .h = map_size_proto.y.data.?};
 
-        var playable_area_proto = raw_proto.playable_area.data.?;
-        var rect_p0 = playable_area_proto.p0.data.?;
-        var rect_p1 = playable_area_proto.p1.data.?;
+        const playable_area_proto = raw_proto.playable_area.data.?;
+        const rect_p0 = playable_area_proto.p0.data.?;
+        const rect_p1 = playable_area_proto.p1.data.?;
 
-        var playable_area = Rectangle{
+        const playable_area = Rectangle{
             .p0 = .{.x = rect_p0.x.data.?, .y = rect_p0.y.data.?},
             .p1 = .{.x = rect_p1.x.data.?, .y = rect_p1.y.data.?},
         };
@@ -228,19 +228,19 @@ pub const GameInfo = struct {
             });
         }
 
-        var terrain_proto = raw_proto.terrain_height.data.?;
+        const terrain_proto = raw_proto.terrain_height.data.?;
         assert(terrain_proto.bits_per_pixel.data.? == 8);
         assert(terrain_proto.size.data.?.x.data.? == map_size.w);
         assert(terrain_proto.size.data.?.y.data.? == map_size.h);
-        var terrain_proto_slice = terrain_proto.image.data.?;
+        const terrain_proto_slice = terrain_proto.image.data.?;
         var terrain_slice = try allocator.alloc(u8, terrain_proto_slice.len);
         mem.copy(u8, terrain_slice, terrain_proto_slice);
 
-        var pathing_proto = raw_proto.pathing_grid.data.?;
+        const pathing_proto = raw_proto.pathing_grid.data.?;
         assert(pathing_proto.bits_per_pixel.data.? == 1);
         assert(pathing_proto.size.data.?.x.data.? == map_size.w);
         assert(pathing_proto.size.data.?.y.data.? == map_size.h);
-        var pathing_proto_slice = pathing_proto.image.data.?;
+        const pathing_proto_slice = pathing_proto.image.data.?;
         var pathing_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
         
         const packed_int_type = PackedIntIo(u1, .Big);
@@ -250,11 +250,11 @@ pub const GameInfo = struct {
             pathing_slice[index] = packed_int_type.get(pathing_proto_slice, index, 0);
         }
 
-        var placement_proto = raw_proto.placement_grid.data.?;
+        const placement_proto = raw_proto.placement_grid.data.?;
         assert(placement_proto.bits_per_pixel.data.? == 1);
         assert(placement_proto.size.data.?.x.data.? == map_size.w);
         assert(placement_proto.size.data.?.y.data.? == map_size.h);
-        var placement_proto_slice = placement_proto.image.data.?;
+        const placement_proto_slice = placement_proto.image.data.?;
         var placement_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
         index = 0;
         while (index < map_size.w * map_size.h) : (index += 1) {
@@ -324,11 +324,11 @@ pub const Bot = struct {
         allocator: mem.Allocator
     ) !Bot {
 
-        var game_loop: u32 = response.observation.data.?.game_loop.data.?;
+        const game_loop: u32 = response.observation.data.?.game_loop.data.?;
         
-        var time = @intToFloat(f32, game_loop) / 22.4;
+        const time = @intToFloat(f32, game_loop) / 22.4;
 
-        var obs: sc2p.ObservationRaw = response.observation.data.?.raw.data.?;
+        const obs: sc2p.ObservationRaw = response.observation.data.?.raw.data.?;
         
         var own_units = std.ArrayList(Unit).init(allocator);
         var own_structures = std.ArrayList(Unit).init(allocator);
@@ -341,12 +341,12 @@ pub const Bot = struct {
 
         if (obs.units.data) |units| {
             for (units) |unit| {
-                var proto_pos = unit.pos.data.?;
-                var position = Point2d{
+                const proto_pos = unit.pos.data.?;
+                const position = Point2d{
                     .x = proto_pos.x.data.?, 
                     .y = proto_pos.y.data.?
                 };
-                var z: f32 = proto_pos.z.data.?;
+                const z: f32 = proto_pos.z.data.?;
                 
                 var buff_ids: std.ArrayList(BuffId) = undefined;
                 
@@ -390,7 +390,7 @@ pub const Bot = struct {
                             };
                         }
 
-                        var order = UnitOrder{
+                        const order = UnitOrder{
                             .ability_id = @intToEnum(AbilityId, order_proto.ability_id.data orelse 0),
                             .target = target,
                             .progress = order_proto.progress.data orelse 0,
@@ -406,8 +406,8 @@ pub const Bot = struct {
                     rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, proto_rally_targets.len);
 
                     for (proto_rally_targets) |proto_target| {
-                        var proto_point = proto_target.point.data.?;
-                        var rally_target = RallyTarget{
+                        const proto_point = proto_target.point.data.?;
+                        const rally_target = RallyTarget{
                             .point = .{.x = proto_point.x.data.?, .y = proto_point.y.data.?},
                             .tag = proto_target.tag.data,
                         };
@@ -417,7 +417,7 @@ pub const Bot = struct {
                     rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, 0);
                 }
 
-                var u = Unit{
+                const u = Unit{
                     .display_type = unit.display_type.data.?,
                     .alliance = unit.alliance.data.?,
                     .tag = unit.tag.data.?,
@@ -489,7 +489,7 @@ pub const Bot = struct {
                         }
                     },
                     else => {
-                        var mineral_ids = [_]UnitId{
+                        const mineral_ids = [_]UnitId{
                             .RichMineralField,
                             .RichMineralField750,
                             .MineralField,
@@ -507,7 +507,7 @@ pub const Bot = struct {
                             .MineralFieldOpaque900,
                         };
 
-                        var geyser_ids = [_]UnitId{
+                        const geyser_ids = [_]UnitId{
                             .VespeneGeyser,
                             .SpacePlatformGeyser,
                             .RichVespeneGeyser,
@@ -685,9 +685,9 @@ pub const Actions = struct {
     }
 
     pub fn train(self: *Actions, structure_tag: u64, unit_type: UnitId, queue: bool) void {
-        var maybe_unit_data = self.game_data.units.get(unit_type);
+        const maybe_unit_data = self.game_data.units.get(unit_type);
         if (maybe_unit_data) |unit_data| {
-            var action = BotAction{
+            const action = BotAction{
                 .unit = structure_tag,
                 .data = .{
                     .ability_id = unit_data.train_ability_id,
@@ -702,9 +702,9 @@ pub const Actions = struct {
     }
 
     pub fn build(self: *Actions, unit_tag: u64, structure_to_build: UnitId, pos: Point2d, queue: bool) void {
-        var maybe_structure_data = self.game_data.units.get(structure_to_build);
+        const maybe_structure_data = self.game_data.units.get(structure_to_build);
         if (maybe_structure_data) |structure_data| {
-            var action = BotAction{
+            const action = BotAction{
                 .unit = unit_tag,
                 .data = .{
                     .ability_id = structure_data.train_ability_id,
@@ -720,9 +720,9 @@ pub const Actions = struct {
 
     /// This is mainly for building gas structures. target_tag needs to be the geysir tag
     pub fn buildOnUnit(self: *Actions, unit_tag: u64, structure_to_build: UnitId, target_tag: u64, queue: bool) void {
-        var maybe_structure_data = self.game_data.units.get(structure_to_build);
+        const maybe_structure_data = self.game_data.units.get(structure_to_build);
         if (maybe_structure_data) |structure_data| {
-            var action = BotAction{
+            const action = BotAction{
                 .unit = unit_tag,
                 .data = .{
                     .ability_id = structure_data.train_ability_id,
@@ -737,7 +737,7 @@ pub const Actions = struct {
     }
 
     pub fn moveToPosition(self: *Actions, unit_tag: u64, pos: Point2d, queue: bool) void {
-       var action = BotAction{
+       const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = AbilityId.Move_Move,
@@ -749,7 +749,7 @@ pub const Actions = struct {
     }
 
     pub fn moveToUnit(self: *Actions, unit_tag: u64, target_tag: u64, queue: bool) void {
-        var action = BotAction{
+        const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = AbilityId.Move_Move,
@@ -761,7 +761,7 @@ pub const Actions = struct {
     }
 
     pub fn attackPosition(self: *Actions, unit_tag: u64, pos: Point2d, queue: bool) void {
-        var action = BotAction{
+        const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = AbilityId.Attack,
@@ -773,7 +773,7 @@ pub const Actions = struct {
     }
 
     pub fn attackUnit(self: *Actions, unit_tag: u64, target_tag: u64, queue: bool) void {
-       var action = BotAction{
+       const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = AbilityId.Attack,
@@ -785,7 +785,7 @@ pub const Actions = struct {
     }
 
     pub fn holdPosition(self: *Actions, unit_tag: u64, queue: bool) void {
-        var action = BotAction{
+        const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = AbilityId.HoldPosition,
@@ -797,7 +797,7 @@ pub const Actions = struct {
     }
 
     pub fn patrol(self: *Actions, unit_tag: u64, target: Point2d, queue: bool) void {
-        var action = BotAction{
+        const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = AbilityId.Patrol,
@@ -809,9 +809,9 @@ pub const Actions = struct {
     }
 
     pub fn research(self: *Actions, structure_tag: u64, upgrade: UpgradeId, queue: bool) void {
-        var maybe_upgrade_data = self.game_data.upgrades.get(upgrade);
+        const maybe_upgrade_data = self.game_data.upgrades.get(upgrade);
         if (maybe_upgrade_data) |upgrade_data| {
-            var action = BotAction{
+            const action = BotAction{
                 .unit = structure_tag,
                 .data = .{
                     .ability_id = upgrade_data.research_ability_id,
@@ -826,7 +826,7 @@ pub const Actions = struct {
     }
 
     pub fn stop(self: *Actions, unit_tag: u64, queue: bool) void {
-        var action = BotAction{
+        const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = AbilityId.Stop,
@@ -838,7 +838,7 @@ pub const Actions = struct {
     }
 
     pub fn repair(self: *Actions, unit_tag: u64, target_tag: u64, queue: bool) void {
-        var action = BotAction{
+        const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = AbilityId.Effect_Repair,
@@ -850,7 +850,7 @@ pub const Actions = struct {
     }
 
     pub fn useAbility(self: *Actions, unit_tag: u64, ability: AbilityId, queue: bool) void {
-        var action = BotAction{
+        const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = ability,
@@ -862,7 +862,7 @@ pub const Actions = struct {
     }
 
     pub fn useAbilityOnPosition(self: *Actions, unit_tag: u64, ability: AbilityId, target: Point2d, queue: bool) void {
-        var action = BotAction{
+        const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = ability,
@@ -874,7 +874,7 @@ pub const Actions = struct {
     }
 
     pub fn useAbilityOnUnit(self: *Actions, unit_tag: u64, ability: AbilityId, target: u64, queue: bool) void {
-        var action = BotAction{
+        const action = BotAction{
             .unit = unit_tag,
             .data = .{
                 .ability_id = ability,
@@ -894,16 +894,15 @@ pub const Actions = struct {
     pub fn toProto(self: *Actions) ?sc2p.RequestAction {
         if (self.order_list.items.len == 0) return null;
 
-
         const combined_length = self.order_list.items.len + self.chat_messages.items.len;
         var action_list = std.ArrayList(sc2p.Action).initCapacity(self.temp_allocator, combined_length) catch return null;
         
         for (self.chat_messages.items) |msg| {
-            var action_chat = sc2p.ActionChat{
+            const action_chat = sc2p.ActionChat{
                 .channel = .{.data = msg.channel},
                 .message = .{.data = msg.message},
             };
-            var action = sc2p.Action{.action_chat = .{.data = action_chat}};
+            const action = sc2p.Action{.action_chat = .{.data = action_chat}};
             action_list.appendAssumeCapacity(action);
         }
 
@@ -914,8 +913,8 @@ pub const Actions = struct {
 
         for (self.order_list.items) |order| {
             
-            var hashable = order.data.toHashable();
-            var maybe_index = action_hashmap.get(hashable);
+            const hashable = order.data.toHashable();
+            const maybe_index = action_hashmap.get(hashable);
 
             if (maybe_index) |index| {
                 raw_unit_commands.items[index].unit_tags.list.?.append(order.unit) catch break;
@@ -949,12 +948,12 @@ pub const Actions = struct {
 
         for (raw_unit_commands.items) |*command| {
             command.unit_tags.data = command.unit_tags.list.?.items;
-            var action_raw = sc2p.ActionRaw{.unit_command = .{.data = command.*}};
-            var action = sc2p.Action{.action_raw = .{.data = action_raw}};
+            const action_raw = sc2p.ActionRaw{.unit_command = .{.data = command.*}};
+            const action = sc2p.Action{.action_raw = .{.data = action_raw}};
             action_list.appendAssumeCapacity(action);
         }
 
-        var action_request = sc2p.RequestAction{
+        const action_request = sc2p.RequestAction{
             .actions = .{.data = action_list.toOwnedSlice()},
         };
 
@@ -1004,11 +1003,10 @@ pub const GameData = struct {
             .units = std.AutoHashMap(UnitId, UnitData).init(allocator),
         };
 
-        var proto_units = proto.units.data.?;
-        var proto_upgrades = proto.upgrades.data.?;
+        const proto_upgrades = proto.upgrades.data.?;
 
         for (proto_upgrades) |proto_upgrade| {
-            var upg = UpgradeData{
+            const upg = UpgradeData{
                 .id = @intToEnum(UpgradeId, proto_upgrade.upgrade_id.data.?),
                 .mineral_cost = @intCast(i32, proto_upgrade.mineral_cost.data orelse 0),
                 .vespene_cost = @intCast(i32, proto_upgrade.vespene_cost.data orelse 0),
@@ -1019,12 +1017,13 @@ pub const GameData = struct {
             try gd.upgrades.put(upg.id, upg);
         }
 
+        const proto_units = proto.units.data.?;
+
         for (proto_units) |proto_unit| {
             const available = proto_unit.available.data orelse false;
             if (!available) continue;
 
-            var attributes = std.EnumSet(Attribute).initFull();
-            attributes.toggleAll();
+            var attributes = std.EnumSet(Attribute){};
             
             if (proto_unit.attributes.data) |proto_attrs| {
                 for (proto_attrs) |attr| {
@@ -1032,13 +1031,40 @@ pub const GameData = struct {
                 }
             }
 
-            var unit = UnitData{
+            var air_dps: f32 = 0;
+            var ground_dps: f32 = 0;
+
+            //@TODO: May need to do something with battlecruisers
+            //and oracles if their weapons don't show up here
+            if (proto_unit.weapons.data) |weapons_proto| {
+                for (weapons_proto) |weapon_proto| {
+                    const target_type = weapon_proto.target_type.data.?;
+                    const speed = weapon_proto.speed.data.?;
+                    const attacks: f32 = @intToFloat(f32, weapon_proto.attacks.data.?);
+                    const damage = weapon_proto.damage.data.?;
+                    const dps = (damage*attacks) / speed;
+                    switch (target_type) {
+                        .ground => {
+                            ground_dps = dps;
+                        },
+                        .air => {
+                            air_dps = dps;
+                        },
+                        .any => {
+                            air_dps = dps;
+                            ground_dps = dps;
+                        },
+                    }
+                }
+            }
+
+            const unit = UnitData{
                 .id = @intToEnum(UnitId, proto_unit.unit_id.data.?),
                 .cargo_size = @intCast(i32, proto_unit.cargo_size.data orelse 0),
                 .movement_speed = proto_unit.movement_speed.data orelse 0,
                 .armor = proto_unit.armor.data orelse 0,
-                .air_dps = 0,
-                .ground_dps = 0,
+                .air_dps = air_dps,
+                .ground_dps = ground_dps,
                 .mineral_cost = @intCast(i32, proto_unit.mineral_cost.data orelse 0),
                 .vespene_cost = @intCast(i32, proto_unit.vespene_cost.data orelse 0),
                 .food_required = proto_unit.food_required.data orelse 0,
