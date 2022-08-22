@@ -296,15 +296,13 @@ pub fn run(
 
     var first_step_done = false;
 
-    var actions: bot_data.Actions = undefined;
-
     const game_data_proto = client.getGameData() catch {
         log.err("Error getting game data\n", .{});
         return;
     };
 
     const game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
-    actions = try bot_data.Actions.init(game_data, arena, fixed_buffer);
+    var actions = try bot_data.Actions.init(game_data, arena, fixed_buffer);
 
     while (true) {
 
@@ -318,6 +316,13 @@ pub fn run(
 
         if (bot.result) |res| {
             user_bot.onResult(bot, game_info, res);
+            if (sc2_process) |_| {
+                if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
+                    _ = client.saveReplay(replay_name);
+                }
+                _ = client.leave();
+            }
+            
             break;
         }
 
@@ -366,6 +371,13 @@ pub fn run(
         user_bot.onStep(bot, game_info, &actions);
 
         if (actions.leave_game) {
+            
+            if (sc2_process) |_| {
+                if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
+                    _ = client.saveReplay(replay_name);
+                }
+            }
+            
             _ = client.leave();
             user_bot.onResult(bot, game_info, .defeat);
             break;
@@ -383,6 +395,34 @@ pub fn run(
     }
     //const term = sc2_process.kill();
     //std.debug.print("Term status: {d}\n", .{term});
+}
+
+fn createReplayName(
+    allocator: mem.Allocator,
+    bot_name: []const u8,
+    opponent: []const u8,
+    map: []const u8
+) ?[]const u8 {
+    const no_gap_bot_size = mem.replacementSize(u8, bot_name, " ", "");
+    var new_bot_name = allocator.alloc(u8, no_gap_bot_size) catch return null;
+    _ = mem.replace(u8, bot_name, " ", "", new_bot_name);
+
+    const no_gap_opp_size = mem.replacementSize(u8, opponent, " ", "");
+    var new_opponent_name = allocator.alloc(u8, no_gap_opp_size) catch return null;
+    _ = mem.replace(u8, opponent, " ", "", new_opponent_name);
+
+    const no_gap_map_size = mem.replacementSize(u8, map, " ", "");
+    var new_map_name = allocator.alloc(u8, no_gap_map_size) catch return null;
+    _ = mem.replace(u8, map, " ", "", new_map_name);
+
+    const replay_name = fmt.allocPrint(allocator, "./replays/{s}_{s}_{s}_{d}.SC2Replay", .{
+        new_bot_name,
+        new_opponent_name,
+        new_map_name,
+        time.timestamp(),
+    }) catch return null;
+
+    return replay_name;
 }
 
 

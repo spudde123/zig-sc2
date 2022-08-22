@@ -7,6 +7,7 @@ const math = std.math;
 const rand = std.rand;
 const time = std.time;
 const mem = std.mem;
+const fs = std.fs;
 
 const Sha1 = std.crypto.hash.Sha1;
 
@@ -432,6 +433,25 @@ pub const WebSocketClient = struct {
         _ = self.writeAndWaitForMessage(payload) catch false;
 
         return true;
+    }
+
+    pub fn saveReplay(self: *WebSocketClient, replay_path: []const u8) bool {
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+        const request = sc2p.Request{.save_replay = .{.data = {}}};
+        const payload = writer.encodeBaseStruct(request);
+
+        const res = self.writeAndWaitForMessage(payload) catch return false;
+
+        if (res.save_replay.data) |replay_proto| {
+            const bytes = replay_proto.bytes.data orelse return false;
+            const file = fs.cwd().createFile(replay_path, .{}) catch return false;
+            defer file.close();
+
+            _ = file.writeAll(bytes) catch return false;
+            return true;
+        }
+        return false;
     }
 
     pub fn quit(self: *WebSocketClient) bool {
