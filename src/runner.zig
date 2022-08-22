@@ -179,7 +179,7 @@ pub fn run(
     var fixed_buffer_instance = std.heap.FixedBufferAllocator.init(step_bytes);
     const fixed_buffer = fixed_buffer_instance.allocator();
     
-    var program_args = readArguments(arena);
+    const program_args = readArguments(arena);
     
     var ladder_game = false;
     var host: []const u8 = "127.0.0.1";
@@ -291,19 +291,19 @@ pub fn run(
         return;
     }
 
-    var player_id = game_join.player_id;
+    const player_id = game_join.player_id;
     var game_info: bot_data.GameInfo = undefined;
 
     var first_step_done = false;
 
     var actions: bot_data.Actions = undefined;
 
-    var game_data_proto = client.getGameData() catch {
+    const game_data_proto = client.getGameData() catch {
         log.err("Error getting game data\n", .{});
         return;
     };
 
-    var game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
+    const game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
     actions = try bot_data.Actions.init(game_data, arena, fixed_buffer);
 
     while (true) {
@@ -323,20 +323,22 @@ pub fn run(
 
         if (!first_step_done) {
 
-            var game_info_proto = client.getGameInfo() catch {
+            const game_info_proto = client.getGameInfo() catch {
                 log.err("Error getting game info\n", .{});
                 break;
             };
 
-            var start_location: bot_data.Point2d = undefined;
-            for (bot.units) |unit| {
-                if (unit.unit_type == bot_data.UnitId.CommandCenter
-                    or unit.unit_type == bot_data.UnitId.Hatchery
-                    or unit.unit_type == bot_data.UnitId.Nexus) {
-                        start_location = unit.position;
-                        break;
+            const start_location: bot_data.Point2 = sl: {
+                for (bot.structures) |unit| {
+                    if (unit.unit_type == bot_data.UnitId.CommandCenter
+                        or unit.unit_type == bot_data.UnitId.Hatchery
+                        or unit.unit_type == bot_data.UnitId.Nexus) {
+                            break :sl unit.position;
+                    }
                 }
-            }
+                break :sl bot_data.Point2{.x = 0, .y = 0};
+            };
+            
 
             game_info = try bot_data.GameInfo.fromProto(
                 game_info_proto, 

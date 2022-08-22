@@ -56,12 +56,12 @@ pub const GridPoint = struct {
     y: i32,
 };
 
-pub const Point2d = struct {
+pub const Point2 = struct {
     x: f32,
     y: f32,
 };
 
-pub const Point3d = struct {
+pub const Point3 = struct {
     x: f32,
     y: f32,
     z: f32,
@@ -74,7 +74,7 @@ pub const Unit = struct {
     unit_type: UnitId,
     owner: i32,
 
-    position: Point2d,
+    position: Point2,
     z: f32,
     facing: f32,
     radius: f32,
@@ -135,7 +135,7 @@ pub const OrderType = enum(u8) {
 
 pub const OrderTarget = union(OrderType) {
     empty: void,
-    position: Point2d,
+    position: Point2,
     tag: u64,
 };
 
@@ -146,7 +146,7 @@ pub const UnitOrder = struct {
 };
 
 pub const RallyTarget = struct {
-    point: Point2d,
+    point: Point2,
     tag: ?u64,
 };
 
@@ -166,17 +166,17 @@ pub const GameInfo = struct {
     map_size: GridSize,
     playable_area: Rectangle,
 
-    start_location: Point2d,
-    enemy_start_locations: []Point2d,
+    start_location: Point2,
+    enemy_start_locations: []Point2,
 
-    //expansion_locations: []Point2d,
+    //expansion_locations: []Point2,
     //allocator: mem.Allocator,
 
     pub fn fromProto(
         proto_data: sc2p.ResponseGameInfo,
         player_id: u32,
         opponent_id: ?[]const u8,
-        start_location: Point2d,
+        start_location: Point2,
         allocator: mem.Allocator
     ) !GameInfo {
         
@@ -220,7 +220,7 @@ pub const GameInfo = struct {
             .p1 = .{.x = rect_p1.x.data.?, .y = rect_p1.y.data.?},
         };
 
-        var start_locations = std.ArrayList(Point2d).init(allocator);
+        var start_locations = std.ArrayList(Point2).init(allocator);
         for (raw_proto.start_locations.data.?) |loc_proto| {
             try start_locations.append(.{
                 .x = loc_proto.x.data.?,
@@ -277,7 +277,7 @@ pub const GameInfo = struct {
         };
     }
 
-    //fn generateExpansionLocations() []Point2d {
+    //fn generateExpansionLocations() []Point2 {
     //
     //}
 
@@ -289,7 +289,7 @@ pub const GameInfo = struct {
         _ = bot;
     }
 
-    pub fn getTerrainZ(self: GameInfo, pos: Point2d) f32 {
+    pub fn getTerrainZ(self: GameInfo, pos: Point2) f32 {
         const x = @floatToInt(i32, math.floor(pos.x));
         const y = @floatToInt(i32, math.floor(pos.y));
         
@@ -342,7 +342,7 @@ pub const Bot = struct {
         if (obs.units.data) |units| {
             for (units) |unit| {
                 const proto_pos = unit.pos.data.?;
-                const position = Point2d{
+                const position = Point2{
                     .x = proto_pos.x.data.?, 
                     .y = proto_pos.y.data.?
                 };
@@ -564,14 +564,14 @@ pub const Actions = struct {
         target: OrderTarget,
         queue: bool,
 
-        const HashablePoint2d = struct {
+        const HashablePoint2 = struct {
             x: i32,
             y: i32,
         };
         
         const HashableOrderTarget = union(OrderType) {
             empty: void,
-            position: HashablePoint2d,
+            position: HashablePoint2,
             tag: u64,
         };
 
@@ -592,7 +592,7 @@ pub const Actions = struct {
                     target = .{.tag = tag};
                 },
                 .position => |pos| {
-                    var point = HashablePoint2d{
+                    var point = HashablePoint2{
                         .x = @floatToInt(i32, math.round(pos.x * 100)),
                         .y = @floatToInt(i32, math.round(pos.y * 100)),
                     };
@@ -701,7 +701,7 @@ pub const Actions = struct {
         }
     }
 
-    pub fn build(self: *Actions, unit_tag: u64, structure_to_build: UnitId, pos: Point2d, queue: bool) void {
+    pub fn build(self: *Actions, unit_tag: u64, structure_to_build: UnitId, pos: Point2, queue: bool) void {
         const maybe_structure_data = self.game_data.units.get(structure_to_build);
         if (maybe_structure_data) |structure_data| {
             const action = BotAction{
@@ -736,7 +736,7 @@ pub const Actions = struct {
         }
     }
 
-    pub fn moveToPosition(self: *Actions, unit_tag: u64, pos: Point2d, queue: bool) void {
+    pub fn moveToPosition(self: *Actions, unit_tag: u64, pos: Point2, queue: bool) void {
        const action = BotAction{
             .unit = unit_tag,
             .data = .{
@@ -760,7 +760,7 @@ pub const Actions = struct {
         self.addAction(action);
     }
 
-    pub fn attackPosition(self: *Actions, unit_tag: u64, pos: Point2d, queue: bool) void {
+    pub fn attackPosition(self: *Actions, unit_tag: u64, pos: Point2, queue: bool) void {
         const action = BotAction{
             .unit = unit_tag,
             .data = .{
@@ -796,7 +796,7 @@ pub const Actions = struct {
         self.addAction(action);
     }
 
-    pub fn patrol(self: *Actions, unit_tag: u64, target: Point2d, queue: bool) void {
+    pub fn patrol(self: *Actions, unit_tag: u64, target: Point2, queue: bool) void {
         const action = BotAction{
             .unit = unit_tag,
             .data = .{
@@ -861,7 +861,7 @@ pub const Actions = struct {
         self.addAction(action);
     }
 
-    pub fn useAbilityOnPosition(self: *Actions, unit_tag: u64, ability: AbilityId, target: Point2d, queue: bool) void {
+    pub fn useAbilityOnPosition(self: *Actions, unit_tag: u64, ability: AbilityId, target: Point2, queue: bool) void {
         const action = BotAction{
             .unit = unit_tag,
             .data = .{
