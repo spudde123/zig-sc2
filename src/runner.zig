@@ -402,8 +402,6 @@ pub fn run(
         actions.clear();
         fixed_buffer_instance.reset();
     }
-    //const term = sc2_process.kill();
-    //std.debug.print("Term status: {d}\n", .{term});
 }
 
 fn createReplayName(
