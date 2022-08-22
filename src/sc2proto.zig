@@ -23,7 +23,7 @@ pub const Request = struct {
     action: ProtoField(11, RequestAction) = .{},
     step: ProtoField(12, RequestStep) = .{},
     game_data: ProtoField(13, RequestData) = .{},
-    //query: ProtoField(14, RequestQuery) = .{},
+    query: ProtoField(14, RequestQuery) = .{},
     save_replay: ProtoField(15, void) = .{},
     ping: ProtoField(19, void) = .{},
     debug: ProtoField(20, RequestDebug) = .{},
@@ -41,7 +41,7 @@ pub const Response = struct {
     action: ProtoField(11, ResponseAction) = .{},
     step: ProtoField(12, ResponseStep) = .{},
     game_data: ProtoField(13, ResponseData) = .{},
-    //query: ProtoField(14, ResponseQuery) = .{},
+    query: ProtoField(14, ResponseQuery) = .{},
     save_replay: ProtoField(15, ResponseSaveReplay) = .{},
     ping: ProtoField(19, ResponsePing) = .{},
     debug: ProtoField(20, void) = .{},
@@ -1015,3 +1015,45 @@ pub const UnitTypeData = struct {
     require_attached: ProtoField(24, bool) = .{},
 };
 
+pub const RequestQuery = struct {
+    pathing: ProtoField(1, []RequestQueryPathing) = .{},
+    abilities: ProtoField(2, []RequestQueryAvailableAbilities) = .{},
+    placements: ProtoField(3, []RequestQueryBuildingPlacement) = .{},
+    ignore_resource_requirements: ProtoField(4, bool) = .{},
+};
+
+pub const ResponseQuery = struct {
+    pathing: ProtoField(1, []ResponseQueryPathing) = .{},
+    abilities: ProtoField(2, []ResponseQueryAvailableAbilities) = .{},
+    placements: ProtoField(3, []ResponseQueryBuildingPlacement) = .{},
+};
+
+pub const RequestQueryPathing = struct {
+    start_pos: ProtoField(1, Point2D) = .{},
+    unit_tag: ProtoField(2, u64) = .{},
+    end_pos: ProtoField(3, Point2D) = .{},
+};
+
+pub const ResponseQueryPathing = struct {
+    distance: ProtoField(1, f32) = .{},
+};
+
+pub const RequestQueryAvailableAbilities = struct {
+    unit_tag: ProtoField(1, u64) = .{},
+};
+
+pub const ResponseQueryAvailableAbilities = struct {
+    abilities: ProtoField(1, []AvailableAbility) = .{},
+    unit_tag: ProtoField(2, u64) = .{},
+    unit_type_id: ProtoField(3, u32) = .{}
+};
+
+pub const RequestQueryBuildingPlacement = struct {
+    ability_id: ProtoField(1, i32) = .{},
+    target_pos: ProtoField(2, Point2D) = .{},
+    placing_unit_tag: ProtoField(3, u64) = .{},
+};
+
+pub const ResponseQueryBuildingPlacement = struct {
+    result: ProtoField(1, ActionResult) = .{},
+};

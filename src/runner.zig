@@ -312,7 +312,8 @@ pub fn run(
             log.err("Got an invalid observation\n", .{});
             break;
         }
-        const bot = try bot_data.Bot.fromProto(obs, game_data, player_id, fixed_buffer);
+        
+        var bot = try bot_data.Bot.fromProto(obs, game_data, player_id, fixed_buffer);
 
         if (bot.result) |res| {
             user_bot.onResult(bot, game_info, res);
@@ -324,6 +325,14 @@ pub fn run(
             }
             
             break;
+        }
+
+        const all_own_unit_tags = bot.getAllOwnUnitTags(fixed_buffer);
+        if (all_own_unit_tags.len > 0) {
+            const maybe_abilities_proto = client.getAvailableAbilities(all_own_unit_tags, true);
+            if (maybe_abilities_proto) |abilities_proto| {
+                bot.setUnitAbilitiesFromProto(abilities_proto, fixed_buffer);
+            }
         }
 
         if (!first_step_done) {

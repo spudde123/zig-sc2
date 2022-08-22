@@ -118,6 +118,8 @@ pub const Unit = struct {
     buff_duration_remain: i32,
     buff_duration_max: i32,
     rally_targets: []RallyTarget,
+
+    available_abilities: []AbilityId,
 };
 
 pub const Grid = struct {
@@ -469,6 +471,7 @@ pub const Bot = struct {
                     .buff_duration_remain = unit.buff_duration_remain.data orelse 0,
                     .buff_duration_max = unit.buff_duration_max.data orelse 0,
                     .rally_targets = rally_targets.toOwnedSlice(),
+                    .available_abilities = &[_]AbilityId{},
                 };
                 
                 const unit_data = game_data.units.get(u.unit_type).?;
@@ -553,6 +556,45 @@ pub const Bot = struct {
             .time = time,
             .result = result,
         };
+    }
+
+    pub fn getAllOwnUnitTags(self: *Bot, allocator: mem.Allocator) []u64 {
+        var tag_slice = allocator.alloc(u64, self.units.len + self.structures.len) catch return &[_]u64{};
+        
+        for (self.units) |unit, i| {
+            tag_slice[i] = unit.tag;
+        }
+
+        const unit_count = self.units.len;
+        
+        for (self.structures) |structure, i| {
+            tag_slice[unit_count + i] = structure.tag;
+        }
+
+        return tag_slice;
+    }
+
+    pub fn setUnitAbilitiesFromProto(self: *Bot, proto: []sc2p.ResponseQueryAvailableAbilities, allocator: mem.Allocator) void {
+        
+        // These should be in the same order as the tags were given
+        // using getAllOwnUnitTags
+        const units_count = self.units.len;
+        for (proto) |query_proto, i| {
+            if (query_proto.abilities.data) |ability_slice_proto| {
+                var ability_slice = allocator.alloc(AbilityId, ability_slice_proto.len) catch continue;
+                
+                for (ability_slice_proto) |ability_proto, j| {
+                    ability_slice[j] = @intToEnum(AbilityId, ability_proto.ability_id.data orelse 0);
+                }
+
+                if (i < units_count) {
+                    self.units[i].available_abilities = ability_slice;
+                } else {
+                    self.structures[i - units_count].available_abilities = ability_slice;
+                }
+
+            }
+        }
     }
     
 };

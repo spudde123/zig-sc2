@@ -407,6 +407,32 @@ pub const WebSocketClient = struct {
 
     }
 
+    pub fn getAvailableAbilities(self: *WebSocketClient, unit_tags: []u64, ignore_resource_requirements: bool) ?[]sc2p.ResponseQueryAvailableAbilities {
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var query_list = self.step_allocator.alloc(sc2p.RequestQueryAvailableAbilities, unit_tags.len) catch return null;
+
+        for (unit_tags) |tag, i| {
+            const abil_req = sc2p.RequestQueryAvailableAbilities{
+                .unit_tag = .{.data = tag},
+            };
+            query_list[i] = abil_req;
+        }
+        const query_req = sc2p.RequestQuery{
+            .abilities = .{.data = query_list},
+            .ignore_resource_requirements = .{.data = ignore_resource_requirements},
+        };
+
+        const request = sc2p.Request{.query = .{.data = query_req}};
+        const payload = writer.encodeBaseStruct(request);
+
+        const res = self.writeAndWaitForMessage(payload) catch return null;
+
+        if (res.query.data) |query_proto| {
+            return query_proto.abilities.data;
+        }
+        return null;
+    }
+
     pub fn step(self: *WebSocketClient, count: u32) bool {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 
