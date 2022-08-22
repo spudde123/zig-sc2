@@ -4,3 +4,4 @@ zig-out/
 src/zig-cache
 ladder_build/*
 ladder_build.zip
+replays/

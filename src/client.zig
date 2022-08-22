@@ -377,6 +377,25 @@ pub const WebSocketClient = struct {
         }
     }
 
+    pub fn getGameData(self: *WebSocketClient) !sc2p.ResponseData {
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+        var data_request = sc2p.RequestData{
+            .unit_id = .{.data = true},
+            .upgrade_id = .{.data = true},
+        };
+        var request = sc2p.Request{.game_data = .{.data = data_request}};
+        var payload = writer.encodeBaseStruct(request);
+
+        var res = try self.writeAndWaitForMessage(payload);
+
+        if (res.game_data.data) |game_data| {
+            return game_data;
+        } else {
+            return ClientError.BadResponse;
+        }
+    }
+
     pub fn sendActions(self: *WebSocketClient, action_proto: sc2p.RequestAction) !void {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 

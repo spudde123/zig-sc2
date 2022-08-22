@@ -296,7 +296,15 @@ pub fn run(
 
     var first_step_done = false;
 
-    var actions = try bot_data.Actions.init(arena, fixed_buffer);
+    var actions: bot_data.Actions = undefined;
+
+    var game_data_proto = client.getGameData() catch {
+        log.err("Error getting game data\n", .{});
+        return;
+    };
+
+    var game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
+    actions = try bot_data.Actions.init(game_data, arena, fixed_buffer);
 
     while (true) {
 
@@ -306,7 +314,7 @@ pub fn run(
             log.err("Got an invalid observation\n", .{});
             break;
         }
-        const bot = try bot_data.Bot.fromProto(obs, player_id, fixed_buffer);
+        const bot = try bot_data.Bot.fromProto(obs, game_data, player_id, fixed_buffer);
 
         if (bot.result) |res| {
             user_bot.onResult(bot, game_info, res);
@@ -314,13 +322,14 @@ pub fn run(
         }
 
         if (!first_step_done) {
+
             var game_info_proto = client.getGameInfo() catch {
                 log.err("Error getting game info\n", .{});
                 break;
             };
 
             var start_location: bot_data.Point2d = undefined;
-            for (bot.own_units) |unit| {
+            for (bot.units) |unit| {
                 if (unit.unit_type == bot_data.UnitId.CommandCenter
                     or unit.unit_type == bot_data.UnitId.Hatchery
                     or unit.unit_type == bot_data.UnitId.Nexus) {
@@ -341,7 +350,16 @@ pub fn run(
             first_step_done = true;
         }
 
-        //@TODO: Set game_info race to the observed race
+        // Set enemy race to the observed race when we can
+        if (game_info.enemy_race == .random and (bot.enemy_units.len > 0 or bot.enemy_structures.len > 0)) {
+            const enemy_unit = if (bot.enemy_units.len > 0) bot.enemy_units[0] else bot.enemy_structures[0];
+            const maybe_unit_data = game_data.units.get(enemy_unit.unit_type);
+            if (maybe_unit_data) |unit_data| {
+                game_info.enemy_race = unit_data.race;
+            } else {
+                log.debug("Unit {d} was not found in data\n", .{enemy_unit.unit_type});
+            }
+        }
 
         user_bot.onStep(bot, game_info, &actions);
 
@@ -384,7 +402,7 @@ test "runner_test" {
             _ = game_info;
             const enemy_start_location = game_info.enemy_start_locations[0];
 
-            for (bot.own_units) |unit| {
+            for (bot.units) |unit| {
                 if (unit.unit_type == bot_data.UnitId.SCV) {
                     actions.attackPosition(unit.tag, enemy_start_location, false);
                 }

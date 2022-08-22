@@ -5,7 +5,6 @@ const mem = std.mem;
 const log = std.log;
 const math = std.math;
 const PackedIntIo = std.packed_int_array.PackedIntIo;
-const EnumSet = std.enums.EnumSet;
 
 const ws = @import("client.zig");
 const sc2p = @import("sc2proto.zig");
@@ -21,6 +20,7 @@ pub const Alliance = sc2p.Alliance;
 pub const CloakState = sc2p.CloakState;
 pub const Race = sc2p.Race;
 pub const Channel = sc2p.Channel;
+pub const Attribute = sc2p.Attribute;
 
 pub const GridSize = struct {
     w: i32,
@@ -304,8 +304,10 @@ pub const GameInfo = struct {
 };
 
 pub const Bot = struct {
-    own_units: []Unit,
+    units: []Unit,
+    structures: []Unit,
     enemy_units: []Unit,
+    enemy_structures: []Unit,
     destructables: []Unit,
     minerals: []Unit,
     geysers: []Unit,
@@ -315,7 +317,12 @@ pub const Bot = struct {
     time: f32,
     result: ?Result,
 
-    pub fn fromProto(response: sc2p.ResponseObservation, player_id: u32, allocator: mem.Allocator) !Bot {
+    pub fn fromProto(
+        response: sc2p.ResponseObservation,
+        game_data: GameData,
+        player_id: u32,
+        allocator: mem.Allocator
+    ) !Bot {
 
         var game_loop: u32 = response.observation.data.?.game_loop.data.?;
         
@@ -324,7 +331,9 @@ pub const Bot = struct {
         var obs: sc2p.ObservationRaw = response.observation.data.?.raw.data.?;
         
         var own_units = std.ArrayList(Unit).init(allocator);
+        var own_structures = std.ArrayList(Unit).init(allocator);
         var enemy_units = std.ArrayList(Unit).init(allocator);
+        var enemy_structures = std.ArrayList(Unit).init(allocator);
         var destructables = std.ArrayList(Unit).init(allocator);
         var minerals = std.ArrayList(Unit).init(allocator);
         var geysers = std.ArrayList(Unit).init(allocator);
@@ -462,12 +471,22 @@ pub const Bot = struct {
                     .rally_targets = rally_targets.toOwnedSlice(),
                 };
                 
+                const unit_data = game_data.units.get(u.unit_type).?;
+
                 switch (u.alliance) {
                     .self, .ally => {
-                        try own_units.append(u);
+                        if (unit_data.attributes.contains(.structure)) {
+                            try own_structures.append(u);
+                        } else {
+                            try own_units.append(u);
+                        }
                     },
                     .enemy => {
-                        try enemy_units.append(u);
+                        if (unit_data.attributes.contains(.structure)) {
+                            try enemy_structures.append(u);
+                        } else {
+                            try enemy_units.append(u);
+                        }
                     },
                     else => {
                         var mineral_ids = [_]UnitId{
@@ -522,9 +541,10 @@ pub const Bot = struct {
         }
 
         return Bot{
-            .own_units = own_units.toOwnedSlice(),
+            .units = own_units.toOwnedSlice(),
+            .structures = own_structures.toOwnedSlice(),
             .enemy_units = enemy_units.toOwnedSlice(),
-
+            .enemy_structures = enemy_structures.toOwnedSlice(),
             .destructables = destructables.toOwnedSlice(),
             .geysers = geysers.toOwnedSlice(),
             .minerals = minerals.toOwnedSlice(),
@@ -599,6 +619,7 @@ pub const Actions = struct {
     };
 
     temp_allocator: mem.Allocator,
+    game_data: GameData,
     order_list: std.ArrayList(BotAction),
     chat_messages: std.ArrayList(ChatAction),
     // Couldn't use an EnumSet due to the enum being non-exhaustive
@@ -607,7 +628,7 @@ pub const Actions = struct {
     combinable_abilities: std.AutoHashMap(AbilityId, void),
     leave_game: bool = false,
 
-    pub fn init(perm_allocator: mem.Allocator, temp_allocator: mem.Allocator) !Actions {
+    pub fn init(game_data: GameData, perm_allocator: mem.Allocator, temp_allocator: mem.Allocator) !Actions {
 
         var ca = std.AutoHashMap(AbilityId, void).init(perm_allocator);
         
@@ -639,6 +660,7 @@ pub const Actions = struct {
         try ca.put(AbilityId.Morph_Archon, {});
         
         return Actions{
+            .game_data = game_data,
             .combinable_abilities = ca,
             .temp_allocator = temp_allocator,
             .order_list = try std.ArrayList(BotAction).initCapacity(perm_allocator, 400),
@@ -663,27 +685,55 @@ pub const Actions = struct {
     }
 
     pub fn train(self: *Actions, structure_tag: u64, unit_type: UnitId, queue: bool) void {
-        _ = self;
-        _ = structure_tag;
-        _ = unit_type;
-        _ = queue;
+        var maybe_unit_data = self.game_data.units.get(unit_type);
+        if (maybe_unit_data) |unit_data| {
+            var action = BotAction{
+                .unit = structure_tag,
+                .data = .{
+                    .ability_id = unit_data.train_ability_id,
+                    .target = .{.empty = {}},
+                    .queue = queue
+                },
+            };
+            self.addAction(action);
+        } else {
+            log.debug("Did not find {d} in game data\n", .{unit_type});
+        }
     }
 
     pub fn build(self: *Actions, unit_tag: u64, structure_to_build: UnitId, pos: Point2d, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = structure_to_build;
-        _ = pos;
-        _ = queue;
+        var maybe_structure_data = self.game_data.units.get(structure_to_build);
+        if (maybe_structure_data) |structure_data| {
+            var action = BotAction{
+                .unit = unit_tag,
+                .data = .{
+                    .ability_id = structure_data.train_ability_id,
+                    .target = .{.position = pos},
+                    .queue = queue
+                },
+            };
+            self.addAction(action);
+        } else {
+            log.debug("Did not find {d} in game data\n", .{structure_to_build});
+        }
     }
 
     /// This is mainly for building gas structures. target_tag needs to be the geysir tag
     pub fn buildOnUnit(self: *Actions, unit_tag: u64, structure_to_build: UnitId, target_tag: u64, queue: bool) void {
-        _ = self;
-        _ = unit_tag;
-        _ = structure_to_build;
-        _ = target_tag;
-        _ = queue;
+        var maybe_structure_data = self.game_data.units.get(structure_to_build);
+        if (maybe_structure_data) |structure_data| {
+            var action = BotAction{
+                .unit = unit_tag,
+                .data = .{
+                    .ability_id = structure_data.train_ability_id,
+                    .target = .{.tag = target_tag},
+                    .queue = queue
+                },
+            };
+            self.addAction(action);
+        } else {
+            log.debug("Did not find {d} in game data\n", .{structure_to_build});
+        }
     }
 
     pub fn moveToPosition(self: *Actions, unit_tag: u64, pos: Point2d, queue: bool) void {
@@ -759,10 +809,20 @@ pub const Actions = struct {
     }
 
     pub fn research(self: *Actions, structure_tag: u64, upgrade: UpgradeId, queue: bool) void {
-        _ = self;
-        _ = structure_tag;
-        _ = upgrade;
-        _ = queue;
+        var maybe_upgrade_data = self.game_data.upgrades.get(upgrade);
+        if (maybe_upgrade_data) |upgrade_data| {
+            var action = BotAction{
+                .unit = structure_tag,
+                .data = .{
+                    .ability_id = upgrade_data.research_ability_id,
+                    .target = .{.empty = {}},
+                    .queue = queue
+                },
+            };
+            self.addAction(action);
+        } else {
+            log.debug("Did not find {d} in game data\n", .{upgrade});
+        }
     }
 
     pub fn stop(self: *Actions, unit_tag: u64, queue: bool) void {
@@ -899,6 +959,101 @@ pub const Actions = struct {
         };
 
         return action_request;
+    }
+
+};
+
+pub const GameData = struct {
+
+    pub const UpgradeData = struct {
+        id: UpgradeId,
+        mineral_cost: i32,
+        vespene_cost: i32,
+        research_time: f32,
+        research_ability_id: AbilityId,
+    };
+
+    pub const UnitData = struct {
+        id: UnitId,
+        cargo_size: i32,
+        movement_speed: f32,
+        armor: f32,
+        air_dps: f32,
+        ground_dps: f32,
+        mineral_cost: i32,
+        vespene_cost: i32,
+        food_required: f32,
+        train_ability_id: AbilityId,
+        race: Race,
+        build_time: f32,
+        food_provided: f32,
+        sight_range: f32,
+        attributes: std.EnumSet(Attribute),
+    };
+
+    upgrades: std.AutoHashMap(UpgradeId, UpgradeData),
+    units: std.AutoHashMap(UnitId, UnitData),
+
+    pub fn fromProto(
+        proto:sc2p.ResponseData,
+        allocator: mem.Allocator
+    ) !GameData {
+
+        var gd = GameData{
+            .upgrades = std.AutoHashMap(UpgradeId, UpgradeData).init(allocator),
+            .units = std.AutoHashMap(UnitId, UnitData).init(allocator),
+        };
+
+        var proto_units = proto.units.data.?;
+        var proto_upgrades = proto.upgrades.data.?;
+
+        for (proto_upgrades) |proto_upgrade| {
+            var upg = UpgradeData{
+                .id = @intToEnum(UpgradeId, proto_upgrade.upgrade_id.data.?),
+                .mineral_cost = @intCast(i32, proto_upgrade.mineral_cost.data orelse 0),
+                .vespene_cost = @intCast(i32, proto_upgrade.vespene_cost.data orelse 0),
+                .research_time = proto_upgrade.research_time.data orelse 0,
+                .research_ability_id = @intToEnum(AbilityId, proto_upgrade.ability_id.data orelse 0),
+            };
+
+            try gd.upgrades.put(upg.id, upg);
+        }
+
+        for (proto_units) |proto_unit| {
+            const available = proto_unit.available.data orelse false;
+            if (!available) continue;
+
+            var attributes = std.EnumSet(Attribute).initFull();
+            attributes.toggleAll();
+            
+            if (proto_unit.attributes.data) |proto_attrs| {
+                for (proto_attrs) |attr| {
+                    attributes.insert(attr);
+                }
+            }
+
+            var unit = UnitData{
+                .id = @intToEnum(UnitId, proto_unit.unit_id.data.?),
+                .cargo_size = @intCast(i32, proto_unit.cargo_size.data orelse 0),
+                .movement_speed = proto_unit.movement_speed.data orelse 0,
+                .armor = proto_unit.armor.data orelse 0,
+                .air_dps = 0,
+                .ground_dps = 0,
+                .mineral_cost = @intCast(i32, proto_unit.mineral_cost.data orelse 0),
+                .vespene_cost = @intCast(i32, proto_unit.vespene_cost.data orelse 0),
+                .food_required = proto_unit.food_required.data orelse 0,
+                .food_provided = proto_unit.food_provided.data orelse 0,
+                .train_ability_id = @intToEnum(AbilityId, proto_unit.ability_id.data orelse 0),
+                .race = proto_unit.race.data orelse Race.none,
+                .build_time = proto_unit.build_time.data orelse 0,
+                .sight_range = proto_unit.sight_range.data orelse 0,
+                .attributes = attributes,
+            };
+
+            try gd.units.put(unit.id, unit);
+        }
+
+        return gd;
     }
 
 };

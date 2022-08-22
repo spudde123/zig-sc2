@@ -18,7 +18,7 @@ const TestBot = struct {
         _ = game_info;
         const enemy_start_location = game_info.enemy_start_locations[0];
 
-        for (bot.own_units) |unit| {
+        for (bot.units) |unit| {
             if (unit.unit_type == bot_data.UnitId.SCV) {
                 actions.attackPosition(unit.tag, enemy_start_location, false);
             }
