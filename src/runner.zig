@@ -7,7 +7,7 @@ const log = std.log;
 
 const sc2p = @import("sc2proto.zig");
 const ws = @import("client.zig");
-const bot_data = @import("bot.zig");
+pub const bot_data = @import("bot.zig");
 
 const InputType = enum(u8) {
     none,
