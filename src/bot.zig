@@ -311,9 +311,23 @@ pub const Bot = struct {
     enemy_units: []Unit,
     enemy_structures: []Unit,
     destructables: []Unit,
-    minerals: []Unit,
-    geysers: []Unit,
+    mineral_patches: []Unit,
+    vespene_geysers: []Unit,
     watch_towers: []Unit,
+
+    // Using signed integers for these so we
+    // can comfortably subtract from them towards zero
+    minerals: i32,
+    vespene: i32,
+
+    food_cap: u32,
+    food_used: u32,
+    food_army: u32,
+    food_workers: u32,
+    idle_worker_count: u32,
+    army_count: u32,
+    warp_gate_count: u32,
+    larva_count: u32,
 
     game_loop: u32,
     time: f32,
@@ -337,8 +351,8 @@ pub const Bot = struct {
         var enemy_units = std.ArrayList(Unit).init(allocator);
         var enemy_structures = std.ArrayList(Unit).init(allocator);
         var destructables = std.ArrayList(Unit).init(allocator);
-        var minerals = std.ArrayList(Unit).init(allocator);
-        var geysers = std.ArrayList(Unit).init(allocator);
+        var mineral_patches = std.ArrayList(Unit).init(allocator);
+        var vespene_geysers = std.ArrayList(Unit).init(allocator);
         var watch_towers = std.ArrayList(Unit).init(allocator);
 
         if (obs.units.data) |units| {
@@ -522,9 +536,9 @@ pub const Bot = struct {
                         if (u.unit_type == .XelNagaTower) {
                             try watch_towers.append(u);
                         } else if (mem.indexOfScalar(UnitId, mineral_ids[0..], u.unit_type)) |_| {
-                            try minerals.append(u);
+                            try mineral_patches.append(u);
                         } else if (mem.indexOfScalar(UnitId, geyser_ids[0..], u.unit_type)) |_| {
-                            try geysers.append(u);
+                            try vespene_geysers.append(u);
                         } else {
                             try destructables.append(u);
                         }
@@ -543,18 +557,30 @@ pub const Bot = struct {
             }
         }
 
+        const player_common = response.observation.data.?.player_common.data.?;
+
         return Bot{
             .units = own_units.toOwnedSlice(),
             .structures = own_structures.toOwnedSlice(),
             .enemy_units = enemy_units.toOwnedSlice(),
             .enemy_structures = enemy_structures.toOwnedSlice(),
             .destructables = destructables.toOwnedSlice(),
-            .geysers = geysers.toOwnedSlice(),
-            .minerals = minerals.toOwnedSlice(),
+            .vespene_geysers = vespene_geysers.toOwnedSlice(),
+            .mineral_patches = mineral_patches.toOwnedSlice(),
             .watch_towers = watch_towers.toOwnedSlice(),
             .game_loop = game_loop,
             .time = time,
             .result = result,
+            .minerals = @intCast(i32, player_common.minerals.data orelse 0),
+            .vespene = @intCast(i32, player_common.vespene.data orelse 0),
+            .food_cap = player_common.food_cap.data orelse 0,
+            .food_used = player_common.food_used.data orelse 0,
+            .food_army = player_common.food_army.data orelse 0,
+            .food_workers = player_common.food_workers.data orelse 0,
+            .idle_worker_count = player_common.idle_worker_count.data orelse 0,
+            .army_count = player_common.army_count.data orelse 0,
+            .warp_gate_count = player_common.warp_gate_count.data orelse 0,
+            .larva_count = player_common.larva_count.data orelse 0,
         };
     }
 
