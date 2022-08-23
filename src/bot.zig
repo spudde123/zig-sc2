@@ -23,8 +23,8 @@ pub const Channel = sc2p.Channel;
 pub const Attribute = sc2p.Attribute;
 
 pub const GridSize = struct {
-    w: i32,
-    h: i32,
+    w: usize,
+    h: usize,
 };
 
 pub const Rectangle = struct {
@@ -59,6 +59,19 @@ pub const GridPoint = struct {
 pub const Point2 = struct {
     x: f32,
     y: f32,
+
+    pub fn distanceTo(self: Point2, other: Point2) f32 {
+        const x = self.x - other.x;
+        const y = self.y - other.y;
+        return math.sqrt(x*x + y*y);
+    }
+
+    pub fn distanceSquaredTo(self: Point2, other: Point2) f32 {
+        const x = self.x - other.x;
+        const y = self.y - other.y;
+        return x*x + y*y;
+    }
+
 };
 
 pub const Point3 = struct {
@@ -120,12 +133,53 @@ pub const Unit = struct {
     rally_targets: []RallyTarget,
 
     available_abilities: []AbilityId,
+
+    pub fn isIdle(self: Unit) bool {
+        return self.orders.len == 0;
+    }
+
+    pub fn isCollecting(self: Unit) bool {
+        if (self.orders.len == 0) return false;
+        const order = self.orders[0];
+        return order.ability_id == .Harvest_Gather_SCV or order.ability_id == .Harvest_Return_SCV;
+    } 
 };
+
+pub fn getUnitByTag(units: []Unit, tag: u64) ?Unit {
+    for (units) |unit| {
+        if (unit.tag == tag) return unit;
+    }
+    return null;
+}
+
+pub fn findClosestUnit(units: []Unit, pos: Point2) Unit {
+    assert(units.len > 0);
+    var min_distance: f32 = math.f32_max;
+    var closest_unit: Unit = undefined;
+    for (units) |unit| {
+        const dist_sqrd = unit.position.distanceSquaredTo(pos);
+        if (dist_sqrd < min_distance) {
+            min_distance = dist_sqrd;
+            closest_unit = unit;
+        }
+    }
+    return closest_unit;
+}
 
 pub const Grid = struct {
     data: []u8,
-    w: i32,
-    h: i32,
+    w: usize,
+    h: usize,
+
+    pub fn getF(self: Grid, point: Point2) u8 {
+        const x: usize = @floatToInt(usize, math.floor(point.x));
+        const y: usize = @floatToInt(usize, math.floor(point.y));
+
+        assert(x >= 0 and x < self.w);
+        assert(y >= 0 and y < self.h);
+        
+        return self.data[y + x*self.h];
+    }
 
 };
 
@@ -171,7 +225,7 @@ pub const GameInfo = struct {
     start_location: Point2,
     enemy_start_locations: []Point2,
 
-    //expansion_locations: []Point2,
+    expansion_locations: []Point2,
     //allocator: mem.Allocator,
 
     pub fn fromProto(
@@ -179,6 +233,8 @@ pub const GameInfo = struct {
         player_id: u32,
         opponent_id: ?[]const u8,
         start_location: Point2,
+        minerals: []Unit,
+        geysers: []Unit,
         allocator: mem.Allocator
     ) !GameInfo {
         
@@ -211,7 +267,7 @@ pub const GameInfo = struct {
         const raw_proto = proto_data.start_raw.data.?;
 
         const map_size_proto = raw_proto.map_size.data.?;
-        const map_size = GridSize{.w = map_size_proto.x.data.?, .h = map_size_proto.y.data.?};
+        const map_size = GridSize{.w = @intCast(usize, map_size_proto.x.data.?), .h = @intCast(usize, map_size_proto.y.data.?)};
 
         const playable_area_proto = raw_proto.playable_area.data.?;
         const rect_p0 = playable_area_proto.p0.data.?;
@@ -276,15 +332,118 @@ pub const GameInfo = struct {
             .terrain_height = Grid{.data = terrain_slice, .w = map_size.w, .h = map_size.h},
             .pathing_grid = Grid{.data = pathing_slice, .w = map_size.w, .h = map_size.h},
             .placement_grid = Grid{.data = placement_slice, .w = map_size.w, .h = map_size.h},
+            .expansion_locations = generateExpansionLocations(minerals, geysers, allocator),
         };
     }
 
-    //fn generateExpansionLocations() []Point2 {
-    //
-    //}
+    fn generateExpansionLocations(
+        minerals: []Unit,
+        geysers: []Unit,
+        allocator: mem.Allocator
+    ) []Point2 {
+        const ResourceData = struct {
+            tag: u64,
+            pos: Point2,
+            is_geyser: bool,
+        };
 
-    pub fn deinit() void {
+        var resources = std.ArrayList(ResourceData).initCapacity(allocator, minerals.len + geysers.len) catch return &[_]Point2{};
+        defer resources.deinit();
+        for (minerals) |patch| {
+            // Don't use minerals that mainly block pathways and
+            // are not meant for bases
+            if (patch.unit_type != UnitId.MineralField450) {
+                resources.appendAssumeCapacity(.{.tag = patch.tag, .pos = patch.position, .is_geyser = false});
+            }
+        }
+        for (geysers) |geyser| {
+            resources.appendAssumeCapacity(.{.tag = geyser.tag, .pos = geyser.position, .is_geyser = true});
+        }
 
+        const ResourceGroup = struct {
+            resources: [16]ResourceData = undefined,
+            count: usize = 0,
+        };
+
+        var groups = std.ArrayList(ResourceGroup).init(allocator);
+        defer groups.deinit();
+        // Group resources
+        var i: usize = 0;
+
+        outer: while (i < resources.items.len) : (i += 1){
+            var cur: ResourceData = resources.items[i];
+            for (groups.items) |*group| {
+                var close_found: bool = false;
+                for (group.resources) |member| {
+                    if (cur.pos.distanceSquaredTo(member.pos) < 140) {
+                        close_found = true;
+                        break;
+                    }
+                }
+                if (close_found) {
+                    group.resources[group.count] = cur;
+                    group.count += 1;
+                    continue :outer;
+                }
+            }
+
+            var new_group = ResourceGroup{};
+            new_group.count = 1;
+            new_group.resources[0] = cur;
+            groups.append(new_group) catch return &[_]Point2{};
+        }
+
+        var result = allocator.alloc(Point2, groups.items.len) catch return &[_]Point2{};
+        for (groups.items) |group, group_index| {
+            var center = Point2{.x = 0, .y = 0};
+            for(group.resources[0..group.count]) |resource| {
+                center.x += resource.pos.x;
+                center.y += resource.pos.y;
+            }
+            center.x = center.x / @intToFloat(f32, group.count);
+            center.y = center.y / @intToFloat(f32, group.count);
+            center.x = math.floor(center.x) + 0.5;
+            center.y = math.floor(center.y) + 0.5;
+
+            var min_total_distance: f32 = math.f32_max;
+            var x_offset: f32 = -7;
+            while (x_offset < 8) : (x_offset += 1) {
+                var y_offset: f32 = -7;
+                test_point: while (y_offset < 8) : (y_offset += 1) {
+                    const offset_len_sqrd = y_offset * y_offset + x_offset * x_offset;
+                    if (offset_len_sqrd <= 16 or offset_len_sqrd > 64) continue;
+
+                    var point = Point2{
+                        .x = center.x + x_offset,
+                        .y = center.y + y_offset,
+                    };
+
+                    var total_distance: f32 = 0;
+                    for(group.resources[0..group.count]) |resource| {
+                        const req_distance: f32 = if(resource.is_geyser) 49 else 36;
+                        const cur_dist = resource.pos.distanceSquaredTo(point);
+                        if (cur_dist < req_distance) {
+                            continue :test_point;
+                        } else {
+                            total_distance += cur_dist;
+                        }
+                    }
+                    if (total_distance < min_total_distance) {
+                        result[group_index] = point;
+                        min_total_distance = total_distance;
+                    }
+                    
+                }
+            }
+
+        }
+
+        //for (result) |loc, j| {
+        //    std.debug.print("Group size: {d}\n", .{groups.items[j].count});
+        //    std.debug.print("{d} {d}\n", .{loc.x, loc.y});
+        //}
+
+        return result;
     }
 
     pub fn update(bot: Bot) void {
@@ -308,6 +467,7 @@ pub const GameInfo = struct {
 pub const Bot = struct {
     units: []Unit,
     structures: []Unit,
+    placeholders: []Unit,
     enemy_units: []Unit,
     enemy_structures: []Unit,
     destructables: []Unit,
@@ -348,6 +508,7 @@ pub const Bot = struct {
         
         var own_units = std.ArrayList(Unit).init(allocator);
         var own_structures = std.ArrayList(Unit).init(allocator);
+        var placeholders = std.ArrayList(Unit).init(allocator);
         var enemy_units = std.ArrayList(Unit).init(allocator);
         var enemy_structures = std.ArrayList(Unit).init(allocator);
         var destructables = std.ArrayList(Unit).init(allocator);
@@ -436,16 +597,16 @@ pub const Bot = struct {
                 const u = Unit{
                     .display_type = unit.display_type.data.?,
                     .alliance = unit.alliance.data.?,
-                    .tag = unit.tag.data.?,
+                    .tag = unit.tag.data orelse 0,
                     .unit_type = @intToEnum(UnitId, unit.unit_type.data.?),
-                    .owner = unit.owner.data.?,
+                    .owner = unit.owner.data orelse 0,
 
                     .position = position,
                     .z = z,
                     .facing = unit.facing.data orelse 0,
                     .radius = unit.radius.data orelse 0,
                     .build_progress = unit.build_progress.data orelse 0,
-                    .cloak = unit.cloak.data.?,
+                    .cloak = unit.cloak.data orelse CloakState.unknown,
                     .buff_ids = buff_ids.toOwnedSlice(),
 
                     .detect_range = unit.detect_range.data orelse 0,
@@ -489,6 +650,11 @@ pub const Bot = struct {
                 };
                 
                 const unit_data = game_data.units.get(u.unit_type).?;
+
+                if (u.display_type == DisplayType.placeholder) {
+                    try placeholders.append(u);
+                    continue;
+                }
 
                 switch (u.alliance) {
                     .self, .ally => {
@@ -562,6 +728,7 @@ pub const Bot = struct {
         return Bot{
             .units = own_units.toOwnedSlice(),
             .structures = own_structures.toOwnedSlice(),
+            .placeholders = placeholders.toOwnedSlice(),
             .enemy_units = enemy_units.toOwnedSlice(),
             .enemy_structures = enemy_structures.toOwnedSlice(),
             .destructables = destructables.toOwnedSlice(),

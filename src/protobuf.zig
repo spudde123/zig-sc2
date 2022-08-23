@@ -528,6 +528,7 @@ test "protobuf_struct" {
         k: ProtoField(6, [][]const u8) = .{},
         l: ProtoField(7, TestEnum) = .{},
         m: ProtoField(8, []u64) = .{},
+        n: ProtoField(9, []u8) = .{},
     };
 
     var t3 = Test3{
@@ -548,7 +549,7 @@ test "protobuf_struct" {
     var string_array = [_][]const u8{"string1", "string2", "string3"};
 
     var tag_array = [_]u64{32, 66, 128, 256, 1000};
-
+    var bytes_array = [_]u8{1,2,3,4,5,6,7,8,9,10};
     var t4 = Test4{
         .f = .{.data = 1.5},
         .g = .{.data = "testing"},
@@ -558,6 +559,7 @@ test "protobuf_struct" {
         .k = .{.data = string_array[0..]},
         .l = .{.data = .opt2},
         .m = .{.data = tag_array[0..]},
+        .n = .{.data = bytes_array[0..]},
     };
 
     const res = writer.encodeBaseStruct(t4);

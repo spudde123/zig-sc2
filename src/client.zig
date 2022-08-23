@@ -587,10 +587,6 @@ pub const WebSocketClient = struct {
             }
         }
 
-        if (res.status.data) |status| {
-            std.debug.print("Status: {d}\n", .{@enumToInt(status)});
-        }
-
         return res;
     }
 

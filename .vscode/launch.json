@@ -11,7 +11,7 @@
             "program": "${workspaceFolder}/zig-out/bin/zig-bot.exe",
             "args": [
                 "--CompRace", "random",
-                "--CompDifficulty", "very_hard",
+                "--CompDifficulty", "very_easy",
                 "--CompBuild", "random",
                 "--Map", "BlackburnAIE"
             ],
