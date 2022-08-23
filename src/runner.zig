@@ -77,6 +77,10 @@ const LocalRunSetup = struct {
     game_port: u16 = 5001,
 };
 
+const Sc2PathError = error{
+    no_version_folders_found,
+};
+
 fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
     const map_concat = [_][]const u8{base_folder, "/Maps/"};
     const support64_concat = [_][]const u8{base_folder, "/Support64/"};
@@ -88,10 +92,14 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
     var iter = dir.iterate();
     var max_version: u64 = 0;
     while (try iter.next()) |version| {
-        const version_num_string = version.name[4..];
-        const num = try fmt.parseUnsigned(u32, version_num_string, 0);
-        if (num > max_version) max_version = num;
+        if (mem.startsWith(u8, version.name, "Base")) {
+            const version_num_string = version.name[4..];
+            const num = try fmt.parseUnsigned(u32, version_num_string, 0);
+            if (num > max_version) max_version = num;
+        }
     }
+
+    if (max_version == 0) return Sc2PathError.no_version_folders_found;
 
     log.info("Using game version {d}\n", .{max_version});
 
@@ -154,7 +162,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     program_args.opponent_id = argument;
                 },
                 InputType.computer_difficulty => {
-                    var opt_difficulty = difficulty_map.get(argument);
+                    const opt_difficulty = difficulty_map.get(argument);
                     if (opt_difficulty) |difficulty| {
                         program_args.computer_difficulty = difficulty;
                     } else {
@@ -166,7 +174,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     }
                 },
                 InputType.computer_race => {
-                    var opt_race = race_map.get(argument);
+                    const opt_race = race_map.get(argument);
                     if (opt_race) |race| {
                         program_args.computer_race = race;
                     } else {
@@ -178,7 +186,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     }
                 },
                 InputType.computer_build => {
-                    var opt_build = build_map.get(argument);
+                    const opt_build = build_map.get(argument);
                     if (opt_build) |build| {
                         program_args.computer_build = build;
                     } else {
