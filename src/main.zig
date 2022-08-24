@@ -2,6 +2,7 @@ const std = @import("std");
 
 const runner = @import("runner.zig");
 const bot_data = @import("bot.zig");
+const unit_group = bot_data.unit_group;
 
 const TestBot = struct {
     const Self = @This();
@@ -20,6 +21,9 @@ const TestBot = struct {
     ) void {
         self.first_cc_tag = bot.structures[0].tag;
         std.debug.print("Exp: {d}\n", .{game_info.expansion_locations.len});
+        for (game_info.expansion_locations) |exp| {
+            std.debug.print("{d} {d}\n", .{exp.x, exp.y});
+        }
         _ = game_info;
         _ = actions;
     }
@@ -31,7 +35,13 @@ const TestBot = struct {
         actions: *bot_data.Actions
     ) void {
         
-        const first_cc = bot_data.getUnitByTag(bot.structures, self.first_cc_tag).?;
+        const maybe_first_cc = unit_group.getUnitByTag(bot.structures, self.first_cc_tag);
+        if (maybe_first_cc == null) {
+            actions.leaveGame();
+            return;
+        }
+        const first_cc = maybe_first_cc.?;
+
         var current_minerals = bot.minerals;
         if (bot.minerals > 50 and first_cc.isIdle()) {
             actions.train(self.first_cc_tag, bot_data.UnitId.SCV, false);
@@ -47,17 +57,10 @@ const TestBot = struct {
                 false,
             );
             self.locations_expanded_to += 1;
+            self.locations_expanded_to = @mod(self.locations_expanded_to, game_info.expansion_locations.len);
             current_minerals -= 400;
         }
-
-        if (!self.countdown_started and self.locations_expanded_to >= game_info.expansion_locations.len) {
-            self.countdown_start = bot.game_loop;
-            self.countdown_started = true;
-        }
-
-        if (self.countdown_started and bot.game_loop - self.countdown_start > 1000) {
-            actions.leaveGame();
-        }
+        
     }
 
     pub fn onResult(

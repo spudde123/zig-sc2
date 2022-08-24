@@ -565,6 +565,9 @@ test "runner_test_expansion_locations" {
         ) void {
             self.first_cc_tag = bot.structures[0].tag;
             std.debug.print("Exp: {d}\n", .{game_info.expansion_locations.len});
+            for (game_info.expansion_locations) |exp| {
+                std.debug.print("Loc: {d} {d}\n", .{exp.x, exp.y});
+            }
             _ = game_info;
             _ = actions;
         }
@@ -576,7 +579,12 @@ test "runner_test_expansion_locations" {
             actions: *bot_data.Actions
         ) void {
             
-            const first_cc = bot_data.getUnitByTag(bot.structures, self.first_cc_tag).?;
+            const maybe_first_cc = bot_data.unit_group.getUnitByTag(bot.structures, self.first_cc_tag);
+            if (maybe_first_cc == null) {
+                actions.leaveGame();
+                return;
+            }
+            const first_cc = maybe_first_cc.?;
             var current_minerals = bot.minerals;
             if (bot.minerals > 50 and first_cc.isIdle()) {
                 actions.train(self.first_cc_tag, bot_data.UnitId.SCV, false);

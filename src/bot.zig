@@ -8,6 +8,9 @@ const PackedIntIo = std.packed_int_array.PackedIntIo;
 
 const ws = @import("client.zig");
 const sc2p = @import("sc2proto.zig");
+pub const unit_group = @import("units.zig");
+pub const grids = @import("grids.zig");
+
 pub const AbilityId = @import("ids/ability_id.zig").AbilityId;
 pub const BuffId = @import("ids/buff_id.zig").BuffId;
 pub const EffectId = @import("ids/effect_id.zig").EffectId;
@@ -22,189 +25,18 @@ pub const Race = sc2p.Race;
 pub const Channel = sc2p.Channel;
 pub const Attribute = sc2p.Attribute;
 
-pub const GridSize = struct {
-    w: usize,
-    h: usize,
-};
+pub const Unit = unit_group.Unit;
+pub const OrderTarget = unit_group.OrderTarget;
+pub const OrderType = unit_group.OrderType;
+pub const UnitOrder = unit_group.UnitOrder;
+pub const RallyTarget = unit_group.RallyTarget;
 
-pub const Rectangle = struct {
-    // Left bottom
-    p0: GridPoint,
-    // Top right
-    p1: GridPoint,
-
-    pub fn width(self: Rectangle) i32 {
-        return self.p1.x - self.p0.x + 1;
-    }
-
-    pub fn height(self: Rectangle) i32 {
-        return self.p1.y - self.p0.y + 1;
-    }
-
-    pub fn pointIsInside(self: Rectangle, point: GridPoint) bool {
-        return (
-            point.x >= self.p0.x
-            and point.x <= self.p1.x
-            and point.y >= self.p0.y
-            and point.y <= self.p1.y
-        );
-    }
-};
-
-pub const GridPoint = struct {
-    x: i32,
-    y: i32,
-};
-
-pub const Point2 = struct {
-    x: f32,
-    y: f32,
-
-    pub fn distanceTo(self: Point2, other: Point2) f32 {
-        const x = self.x - other.x;
-        const y = self.y - other.y;
-        return math.sqrt(x*x + y*y);
-    }
-
-    pub fn distanceSquaredTo(self: Point2, other: Point2) f32 {
-        const x = self.x - other.x;
-        const y = self.y - other.y;
-        return x*x + y*y;
-    }
-
-};
-
-pub const Point3 = struct {
-    x: f32,
-    y: f32,
-    z: f32,
-};
-
-pub const Unit = struct {
-    display_type: DisplayType,
-    alliance: Alliance,
-    tag: u64,
-    unit_type: UnitId,
-    owner: i32,
-
-    position: Point2,
-    z: f32,
-    facing: f32,
-    radius: f32,
-    build_progress: f32,
-    cloak: CloakState,
-    buff_ids: []BuffId,
-
-    detect_range: f32,
-    radar_range: f32,
-
-    is_blip: bool,
-    is_powered: bool,
-    is_active: bool,
-
-    attack_upgrade_level: i32,
-    armor_upgrade_level: i32,
-    shield_upgrade_level: i32,
-
-    health: f32,
-    health_max: f32,
-    shield: f32,
-    shield_max: f32,
-    energy: f32,
-    energy_max: f32,
-    mineral_contents: i32,
-    vespene_contents: i32,
-    is_flying: bool,
-    is_burrowed: bool,
-    is_hallucination: bool,
-
-    orders: []UnitOrder,
-    addon_tag: u64,
-    passengers: []u64,
-    cargo_space_taken: i32,
-    cargo_space_max: i32,
-
-    assigned_harvesters: i32,
-    ideal_harvesters: i32,
-    weapon_cooldown: f32,
-    engaged_target_tag: u64,
-    buff_duration_remain: i32,
-    buff_duration_max: i32,
-    rally_targets: []RallyTarget,
-
-    available_abilities: []AbilityId,
-
-    pub fn isIdle(self: Unit) bool {
-        return self.orders.len == 0;
-    }
-
-    pub fn isCollecting(self: Unit) bool {
-        if (self.orders.len == 0) return false;
-        const order = self.orders[0];
-        return order.ability_id == .Harvest_Gather_SCV or order.ability_id == .Harvest_Return_SCV;
-    } 
-};
-
-pub fn getUnitByTag(units: []Unit, tag: u64) ?Unit {
-    for (units) |unit| {
-        if (unit.tag == tag) return unit;
-    }
-    return null;
-}
-
-pub fn findClosestUnit(units: []Unit, pos: Point2) Unit {
-    assert(units.len > 0);
-    var min_distance: f32 = math.f32_max;
-    var closest_unit: Unit = undefined;
-    for (units) |unit| {
-        const dist_sqrd = unit.position.distanceSquaredTo(pos);
-        if (dist_sqrd < min_distance) {
-            min_distance = dist_sqrd;
-            closest_unit = unit;
-        }
-    }
-    return closest_unit;
-}
-
-pub const Grid = struct {
-    data: []u8,
-    w: usize,
-    h: usize,
-
-    pub fn getF(self: Grid, point: Point2) u8 {
-        const x: usize = @floatToInt(usize, math.floor(point.x));
-        const y: usize = @floatToInt(usize, math.floor(point.y));
-
-        assert(x >= 0 and x < self.w);
-        assert(y >= 0 and y < self.h);
-        
-        return self.data[y + x*self.h];
-    }
-
-};
-
-pub const OrderType = enum(u8) {
-    empty,
-    position,
-    tag,
-};
-
-pub const OrderTarget = union(OrderType) {
-    empty: void,
-    position: Point2,
-    tag: u64,
-};
-
-pub const UnitOrder = struct {
-    ability_id: AbilityId,
-    target: OrderTarget,
-    progress: f32,
-};
-
-pub const RallyTarget = struct {
-    point: Point2,
-    tag: ?u64,
-};
+pub const Grid = grids.Grid;
+pub const GridPoint = grids.GridPoint;
+pub const Point2 = grids.Point2;
+pub const Point3 = grids.Point3;
+pub const GridSize = grids.GridSize;
+pub const Rectangle = grids.Rectangle;
 
 pub const GameInfo = struct {
 
@@ -437,11 +269,6 @@ pub const GameInfo = struct {
             }
 
         }
-
-        //for (result) |loc, j| {
-        //    std.debug.print("Group size: {d}\n", .{groups.items[j].count});
-        //    std.debug.print("{d} {d}\n", .{loc.x, loc.y});
-        //}
 
         return result;
     }
