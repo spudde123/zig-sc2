@@ -145,6 +145,8 @@ pub const ProtoReader = struct {
                             obj_field.data = num > 0;
                         },
                         .Void => {
+                            // This only comes up when a message has an empty embedded message
+                            // so we move forward by reading the zero size
                             _ = try self.decodeUInt64();
                             obj_field.data = {};
                         },
