@@ -70,12 +70,14 @@ pub const ProtoReader = struct {
         while (self.bytes_read - start < size) {
             const header = try self.decodeProtoHeader();
 
+            var recognized_field = false;
             inline for (@typeInfo(T).Struct.fields) |field| {
                 var obj_field = @field(res, field.name);
                 
                 const field_num = obj_field.field_num;
 
                 if (header.field_number == field_num) {
+                    recognized_field = true;
                     //std.debug.print("{s}\n", .{field.name});
                     const data_info = @typeInfo(@TypeOf(obj_field.data));
                     const child_type = data_info.Optional.child;
@@ -152,13 +154,35 @@ pub const ProtoReader = struct {
                         },
                         .Enum => {
                             const enum_int = try self.decodeUInt64();
-                            obj_field.data = @intToEnum(child_type, @truncate(u8, enum_int));
+                            obj_field.data = @intToEnum(child_type, enum_int);
                         },
-                        else => {
-                        }
+                        else => unreachable,
                     }
 
                     @field(res, field.name) = obj_field;
+                }
+            }
+
+            // Skip unrecognized fields
+            if (!recognized_field) {
+                //const type_name = @typeName(T);
+                //std.debug.print("Found unknown field in {s}\n", .{type_name});
+                //std.debug.print("field_num: {d}, type: {d}\n", .{header.field_number, header.wire_type});
+                switch (header.wire_type) {
+                    .varint => {
+                        _ = try self.decodeUInt64();
+                    },
+                    ._32bit => {
+                        self.bytes_read += 4;
+                    },
+                    ._64bit => {
+                        self.bytes_read += 8;
+                    },
+                    .length_delim => {
+                        const skip_len = try self.decodeUInt64();
+                        self.bytes_read += skip_len;
+                    },
+                    else => unreachable,
                 }
             }
         }
@@ -193,10 +217,8 @@ pub const ProtoReader = struct {
         const starting_byte: usize = self.bytes_read;
         const num_of_bytes = try self.decodeUInt64();
         const header_len = self.bytes_read - starting_byte;
-
         var data = try allocator.alloc(u8, num_of_bytes);
-
-        mem.copy(u8, data, self.bytes[starting_byte + header_len .. (starting_byte + header_len + num_of_bytes)]);
+        mem.copy(u8, data, self.bytes[(starting_byte + header_len) .. (starting_byte + header_len + num_of_bytes)]);
         self.bytes_read += num_of_bytes;
 
         return data;
@@ -324,7 +346,7 @@ pub const ProtoWriter = struct {
                         self.cursor += self.encodeUInt64(0);
                     },
                     else => {
-                        std.debug.print("{d}\n", .{data});
+                        unreachable;
                     }
                 }
             }
@@ -593,5 +615,6 @@ test "protobuf_struct" {
     std.debug.print("{s}\n", .{decoded_t4.k.data.?[0]});
     try std.testing.expectEqual(t4.l.data.?, decoded_t4.l.data.?);
     try std.testing.expectEqual(t4.m.data.?[3], decoded_t4.m.data.?[3]);
+    try std.testing.expectEqualSlices(u8, t4.n.data.?, decoded_t4.n.data.?);
 
 }

@@ -552,6 +552,8 @@ pub const WebSocketClient = struct {
                     start = i;
                     found_ws_start = true;
                     break;
+                } else {
+                    std.debug.print("{b} ", .{byte});
                 }
             }
 
