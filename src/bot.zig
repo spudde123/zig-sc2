@@ -1041,6 +1041,8 @@ pub const GameData = struct {
         armor: f32,
         air_dps: f32,
         ground_dps: f32,
+        air_range: f32,
+        ground_range: f32,
         mineral_cost: i32,
         vespene_cost: i32,
         food_required: f32,
@@ -1095,12 +1097,15 @@ pub const GameData = struct {
 
             var air_dps: f32 = 0;
             var ground_dps: f32 = 0;
+            var air_range: f32 = 0;
+            var ground_range: f32 = 0;
 
             //@TODO: May need to do something with battlecruisers
             //and oracles if their weapons don't show up here
             if (proto_unit.weapons.data) |weapons_proto| {
                 for (weapons_proto) |weapon_proto| {
                     const target_type = weapon_proto.target_type.data.?;
+                    const range = weapon_proto.range.data.?;
                     const speed = weapon_proto.speed.data.?;
                     const attacks: f32 = @intToFloat(f32, weapon_proto.attacks.data.?);
                     const damage = weapon_proto.damage.data.?;
@@ -1108,13 +1113,17 @@ pub const GameData = struct {
                     switch (target_type) {
                         .ground => {
                             ground_dps = dps;
+                            ground_range = range;
                         },
                         .air => {
                             air_dps = dps;
+                            air_range = range;
                         },
                         .any => {
                             air_dps = dps;
                             ground_dps = dps;
+                            air_range = range;
+                            ground_range = range;
                         },
                     }
                 }
@@ -1127,6 +1136,8 @@ pub const GameData = struct {
                 .armor = proto_unit.armor.data orelse 0,
                 .air_dps = air_dps,
                 .ground_dps = ground_dps,
+                .air_range = air_range,
+                .ground_range = ground_range,
                 .mineral_cost = @intCast(i32, proto_unit.mineral_cost.data orelse 0),
                 .vespene_cost = @intCast(i32, proto_unit.vespene_cost.data orelse 0),
                 .food_required = proto_unit.food_required.data orelse 0,
