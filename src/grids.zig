@@ -37,8 +37,8 @@ pub const GridPoint = struct {
 };
 
 pub const Point2 = struct {
-    x: f32,
-    y: f32,
+    x: f32 = 0,
+    y: f32 = 0,
 
     pub fn distanceTo(self: Point2, other: Point2) f32 {
         const x = self.x - other.x;
@@ -50,6 +50,16 @@ pub const Point2 = struct {
         const x = self.x - other.x;
         const y = self.y - other.y;
         return x*x + y*y;
+    }
+
+    pub fn towards(self: Point2, other: Point2, distance: f32) Point2 {
+        const d = self.distanceTo(other);
+        if (d == 0) return .{};
+        
+        return .{
+            .x = self.x + (other.x - self.x) / d * distance,
+            .y = self.y + (other.y - self.y) / d * distance, 
+        };
     }
 
 };

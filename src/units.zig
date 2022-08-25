@@ -1,4 +1,5 @@
 const std = @import("std");
+const mem = std.mem;
 const math = std.math;
 const assert = std.debug.assert;
 
@@ -112,6 +113,24 @@ pub const Unit = struct {
             or order.ability_id == .Harvest_Gather_Mule
             or order.ability_id == .Harvest_Return_Mule
         );
+    }
+
+    pub fn isUsingAbility(self: Unit, ability: AbilityId) bool {
+        if (self.orders.len == 0) return false;
+        const order = self.orders[0];
+        
+        return order.ability_id == ability;
+    }
+
+    pub fn hasAbilityAvailable(self: Unit, ability: AbilityId) bool {
+        for (self.available_abilities) |available_ability| {
+            if (available_ability == ability) return true;
+        }
+        return false;
+    }
+
+    pub fn isReady(self: Unit) bool {
+        return self.build_progress >= 1;
     } 
 };
 
@@ -122,7 +141,12 @@ pub fn getUnitByTag(units: []Unit, tag: u64) ?Unit {
     return null;
 }
 
-pub fn findClosestUnit(units: []Unit, pos: Point2) Unit {
+pub const UnitDistanceResult = struct {
+    unit: Unit,
+    distance: f32,
+};
+
+pub fn findClosestUnit(units: []Unit, pos: Point2) UnitDistanceResult {
     assert(units.len > 0);
     var min_distance: f32 = math.f32_max;
     var closest_unit: Unit = undefined;
@@ -133,5 +157,62 @@ pub fn findClosestUnit(units: []Unit, pos: Point2) Unit {
             closest_unit = unit;
         }
     }
-    return closest_unit;
+    return .{.unit = closest_unit, .distance = min_distance};
+}
+
+pub fn findFurthestUnit(units: []Unit, pos: Point2) UnitDistanceResult {
+    assert(units.len > 0);
+    var max_distance: f32 = 0;
+    var furthest_unit: Unit = undefined;
+    for (units) |unit| {
+        const dist_sqrd = unit.position.distanceSquaredTo(pos);
+        if (dist_sqrd > max_distance) {
+            max_distance = dist_sqrd;
+            furthest_unit = unit;
+        }
+    }
+    return .{.unit = furthest_unit, .distance = max_distance};
+}
+
+pub fn filter(
+    units: []Unit,
+    context: anytype, 
+    filterFn: fn (unit: Unit, context: anytype) bool,
+    allocator: mem.Allocator
+) []Unit {
+    var list = std.ArrayList(Unit).init(allocator);
+    for (units) |unit| {
+        if (filterFn(unit, context)) {
+            list.append(unit) catch continue;
+        }
+    }
+    return list.toOwnedSlice();
+}
+
+pub fn ofType(
+    units: []Unit,
+    unit_type: UnitId,
+    allocator: mem.Allocator,
+) []Unit {
+    var list = std.ArrayList(Unit).init(allocator);
+    for (units) |unit| {
+        if (unit.unit_type == unit_type) {
+            list.append(unit) catch continue;
+        }
+    }
+    return list.toOwnedSlice();
+}
+
+pub fn ofTypes(
+    units: []Unit,
+    unit_types: []UnitId,
+    allocator: mem.Allocator,
+) []Unit {
+    var list = std.ArrayList(Unit).init(allocator);
+    for (units) |unit| {
+        if (mem.indexOf(UnitId, unit_types, unit.unit_type)) |_| {
+            list.append(unit) catch continue;
+        }
+    }
+    return list.toOwnedSlice();
 }
