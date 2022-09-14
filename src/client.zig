@@ -407,6 +407,15 @@ pub const WebSocketClient = struct {
 
     }
 
+    pub fn sendDebugRequest(self: *WebSocketClient, debug_proto: sc2p.RequestDebug) void {
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+        const request = sc2p.Request{.debug = .{.data = debug_proto}};
+        const payload = writer.encodeBaseStruct(request);
+
+        _ = self.writeAndWaitForMessage(payload) catch return;
+    }
+
     pub fn getAvailableAbilities(self: *WebSocketClient, unit_tags: []u64, ignore_resource_requirements: bool) ?[]sc2p.ResponseQueryAvailableAbilities {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
         var query_list = self.step_allocator.alloc(sc2p.RequestQueryAvailableAbilities, unit_tags.len) catch return null;

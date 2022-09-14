@@ -54,11 +54,72 @@ pub const Point2 = struct {
 
     pub fn towards(self: Point2, other: Point2, distance: f32) Point2 {
         const d = self.distanceTo(other);
-        if (d == 0) return .{};
+        if (d == 0) return self;
         
         return .{
             .x = self.x + (other.x - self.x) / d * distance,
             .y = self.y + (other.y - self.y) / d * distance, 
+        };
+    }
+
+    pub fn length(self: Point2) f32 {
+        return math.sqrt(self.x * self.x + self.y * self.y);
+    }
+
+    pub fn normalize(self: Point2) Point2 {
+        const l = self.length();
+        return .{
+            .x = self.x / l,
+            .y = self.y / l,
+        };
+    }
+
+    pub fn add(self: Point2, other: Point2) Point2 {
+        return .{
+            .x = self.x + other.x,
+            .y = self.y + other.y,
+        };
+    }
+
+    pub fn subtract(self: Point2, other: Point2) Point2 {
+        return .{
+            .x = self.x - other.x,
+            .y = self.y - other.y,
+        };
+    }
+
+    /// Angle in radians
+    pub fn rotate(self: Point2, angle: f32) Point2 {
+        const cos = math.cos(angle);
+        const sin = math.sin(angle);
+        return .{
+            .x = cos * self.x - sin * self.y,
+            .y = sin * self.x + cos * self.y,
+        };
+    }
+
+    pub fn multiply(self: Point2, multiplier: f32) Point2 {
+        return .{
+            .x = self.x * multiplier,
+            .y = self.y * multiplier,
+        };
+    }
+
+    pub fn dot(self: Point2, other: Point2) f32 {
+        return self.x * other.x + self.y * other.y;
+    }
+
+    pub fn floor(self: Point2) Point2 {
+        return .{
+            .x = math.floor(self.x),
+            .y = math.floor(self.y),
+        };
+    }
+
+    pub fn ceil(self: Point2) Point2 {
+        return .{
+            .x = math.ceil(self.x),
+            .y = math.ceil(self.y),
         };
     }
 
@@ -75,14 +136,44 @@ pub const Grid = struct {
     w: usize,
     h: usize,
 
-    pub fn getF(self: Grid, point: Point2) u8 {
+    pub fn getValue(self: Grid, point: Point2) u8 {
         const x: usize = @floatToInt(usize, math.floor(point.x));
         const y: usize = @floatToInt(usize, math.floor(point.y));
 
         assert(x >= 0 and x < self.w);
         assert(y >= 0 and y < self.h);
         
-        return self.data[y + x*self.h];
+        return self.data[x + y*self.w];
+    }
+
+    pub fn allEqual(self: Grid, indices: []usize, value: u8) bool {
+        for (indices) |index| {
+            if (self.data[index] != value) return false;
+        }
+        return true;
+    }
+
+    pub fn count(self: Grid, indices: []usize) u64 {
+        var total: u64 = 0;
+        for (indices) |index| {
+            total += @as(u64, self.data[index]);
+        }
+        return total;
+    }
+
+    pub fn pointToIndex(self: Grid, point: Point2) usize {
+        const x: usize = @floatToInt(usize, math.floor(point.x));
+        const y: usize = @floatToInt(usize, math.floor(point.y));
+        return x + y*self.w;
+    }
+
+    pub fn indexToPoint(self: Grid, index: usize) Point2 {
+        const x = @intToFloat(f32, @mod(index, self.w));
+        const y = @intToFloat(f32, @divFloor(index, self.w));
+        return .{
+            .x = x,
+            .y = y,
+        };
     }
 
 };

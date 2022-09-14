@@ -406,7 +406,6 @@ pub fn run(
                 break :sl bot_data.Point2{.x = 0, .y = 0};
             };
             
-
             game_info = try bot_data.GameInfo.fromProto(
                 game_info_proto, 
                 player_id,
@@ -414,9 +413,9 @@ pub fn run(
                 start_location,
                 bot.mineral_patches,
                 bot.vespene_geysers,
-                arena
+                arena,
+                fixed_buffer
             );
-
             
             user_bot.onStart(bot, game_info, &actions);
             first_step_done = true;
@@ -451,6 +450,10 @@ pub fn run(
         const maybe_action_proto = actions.toProto();
         if (maybe_action_proto) |action_proto| {
             try client.sendActions(action_proto);
+        }
+
+        if (actions.debugCommandsToProto()) |debug_proto| {
+            client.sendDebugRequest(debug_proto);
         }
 
         _ = client.step(step_count);

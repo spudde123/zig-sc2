@@ -189,6 +189,30 @@ pub fn filter(
     return list.toOwnedSlice();
 }
 
+pub fn amountOfType(
+    units: []Unit,
+    unit_type: UnitId,
+) usize {
+    var count: usize = 0;
+    for (units) |unit| {
+        if (unit.unit_type == unit_type) count += 1;
+    }
+    return count;
+}
+
+pub fn amountOfTypes(
+    units: []Unit,
+    unit_types: []UnitId,
+) usize {
+    var count: usize = 0;
+    for (units) |unit| {
+        if (mem.indexOf(UnitId, unit_types, unit.unit_type)) |_| {
+            count += 1;
+        }
+    }
+    return count;
+}
+
 pub fn ofType(
     units: []Unit,
     unit_type: UnitId,

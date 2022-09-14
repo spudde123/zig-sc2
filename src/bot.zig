@@ -38,6 +38,30 @@ pub const Point3 = grids.Point3;
 pub const GridSize = grids.GridSize;
 pub const Rectangle = grids.Rectangle;
 
+pub const Color = struct {
+    r: u32,
+    g: u32,
+    b: u32,
+};
+
+pub const VisionBlocker = struct {
+    points: []GridPoint,
+};
+
+pub const Ramp = struct {
+    points: []GridPoint,
+    top_center: Point2,
+    bottom_center: Point2,
+    depot_first: ?Point2,
+    depot_second: ?Point2,
+    barracks_middle: ?Point2,
+};
+
+const RampsAndVisionBlockers = struct {
+    vbs: []VisionBlocker,
+    ramps: []Ramp,
+};
+
 pub const GameInfo = struct {
 
     pathing_grid: Grid,
@@ -58,7 +82,8 @@ pub const GameInfo = struct {
     enemy_start_locations: []Point2,
 
     expansion_locations: []Point2,
-    //allocator: mem.Allocator,
+    vision_blockers: []VisionBlocker,
+    ramps: []Ramp,
 
     pub fn fromProto(
         proto_data: sc2p.ResponseGameInfo,
@@ -67,17 +92,18 @@ pub const GameInfo = struct {
         start_location: Point2,
         minerals: []Unit,
         geysers: []Unit,
-        allocator: mem.Allocator
+        allocator: mem.Allocator,
+        temp_alloc: mem.Allocator,
     ) !GameInfo {
         
         const received_map_name = proto_data.map_name.data.?;
         var map_name = try allocator.alloc(u8, received_map_name.len);
         mem.copy(u8, map_name, received_map_name);
 
-        var opp_id: ?[]u8 = null;
+        var copied_opponent_id: ?[]u8 = null;
         if (opponent_id) |received_opponent_id| {
-            opp_id = try allocator.alloc(u8, received_opponent_id.len);
-            mem.copy(u8, opp_id.?, received_opponent_id);
+            copied_opponent_id = try allocator.alloc(u8, received_opponent_id.len);
+            mem.copy(u8, copied_opponent_id.?, received_opponent_id);
         } 
 
         var enemy_requested_race: Race = Race.none;
@@ -125,6 +151,7 @@ pub const GameInfo = struct {
         const terrain_proto_slice = terrain_proto.image.data.?;
         var terrain_slice = try allocator.alloc(u8, terrain_proto_slice.len);
         mem.copy(u8, terrain_slice, terrain_proto_slice);
+        const terrain_height = Grid{.data = terrain_slice, .w = map_size.w, .h = map_size.h};
 
         const pathing_proto = raw_proto.pathing_grid.data.?;
         assert(pathing_proto.bits_per_pixel.data.? == 1);
@@ -133,12 +160,13 @@ pub const GameInfo = struct {
         const pathing_proto_slice = pathing_proto.image.data.?;
         var pathing_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
         
-        const packed_int_type = PackedIntIo(u1, .Big);
+        const PackedIntType = PackedIntIo(u1, .Big);
         
         var index: usize = 0;
         while (index < map_size.w * map_size.h) : (index += 1) {
-            pathing_slice[index] = packed_int_type.get(pathing_proto_slice, index, 0);
+            pathing_slice[index] = PackedIntType.get(pathing_proto_slice, index, 0);
         }
+        const pathing_grid = Grid{.data = pathing_slice, .w = map_size.w, .h = map_size.h};
 
         const placement_proto = raw_proto.placement_grid.data.?;
         assert(placement_proto.bits_per_pixel.data.? == 1);
@@ -148,12 +176,21 @@ pub const GameInfo = struct {
         var placement_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
         index = 0;
         while (index < map_size.w * map_size.h) : (index += 1) {
-            placement_slice[index] = packed_int_type.get(placement_proto_slice, index, 0);
+            placement_slice[index] = PackedIntType.get(placement_proto_slice, index, 0);
         }
+        const placement_grid = Grid{.data = placement_slice, .w = map_size.w, .h = map_size.h};
+
+        const ramps_and_vbs = try generateRamps(
+            pathing_grid,
+            placement_grid,
+            terrain_height,
+            allocator,
+            temp_alloc,
+        );
 
         return GameInfo{
             .map_name = map_name,
-            .opponent_id = opponent_id,
+            .opponent_id = copied_opponent_id,
             .enemy_name = enemy_name orelse "Unknown",
             .enemy_requested_race = enemy_requested_race,
             .enemy_race = enemy_requested_race,
@@ -161,10 +198,12 @@ pub const GameInfo = struct {
             .playable_area = playable_area,
             .start_location = start_location,
             .enemy_start_locations = start_locations.toOwnedSlice(),
-            .terrain_height = Grid{.data = terrain_slice, .w = map_size.w, .h = map_size.h},
-            .pathing_grid = Grid{.data = pathing_slice, .w = map_size.w, .h = map_size.h},
-            .placement_grid = Grid{.data = placement_slice, .w = map_size.w, .h = map_size.h},
+            .terrain_height = terrain_height,
+            .pathing_grid = pathing_grid,
+            .placement_grid = placement_grid,
             .expansion_locations = generateExpansionLocations(minerals, geysers, allocator),
+            .vision_blockers = ramps_and_vbs.vbs,
+            .ramps = ramps_and_vbs.ramps,
         };
     }
 
@@ -273,22 +312,263 @@ pub const GameInfo = struct {
         return result;
     }
 
+    fn generateRamps(
+        pathing: Grid,
+        placement: Grid,
+        terrain_height: Grid,
+        perm_alloc: mem.Allocator,
+        temp_alloc: mem.Allocator,
+    ) !RampsAndVisionBlockers {
+        //@TODO: Need to remove rocks and minerals from ramps
+        //in the pathing grid
+        var groups = try temp_alloc.alloc(u8, pathing.data.len);
+        mem.set(u8, groups, 0);
+
+        var flood_fill_list = std.ArrayList(usize).init(temp_alloc);
+        var group_count: u8 = 0;
+
+        var current_group: [256]usize = undefined;
+        var current_group_size: usize = 0;
+
+        var vbs = std.ArrayList(VisionBlocker).init(perm_alloc);
+        var ramps = std.ArrayList(Ramp).init(perm_alloc);
+
+        for (pathing.data) |pathing_val, i| {
+            const placement_val = placement.data[i];
+            // If we find a legitimate starting point do a flood fill
+            // from there
+            if (pathing_val == 1 and placement_val == 0 and groups[i] == 0) {
+                group_count += 1;
+                groups[i] = group_count;
+
+                try flood_fill_list.append(i);
+                current_group[0] = i;
+                current_group_size = 1;
+
+                while (flood_fill_list.items.len > 0) {
+                    const cur = flood_fill_list.pop();
+                    const neighbors = [_]usize{
+                        cur + 1,
+                        cur - 1,
+                        cur - pathing.w,
+                        cur - pathing.w - 1,
+                        cur - pathing.w + 1,
+                        cur + pathing.w,
+                        cur + pathing.w - 1,
+                        cur + pathing.w + 1,
+                    };
+                    for (neighbors) |neighbor| {
+                        const neighbor_pathing = pathing.data[neighbor];
+                        const neighbor_placement = placement.data[neighbor];
+                        const neighbor_group = groups[neighbor];
+                        if (neighbor_pathing == 1 and neighbor_placement == 0 and neighbor_group == 0) {
+                            current_group[current_group_size] = neighbor;
+                            current_group_size += 1;
+                            groups[neighbor] = group_count;
+                            try flood_fill_list.append(neighbor);
+                        }
+                    }
+                }
+
+                // Check if this group has points in uneven terrain indicating a ramp
+
+                const current_group_slice = current_group[0..current_group_size];
+                const terrain_reference = terrain_height.data[current_group[0]];
+                var same_height = true;
+                var max_height = terrain_reference;
+                var min_height = terrain_reference;
+
+                for (current_group_slice) |point| {
+                    const height_val = terrain_height.data[point];
+
+                    if (height_val > max_height) {
+                        same_height = false;
+                        max_height = height_val;
+                    } else if (height_val < min_height) {
+                        same_height = false;
+                        min_height = height_val;
+                    }
+                }
+
+                const grid_width = terrain_height.w;
+
+                if (same_height) {
+                    var points = try perm_alloc.alloc(GridPoint, current_group_size);
+                    for (current_group_slice) |point, j| {
+                        const x = @intCast(i32, @mod(point, grid_width));
+                        const y = @intCast(i32, @divFloor(point, grid_width));
+                        points[j] = GridPoint{.x = x, .y = y};
+                    }
+                    const vision_blocker = VisionBlocker{.points = points};
+                    try vbs.append(vision_blocker);
+                } else {
+                    if (current_group_size < 8) continue;
+                    var points = try perm_alloc.alloc(GridPoint, current_group_size);
+
+                    var max_count: f32 = 0;
+                    var min_count: f32 = 0;
+                    var x_max: f32 = 0;
+                    var y_max: f32 = 0;
+                    var x_min: f32 = 0;
+                    var y_min: f32 = 0;
+
+                    for (current_group_slice) |point, j| {
+                        const x = @intCast(i32, @mod(point, grid_width));
+                        const y = @intCast(i32, @divFloor(point, grid_width));
+                        points[j] = GridPoint{.x = x, .y = y};
+
+                        const height_val = terrain_height.data[point];
+                        if (height_val == max_height) {
+                            max_count += 1;
+                            x_max += @intToFloat(f32, x) + 0.5;
+                            y_max += @intToFloat(f32, y) + 0.5;
+                        } else if (height_val == min_height) {
+                            min_count += 1;
+                            x_min += @intToFloat(f32, x) + 0.5;
+                            y_min += @intToFloat(f32, y) + 0.5;
+                        }
+                    }
+                    
+                    const bottom_center = Point2{.x = x_min / min_count, .y = y_min / min_count};
+                    const top_center = Point2{.x = x_max / max_count, .y = y_max / max_count};
+
+                    var depot_first: ?Point2 = null;
+                    var depot_second: ?Point2 = null;
+                    var barracks_middle: ?Point2 = null;
+
+                    // Only main base ramps will have depot
+                    // and barracks locations set
+                    const base_ramp_size = 16;
+                    if (points.len == base_ramp_size) {
+                        const ramp_dir = top_center.subtract(bottom_center).normalize();
+
+                        const depot_candidate1 = top_center.add(ramp_dir.rotate(math.pi / 2.0).multiply(2)).floor();
+                        const depot_index1 = placement.pointToIndex(depot_candidate1);
+                        depot_first = searchDepotPosition(placement, depot_index1);                        
+
+                        const depot_candidate2 = top_center.add(ramp_dir.rotate(-math.pi / 2.0).multiply(2)).floor();
+                        const depot_index2 = placement.pointToIndex(depot_candidate2);
+                        depot_second = searchDepotPosition(placement, depot_index2); 
+                        
+                        barracks_middle = top_center.add(ramp_dir.multiply(2)).floor().add(.{.x = 0.5, .y = 0.5});
+                    }
+
+                    const ramp = Ramp{
+                        .points = points,
+                        .top_center = top_center,
+                        .bottom_center = bottom_center,
+                        .depot_first = depot_first,
+                        .depot_second = depot_second,
+                        .barracks_middle = barracks_middle,
+                    };
+
+                    try ramps.append(ramp);
+                }
+            }    
+        }
+
+        return RampsAndVisionBlockers{
+            .vbs = vbs.toOwnedSlice(),
+            .ramps = ramps.toOwnedSlice(),
+        };
+    }
+
+    fn searchDepotPosition(placement: Grid, depot_index: usize) Point2 {
+        var res = Point2{.x = 0, .y = 0};
+        var max_blocked_neighbors: u64 = 0;
+
+        const grid_width = placement.w;
+        const grid_width_i32= @intCast(i32, placement.w);
+        const offsets = [_]i32{
+            0,
+            1,
+            -1,
+            grid_width_i32,
+            -grid_width_i32,
+            grid_width_i32 + 1,
+            grid_width_i32 - 1,
+            -grid_width_i32 - 1,
+            -grid_width_i32 + 1
+        };
+        
+
+        for (offsets) |offset| {
+            const current_index = @intCast(usize, @intCast(i32, depot_index) + offset);
+            var depot_points = [_]usize{
+                current_index,
+                current_index + 1,
+                current_index + grid_width,
+                current_index + grid_width + 1,
+            };
+            var edge = [_]usize{
+                current_index - grid_width - 1,
+                current_index - grid_width,
+                current_index - grid_width + 1,
+                current_index - grid_width + 2,
+                current_index + 2,
+                current_index + grid_width + 2,
+                current_index + 2*grid_width + 2,
+                current_index + 2*grid_width + 1,
+                current_index + 2*grid_width,
+                current_index + 2*grid_width - 1,
+                current_index + grid_width - 1,
+                current_index - 1,
+            };
+            const blocked_neighbors = 12 - placement.count(edge[0..]);
+            if (placement.allEqual(depot_points[0..], 1) and blocked_neighbors > max_blocked_neighbors) {
+                max_blocked_neighbors = blocked_neighbors;
+                res = placement.indexToPoint(current_index + grid_width + 1);
+            }
+        }
+        return res;
+    }
+
     pub fn update(bot: Bot) void {
         _ = bot;
     }
 
     pub fn getTerrainZ(self: GameInfo, pos: Point2) f32 {
-        const x = @floatToInt(i32, math.floor(pos.x));
-        const y = @floatToInt(i32, math.floor(pos.y));
+        const x = @floatToInt(usize, math.floor(pos.x));
+        const y = @floatToInt(usize, math.floor(pos.y));
         
         assert(x >= 0 and x < self.terrain_height.w);
         assert(y >= 0 and y < self.terrain_height.h);
 
-        const terrain_grid_height = self.terrain_height.h;
-        const grid_index = y + x * terrain_grid_height;
+        const terrain_grid_width = self.terrain_height.w;
+        const grid_index = x + y * terrain_grid_width;
         const terrain_value = @intToFloat(f32, self.terrain_height.data[grid_index]);
         return -16 + 32*terrain_value / 255;
     }
+
+    pub fn getMainBaseRamp(self: GameInfo) Ramp {
+        const main_base_ramp_size = 16;
+        var closest_dist: f32 = math.f32_max;
+        var main_base_ramp: Ramp = undefined;
+        for (self.ramps) |ramp| {
+            const dist = self.start_location.distanceSquaredTo(ramp.top_center);
+            if(ramp.points.len == main_base_ramp_size and dist < closest_dist) {
+                closest_dist = dist;
+                main_base_ramp = ramp;
+            }
+        }
+        return main_base_ramp;
+    }
+
+    pub fn getEnemyMainBaseRamp(self: GameInfo) Ramp {
+        const main_base_ramp_size = 16;
+        var closest_dist: f32 = math.f32_max;
+        var main_base_ramp: Ramp = undefined;
+        for (self.ramps) |ramp| {
+            const dist = self.enemy_start_locations[0].distanceSquaredTo(ramp.top_center);
+            if(ramp.points.len == main_base_ramp_size and dist < closest_dist) {
+                closest_dist = dist;
+                main_base_ramp = ramp;
+            }
+        }
+        return main_base_ramp;
+    }
+
+    
 };
 
 pub const Bot = struct {
@@ -684,6 +964,11 @@ pub const Actions = struct {
     game_data: GameData,
     order_list: std.ArrayList(BotAction),
     chat_messages: std.ArrayList(ChatAction),
+    debug_texts: std.ArrayList(sc2p.DebugText),
+    debug_lines: std.ArrayList(sc2p.DebugLine),
+    debug_boxes: std.ArrayList(sc2p.DebugBox),
+    debug_spheres: std.ArrayList(sc2p.DebugSphere),
+    debug_create_unit: std.ArrayList(sc2p.DebugCreateUnit),
     // Couldn't use an EnumSet due to the enum being non-exhaustive
     // And even if we make it exhaustive it was a problem seemingly
     // due to the size of the underlying enum
@@ -727,12 +1012,22 @@ pub const Actions = struct {
             .temp_allocator = temp_allocator,
             .order_list = try std.ArrayList(BotAction).initCapacity(perm_allocator, 400),
             .chat_messages = try std.ArrayList(ChatAction).initCapacity(perm_allocator, 10),
+            .debug_texts = std.ArrayList(sc2p.DebugText).init(temp_allocator),
+            .debug_lines = std.ArrayList(sc2p.DebugLine).init(temp_allocator),
+            .debug_boxes = std.ArrayList(sc2p.DebugBox).init(temp_allocator),
+            .debug_spheres = std.ArrayList(sc2p.DebugSphere).init(temp_allocator),
+            .debug_create_unit = std.ArrayList(sc2p.DebugCreateUnit).init(temp_allocator),
         };
     }
 
     pub fn clear(self: *Actions) void {
         self.order_list.clearRetainingCapacity();
         self.chat_messages.clearRetainingCapacity();
+        self.debug_texts.clearAndFree();
+        self.debug_lines.clearAndFree();
+        self.debug_boxes.clearAndFree();
+        self.debug_spheres.clearAndFree();
+        self.debug_create_unit.clearAndFree();
     }
 
     fn addAction(self: *Actions, order: BotAction) void {
@@ -954,7 +1249,7 @@ pub const Actions = struct {
     }
 
     pub fn toProto(self: *Actions) ?sc2p.RequestAction {
-        if (self.order_list.items.len == 0) return null;
+        if (self.order_list.items.len == 0 and self.chat_messages.items.len == 0) return null;
 
         const combined_length = self.order_list.items.len + self.chat_messages.items.len;
         var action_list = std.ArrayList(sc2p.Action).initCapacity(self.temp_allocator, combined_length) catch return null;
@@ -1020,6 +1315,96 @@ pub const Actions = struct {
         };
 
         return action_request;
+    }
+
+    pub fn debugTextWorld(self: *Actions, text: []const u8, pos: Point3, color: Color, size: u32) void {
+        const color_proto = sc2p.Color{
+            .r = .{.data = color.r},
+            .g = .{.data = color.g},
+            .b = .{.data = color.b},
+        };
+        const pos_proto = sc2p.Point{
+            .x = .{.data = pos.x},
+            .y = .{.data = pos.y},
+            .z = .{.data = pos.z},
+        };
+        var proto = sc2p.DebugText{
+            .color = .{.data = color_proto},
+            .text = .{.data = text},
+            .world_pos = .{.data = pos_proto},
+            .size = .{.data = size},
+        };
+        self.debug_texts.append(proto) catch return;
+    }
+
+    pub fn debugTextScreen(self: *Actions, text: []const u8, pos: Point2, color: Color, size: u32) void {
+        const color_proto = sc2p.Color{
+            .r = .{.data = color.r},
+            .g = .{.data = color.g},
+            .b = .{.data = color.b},
+        };
+        const pos_proto = sc2p.Point{
+            .x = .{.data = pos.x},
+            .y = .{.data = pos.y},
+            .z = .{.data = 0},
+        };
+        const proto = sc2p.DebugText{
+            .color = .{.data = color_proto},
+            .text = .{.data = text},
+            .virtual_pos = .{.data = pos_proto},
+            .size = .{.data = size},
+        };
+        self.debug_texts.append(proto) catch return;
+    }
+
+    // @TODO: Implement boxes, lines, spheres, debug unit creation
+    pub fn debugCommandsToProto(self: *Actions) ?sc2p.RequestDebug {
+        var command_list = std.ArrayList(sc2p.DebugCommand).init(self.temp_allocator);
+
+        var debug_draw = sc2p.DebugDraw{};
+        var add_draw_command = false;
+
+        if (self.debug_texts.items.len > 0) {
+            add_draw_command = true;
+            debug_draw.text.data = self.debug_texts.items;
+        }
+
+        if (self.debug_lines.items.len > 0) {
+            add_draw_command = true;
+            debug_draw.lines.data = self.debug_lines.items;
+        }
+
+        if (self.debug_boxes.items.len > 0) {
+            add_draw_command = true;
+            debug_draw.boxes.data = self.debug_boxes.items;
+        }
+
+        if (self.debug_spheres.items.len > 0) {
+            add_draw_command = true;
+            debug_draw.spheres.data = self.debug_spheres.items;
+        }
+
+        if (add_draw_command) {
+            const command = sc2p.DebugCommand{
+                .draw = .{.data = debug_draw},
+            };
+            command_list.append(command) catch return null;
+        }
+
+        for (self.debug_create_unit.items) |debug_create_unit| {
+            const command = sc2p.DebugCommand{
+                .create_unit = .{.data = debug_create_unit},
+            };
+            command_list.append(command) catch return null;
+        }
+
+        if (command_list.items.len == 0) return null;
+
+        const debug_proto = sc2p.RequestDebug{
+            .commands = .{.data = command_list.items},
+        };
+
+        return debug_proto;
     }
 
 };
