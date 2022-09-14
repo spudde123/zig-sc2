@@ -303,10 +303,8 @@ pub const GameInfo = struct {
                         result[group_index] = point;
                         min_total_distance = total_distance;
                     }
-                    
                 }
             }
-
         }
 
         return result;
@@ -598,6 +596,13 @@ pub const Bot = struct {
 
     game_loop: u32,
     time: f32,
+
+    pending_units: std.AutoHashMap(UnitId, u64),
+    pending_upgrades: std.AutoHashMap(UpgradeId, f32),
+
+    visibility: Grid,
+    creep: Grid,
+
     result: ?Result,
 
     pub fn fromProto(
@@ -622,6 +627,8 @@ pub const Bot = struct {
         var mineral_patches = std.ArrayList(Unit).init(allocator);
         var vespene_geysers = std.ArrayList(Unit).init(allocator);
         var watch_towers = std.ArrayList(Unit).init(allocator);
+        var pending_units = std.AutoHashMap(UnitId, u64).init(allocator);
+        var pending_upgrades = std.AutoHashMap(UpgradeId, f32).init(allocator);
 
         if (obs.units.data) |units| {
             for (units) |unit| {
@@ -712,7 +719,7 @@ pub const Bot = struct {
                     .z = z,
                     .facing = unit.facing.data orelse 0,
                     .radius = unit.radius.data orelse 0,
-                    .build_progress = unit.build_progress.data orelse 0,
+                    .build_progress = unit.build_progress.data orelse 1,
                     .cloak = unit.cloak.data orelse CloakState.unknown,
                     .buff_ids = buff_ids.toOwnedSlice(),
 
@@ -760,6 +767,11 @@ pub const Bot = struct {
 
                 if (u.display_type == DisplayType.placeholder) {
                     try placeholders.append(u);
+                    if (pending_units.get(u.unit_type)) |pending_count| {
+                        try pending_units.put(u.unit_type, pending_count + 1);
+                    } else {
+                        try pending_units.put(u.unit_type, 1);
+                    }
                     continue;
                 }
 
@@ -767,8 +779,44 @@ pub const Bot = struct {
                     .self, .ally => {
                         if (unit_data.attributes.contains(.structure)) {
                             try own_structures.append(u);
+
+                            if (u.build_progress < 1) {
+                                if (pending_units.get(u.unit_type)) |pending_count| {
+                                    try pending_units.put(u.unit_type, pending_count + 1);
+                                } else {
+                                    try pending_units.put(u.unit_type, 1);
+                                }
+                            } else {
+                                for (u.orders) |order| {
+                                    if (game_data.build_map.get(order.ability_id)) |training_unit_id| {
+                                        if (pending_units.get(training_unit_id)) |pending_count| {
+                                            try pending_units.put(training_unit_id, pending_count + 1);
+                                        } else {
+                                            try pending_units.put(training_unit_id, 1);
+                                        }
+                                    }
+
+                                    if (game_data.upgrade_map.get(order.ability_id)) |ongoing_upgrade_id| {
+                                        try pending_upgrades.put(ongoing_upgrade_id, order.progress);
+                                    }
+                                }
+                            }
+                            
                         } else {
                             try own_units.append(u);
+
+                            // Make sure we don't count terran buildings twice
+                            if (u.unit_type != UnitId.SCV) {
+                                for (u.orders) |order| {
+                                    if (game_data.build_map.get(order.ability_id)) |training_unit_id| {
+                                        if (pending_units.get(training_unit_id)) |pending_count| {
+                                            try pending_units.put(training_unit_id, pending_count + 1);
+                                        } else {
+                                            try pending_units.put(training_unit_id, 1);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     },
                     .enemy => {
@@ -830,6 +878,36 @@ pub const Bot = struct {
             }
         }
 
+        const upgrade_proto = obs.player.data.?.upgrade_ids.data;
+        if (upgrade_proto) |upgrade_slice| {
+            for (upgrade_slice) |upgrade| {
+                const upgrade_id = @intToEnum(UpgradeId, upgrade);
+                try pending_upgrades.put(upgrade_id, 1);
+            }
+        }
+
+        const visibility_proto = obs.map_state.data.?.visibility.data.?;
+        assert(visibility_proto.bits_per_pixel.data.? == 8);
+
+        const grid_size_proto = visibility_proto.size.data.?;
+        const grid_width = @intCast(usize, grid_size_proto.x.data.?);
+        const grid_height = @intCast(usize, grid_size_proto.y.data.?);
+
+        var visibility_data = try allocator.dupe(u8, visibility_proto.image.data.?);
+        const visibility_grid = Grid{.data = visibility_data, .w = grid_width, .h = grid_height};
+
+        const creep_proto = obs.map_state.data.?.creep.data.?;
+        assert(creep_proto.bits_per_pixel.data.? == 1);
+        const creep_proto_slice = creep_proto.image.data.?;
+        var creep_data = try allocator.alloc(u8, grid_width*grid_height);
+        const PackedIntType = PackedIntIo(u1, .Big);
+        
+        var index: usize = 0;
+        while (index < grid_width * grid_height) : (index += 1) {
+            creep_data[index] = PackedIntType.get(creep_proto_slice, index, 0);
+        }
+        const creep_grid = Grid{.data = creep_data, .w = grid_width, .h = grid_height};
+
         const player_common = response.observation.data.?.player_common.data.?;
 
         return Bot{
@@ -855,6 +933,10 @@ pub const Bot = struct {
             .army_count = player_common.army_count.data orelse 0,
             .warp_gate_count = player_common.warp_gate_count.data orelse 0,
             .larva_count = player_common.larva_count.data orelse 0,
+            .pending_units = pending_units,
+            .pending_upgrades = pending_upgrades,
+            .visibility = visibility_grid,
+            .creep = creep_grid,
         };
     }
 
@@ -895,6 +977,20 @@ pub const Bot = struct {
 
             }
         }
+    }
+
+    pub fn unitsPending(self: Bot, id: UnitId) u64 {
+        if (self.pending_units.get(id)) |count| {
+            return count;
+        }
+        return 0;
+    }
+
+    pub fn upgradePending(self: Bot, id: UpgradeId) f32 {
+        if (self.pending_upgrades.get(id)) |progress| {
+            return progress;
+        }
+        return 0;
     }
     
 };
@@ -1441,6 +1537,8 @@ pub const GameData = struct {
 
     upgrades: std.AutoHashMap(UpgradeId, UpgradeData),
     units: std.AutoHashMap(UnitId, UnitData),
+    build_map: std.AutoHashMap(AbilityId, UnitId),
+    upgrade_map: std.AutoHashMap(AbilityId, UpgradeId),
 
     pub fn fromProto(
         proto:sc2p.ResponseData,
@@ -1450,6 +1548,8 @@ pub const GameData = struct {
         var gd = GameData{
             .upgrades = std.AutoHashMap(UpgradeId, UpgradeData).init(allocator),
             .units = std.AutoHashMap(UnitId, UnitData).init(allocator),
+            .build_map = std.AutoHashMap(AbilityId, UnitId).init(allocator),
+            .upgrade_map = std.AutoHashMap(AbilityId, UpgradeId).init(allocator),
         };
 
         const proto_upgrades = proto.upgrades.data.?;
@@ -1464,6 +1564,7 @@ pub const GameData = struct {
             };
 
             try gd.upgrades.put(upg.id, upg);
+            try gd.upgrade_map.put(upg.research_ability_id, upg.id);
         }
 
         const proto_units = proto.units.data.?;
@@ -1535,6 +1636,7 @@ pub const GameData = struct {
             };
 
             try gd.units.put(unit.id, unit);
+            try gd.build_map.put(unit.train_ability_id, unit.id);
         }
 
         return gd;
