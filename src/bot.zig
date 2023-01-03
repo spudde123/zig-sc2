@@ -30,6 +30,8 @@ pub const OrderTarget = unit_group.OrderTarget;
 pub const OrderType = unit_group.OrderType;
 pub const UnitOrder = unit_group.UnitOrder;
 pub const RallyTarget = unit_group.RallyTarget;
+pub const Effect = unit_group.Effect;
+pub const SensorTower = unit_group.SensorTower;
 
 pub const Grid = grids.Grid;
 pub const GridPoint = grids.GridPoint;
@@ -603,6 +605,10 @@ pub const Bot = struct {
     visibility: Grid,
     creep: Grid,
 
+    dead_units: []u64,
+    effects: []Effect,
+    sensor_towers: []SensorTower,
+
     result: ?Result,
 
     pub fn fromProto(
@@ -908,6 +914,45 @@ pub const Bot = struct {
         }
         const creep_grid = Grid{.data = creep_data, .w = grid_width, .h = grid_height};
 
+
+        const effects_proto = obs.effects.data;
+        var effects: []Effect = &[_]Effect{};
+        if (effects_proto) |effect_proto_slice| {
+            effects = try allocator.alloc(Effect, effect_proto_slice.len);
+            for (effect_proto_slice) |effect_proto, effect_index| {
+                var points = try allocator.alloc(Point2, effect_proto.pos.data.?.len);
+                for (effect_proto.pos.data.?) |pos_proto, pos_index| {
+                    points[pos_index] = Point2{.x = pos_proto.x.data.?, .y = pos_proto.y.data.?};
+                }
+                effects[effect_index] = Effect{
+                    .id = @intToEnum(EffectId, effect_proto.effect_id.data.?),
+                    .alliance = effect_proto.alliance.data.?,
+                    .positions = points,
+                    .radius = effect_proto.radius.data.?,
+                };
+            }
+        }
+
+
+        var sensor_towers: []SensorTower = &[_]SensorTower{};
+        if (obs.radars.data) |sensor_towers_proto| {
+            sensor_towers = try allocator.alloc(SensorTower, sensor_towers_proto.len);
+            for (sensor_towers_proto) |tower_proto, tower_index| {
+                sensor_towers[tower_index] = SensorTower{
+                    .position = Point2{.x = tower_proto.pos.data.?.x.data.?, .y = tower_proto.pos.data.?.y.data.?},
+                    .radius = tower_proto.radius.data.?,
+                };
+            }
+        }
+
+
+        var dead_units: []u64 = &[_]u64{};
+        if (obs.event.data) |events_proto| {
+            if (events_proto.dead_units.data) |dead_unit_slice| {
+                dead_units = try allocator.dupe(u64, dead_unit_slice);
+            }
+        }
+
         const player_common = response.observation.data.?.player_common.data.?;
 
         return Bot{
@@ -937,6 +982,9 @@ pub const Bot = struct {
             .pending_upgrades = pending_upgrades,
             .visibility = visibility_grid,
             .creep = creep_grid,
+            .dead_units = dead_units,
+            .effects = effects,
+            .sensor_towers = sensor_towers,
         };
     }
 

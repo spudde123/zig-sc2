@@ -18,6 +18,18 @@ const Attribute = sc2p.Attribute;
 
 const Point2 = @import("grids.zig").Point2;
 
+pub const Effect = struct {
+    id: EffectId,
+    alliance: Alliance,
+    positions: []Point2,
+    radius: f32,
+};
+
+pub const SensorTower = struct {
+    position: Point2,
+    radius: f32,
+};
+
 pub const OrderType = enum(u8) {
     empty,
     position,
@@ -176,13 +188,13 @@ pub fn findFurthestUnit(units: []Unit, pos: Point2) UnitDistanceResult {
 
 pub fn filter(
     units: []Unit,
+    allocator: mem.Allocator,
     context: anytype, 
-    filterFn: fn (unit: Unit, context: anytype) bool,
-    allocator: mem.Allocator
+    comptime filterFn: fn (context: @TypeOf(context), unit: Unit) bool,
 ) []Unit {
     var list = std.ArrayList(Unit).init(allocator);
     for (units) |unit| {
-        if (filterFn(unit, context)) {
+        if (filterFn(context, unit)) {
             list.append(unit) catch continue;
         }
     }
