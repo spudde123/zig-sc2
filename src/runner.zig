@@ -5,6 +5,7 @@ const ChildProcess = std.ChildProcess;
 const time = std.time;
 const log = std.log;
 const fs = std.fs;
+const builtin = @import("builtin");
 
 const sc2p = @import("sc2proto.zig");
 const ws = @import("client.zig");
@@ -69,11 +70,15 @@ const Sc2Paths = struct {
     base_folder: []const u8,
     map_folder: []const u8,
     latest_binary: []const u8,
-    support64_folder: []const u8,
+    working_directory: ?[]const u8,
 };
 
 const LocalRunSetup = struct {
-    sc2_base_folder: []const u8 = "C:/Program Files (x86)/StarCraft II/",
+    sc2_base_folder: []const u8 = switch (builtin.os.tag) {
+        .windows => "C:/Program Files (x86)/StarCraft II/",
+        .macos => "/Applications/StarCraft II/",
+        else => unreachable,
+    },
     game_port: u16 = 5001,
 };
 
@@ -102,12 +107,19 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
     if (max_version == 0) return Sc2PathError.no_version_folders_found;
 
     log.info("Using game version {d}\n", .{max_version});
-
     return Sc2Paths{
         .base_folder = base_folder,
         .map_folder = try mem.concat(allocator, u8, &map_concat),
-        .support64_folder = try mem.concat(allocator, u8, &support64_concat),
-        .latest_binary = try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{versions_path, max_version}),
+        .working_directory = switch (builtin.os.tag) {
+            .windows => try mem.concat(allocator, u8, &support64_concat),
+            .macos => null,
+            else => unreachable,
+        },
+        .latest_binary = switch (builtin.os.tag) {
+            .windows => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{versions_path, max_version}),
+            .macos => try fmt.allocPrint(allocator, "{s}Base{d}/SC2.app/Contents/MacOS/SC2", .{versions_path, max_version}),
+            else => unreachable,
+        },
     };
 }
 
@@ -264,20 +276,20 @@ pub fn run(
         };
         
         sc2_process = ChildProcess.init(sc2_args[0..], arena);
-        sc2_process.?.cwd = sc2_paths.support64_folder;
+        sc2_process.?.cwd = sc2_paths.working_directory;
 
         try sc2_process.?.spawn();
     }
 
-    const seconds_to_try = 10;
+    const times_to_try = 20;
     var attempt: u32 = 0;
 
     var client: ws.WebSocketClient = undefined;
     var connection_ok = false;
-    while (!connection_ok and attempt < seconds_to_try) : (attempt += 1) {
+    while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
         std.debug.print("Doing ws connection loop {d}\n", .{attempt});
         client = ws.WebSocketClient.init(host, game_port, arena, fixed_buffer) catch {
-            time.sleep(time.ns_per_s);
+            time.sleep(2*time.ns_per_s);
             continue;
         };
         connection_ok = true;
