@@ -86,7 +86,7 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
     const support64_concat = [_][]const u8{base_folder, "/Support64/"};
     const versions_concat = [_][]const u8{base_folder, "/Versions/"};
     const versions_path = try mem.concat(allocator, u8, &versions_concat);
-    var dir = try fs.openDirAbsolute(versions_path, .{.iterate = true});
+    var dir = try fs.openIterableDirAbsolute(versions_path, .{});
     defer dir.close();
 
     var iter = dir.iterate();
@@ -114,15 +114,13 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
 fn readArguments(allocator: mem.Allocator) ProgramArguments {
     var program_args = ProgramArguments{};
 
-    var arg_iter = std.process.args();
-
+    var arg_iter = std.process.argsWithAllocator(allocator) catch return program_args;
     // Skip exe name
     _ = arg_iter.skip();
 
     var current_input_type = InputType.none;
 
-    while (arg_iter.next(allocator)) |arg| {
-        const argument = arg catch break;
+    while (arg_iter.next()) |argument| {
         
         if (mem.startsWith(u8, argument, "-")) {
             if (mem.eql(u8, argument, "--LadderServer")) {
@@ -233,7 +231,7 @@ pub fn run(
     var host: []const u8 = "127.0.0.1";
     var game_port: u16 = local_run.game_port;
     var start_port: u16 = 5002;
-    var sc2_process: ?*ChildProcess = null;
+    var sc2_process: ?ChildProcess = null;
     var sc2_paths: Sc2Paths = undefined;
     
     if (program_args.ladder_server) |ladder_server| {
@@ -265,9 +263,7 @@ pub fn run(
             sc2_paths.base_folder
         };
         
-        sc2_process = ChildProcess.init(sc2_args[0..], arena) catch |err| {
-            return err;
-        };
+        sc2_process = ChildProcess.init(sc2_args[0..], arena);
         sc2_process.?.cwd = sc2_paths.support64_folder;
 
         try sc2_process.?.spawn();
@@ -289,7 +285,8 @@ pub fn run(
 
     if (!connection_ok) {
         log.err("Failed to connect to sc2\n", .{});
-        if (sc2_process) |sc2| {
+        
+        if (sc2_process) |*sc2| {
             _ = try sc2.kill();
         }
         return;
@@ -297,9 +294,8 @@ pub fn run(
     
     defer client.deinit();
     defer {
-        if (sc2_process) |sc2| {
+        if (sc2_process) |_| {
             _ = client.quit();
-            sc2.deinit();
         }
     }
 
@@ -507,7 +503,6 @@ test "runner_test" {
             actions: *bot_data.Actions
         ) void {
             _ = self;
-            _ = game_info;
             const enemy_start_location = game_info.enemy_start_locations[0];
 
             for (bot.units) |unit| {
@@ -571,7 +566,6 @@ test "runner_test_expansion_locations" {
             for (game_info.expansion_locations) |exp| {
                 std.debug.print("Loc: {d} {d}\n", .{exp.x, exp.y});
             }
-            _ = game_info;
             _ = actions;
         }
 

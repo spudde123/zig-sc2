@@ -81,7 +81,8 @@ pub const WebSocketClient = struct {
         const socket = try net.tcpConnectToAddress(addr);
 
         const seed = @truncate(u64, @bitCast(u128, time.nanoTimestamp()));
-        const prng = std.rand.DefaultPrng.init(seed).random();
+        var xoshiro = std.rand.DefaultPrng.init(seed);
+        const prng = xoshiro.random();
         const req_buffer = try perm_alloc.alloc(u8, 1024*1000);
         const storage = try perm_alloc.alloc(u8, 5*1024*1000);
 
@@ -203,7 +204,7 @@ pub const WebSocketClient = struct {
             .disable_fog = .{.data = false},
             .realtime = .{.data = realtime},
         };
-
+        
         const create_game_req = sc2p.Request{.create_game = .{.data = create_game}};
         const create_game_payload = writer.encodeBaseStruct(create_game_req);
         
@@ -216,7 +217,7 @@ pub const WebSocketClient = struct {
         const cg_data = create_game_res.create_game.data.?;
 
         if (cg_data.error_code.data) |code| {
-            std.debug.print("Create game error: {d}\n", .{code});
+            std.debug.print("Create game error: {d}\n", .{@enumToInt(code)});
             if (cg_data.error_details.data) |details| {
                 std.debug.print("{s}\n", .{details});
             }
@@ -226,7 +227,7 @@ pub const WebSocketClient = struct {
         if (create_game_res.status.data.? != sc2p.Status.init_game) {
             std.debug.print(
                 "Wrong status after create game: {d}\n",
-                .{create_game_res.status.data.?}
+                .{@enumToInt(create_game_res.status.data.?)}
             );
             return .{};
         }
