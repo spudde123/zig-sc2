@@ -1028,17 +1028,11 @@ pub const Bot = struct {
     }
 
     pub fn unitsPending(self: Bot, id: UnitId) u64 {
-        if (self.pending_units.get(id)) |count| {
-            return count;
-        }
-        return 0;
+        return self.pending_units.get(id) orelse 0;
     }
 
     pub fn upgradePending(self: Bot, id: UpgradeId) f32 {
-        if (self.pending_upgrades.get(id)) |progress| {
-            return progress;
-        }
-        return 0;
+        return self.pending_upgrades.get(id) orelse 0;
     }
     
 };
