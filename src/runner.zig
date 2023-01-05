@@ -456,7 +456,9 @@ pub fn run(
         }
 
         if (actions.toProto()) |action_proto| {
-            try client.sendActions(action_proto);
+            client.sendActions(action_proto) catch {
+                log.err("Error sending actions at game loop {d}\n", .{bot.game_loop});
+            };
         }
 
         if (actions.debugCommandsToProto()) |debug_proto| {
