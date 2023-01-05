@@ -71,13 +71,12 @@ pub const ProtoReader = struct {
 
             var recognized_field = false;
             inline for (@typeInfo(T).Struct.fields) |field| {
-                var obj_field = @field(res, field.name);
+                var obj_field = &@field(res, field.name);
                 
                 const field_num = obj_field.field_num;
 
                 if (header.field_number == field_num) {
                     recognized_field = true;
-                    //std.debug.print("{s}\n", .{field.name});
                     const data_info = @typeInfo(@TypeOf(obj_field.data));
                     const child_type = data_info.Optional.child;
                     const child_info = @typeInfo(child_type);
@@ -120,9 +119,7 @@ pub const ProtoReader = struct {
                                                 const enum_int = try self.decodeUInt64();
                                                 try obj_field.list.?.append(@intToEnum(ptr.child, enum_int));
                                             },
-                                            else => {
-                                                
-                                            }
+                                            else => unreachable,
                                         }
                                     }
                                 }
@@ -157,8 +154,6 @@ pub const ProtoReader = struct {
                         },
                         else => unreachable,
                     }
-
-                    @field(res, field.name) = obj_field;
                 }
             }
 
@@ -306,7 +301,7 @@ pub const ProtoWriter = struct {
                                         }
                                     }
                                 },
-                                else => {}
+                                else => unreachable,
                             }
                         }
                     },
@@ -344,9 +339,7 @@ pub const ProtoWriter = struct {
                         self.cursor += self.encodeProtoHeader(field_header);
                         self.cursor += self.encodeUInt64(0);
                     },
-                    else => {
-                        unreachable;
-                    }
+                    else => unreachable,
                 }
             }
         }
