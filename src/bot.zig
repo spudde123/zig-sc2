@@ -1186,8 +1186,7 @@ pub const Actions = struct {
     }
 
     pub fn train(self: *Actions, structure_tag: u64, unit_type: UnitId, queue: bool) void {
-        const maybe_unit_data = self.game_data.units.get(unit_type);
-        if (maybe_unit_data) |unit_data| {
+        if (self.game_data.units.get(unit_type)) |unit_data| {
             const action = BotAction{
                 .unit = structure_tag,
                 .data = .{
@@ -1203,8 +1202,7 @@ pub const Actions = struct {
     }
 
     pub fn build(self: *Actions, unit_tag: u64, structure_to_build: UnitId, pos: Point2, queue: bool) void {
-        const maybe_structure_data = self.game_data.units.get(structure_to_build);
-        if (maybe_structure_data) |structure_data| {
+        if (self.game_data.units.get(structure_to_build)) |structure_data| {
             const action = BotAction{
                 .unit = unit_tag,
                 .data = .{
@@ -1221,8 +1219,7 @@ pub const Actions = struct {
 
     /// This is mainly for building gas structures. target_tag needs to be the geysir tag
     pub fn buildOnUnit(self: *Actions, unit_tag: u64, structure_to_build: UnitId, target_tag: u64, queue: bool) void {
-        const maybe_structure_data = self.game_data.units.get(structure_to_build);
-        if (maybe_structure_data) |structure_data| {
+        if (self.game_data.units.get(structure_to_build)) |structure_data| {
             const action = BotAction{
                 .unit = unit_tag,
                 .data = .{
@@ -1310,8 +1307,7 @@ pub const Actions = struct {
     }
 
     pub fn research(self: *Actions, structure_tag: u64, upgrade: UpgradeId, queue: bool) void {
-        const maybe_upgrade_data = self.game_data.upgrades.get(upgrade);
-        if (maybe_upgrade_data) |upgrade_data| {
+        if (self.game_data.upgrades.get(upgrade)) |upgrade_data| {
             const action = BotAction{
                 .unit = structure_tag,
                 .data = .{
@@ -1415,9 +1411,8 @@ pub const Actions = struct {
         for (self.order_list.items) |order| {
             
             const hashable = order.data.toHashable();
-            const maybe_index = action_hashmap.get(hashable);
 
-            if (maybe_index) |index| {
+            if (action_hashmap.get(hashable)) |index| {
                 raw_unit_commands.items[index].unit_tags.list.?.append(order.unit) catch break;
             } else {
                 var unit_command = sc2p.ActionRawUnitCommand{

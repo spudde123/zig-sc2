@@ -392,8 +392,7 @@ pub fn run(
 
         const all_own_unit_tags = bot.getAllOwnUnitTags(fixed_buffer);
         if (all_own_unit_tags.len > 0) {
-            const maybe_abilities_proto = client.getAvailableAbilities(all_own_unit_tags, true);
-            if (maybe_abilities_proto) |abilities_proto| {
+            if (client.getAvailableAbilities(all_own_unit_tags, true)) |abilities_proto| {
                 bot.setUnitAbilitiesFromProto(abilities_proto, fixed_buffer);
             }
         }
@@ -434,8 +433,7 @@ pub fn run(
         // Set enemy race to the observed race when we can
         if (game_info.enemy_race == .random and (bot.enemy_units.len > 0 or bot.enemy_structures.len > 0)) {
             const enemy_unit = if (bot.enemy_units.len > 0) bot.enemy_units[0] else bot.enemy_structures[0];
-            const maybe_unit_data = game_data.units.get(enemy_unit.unit_type);
-            if (maybe_unit_data) |unit_data| {
+            if (game_data.units.get(enemy_unit.unit_type)) |unit_data| {
                 game_info.enemy_race = unit_data.race;
             } else {
                 log.debug("Unit {d} was not found in data\n", .{enemy_unit.unit_type});
@@ -457,8 +455,7 @@ pub fn run(
             break;
         }
 
-        const maybe_action_proto = actions.toProto();
-        if (maybe_action_proto) |action_proto| {
+        if (actions.toProto()) |action_proto| {
             try client.sendActions(action_proto);
         }
 
