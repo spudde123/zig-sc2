@@ -252,3 +252,74 @@ pub fn ofTypes(
     }
     return list.toOwnedSlice();
 }
+
+fn unitTypeMatches(context: UnitId, unit: Unit) bool {
+    return context == unit.unit_type;
+}
+
+fn unitTypesMatch(context: []UnitId, unit: Unit) bool {
+    for (context) |unit_id| {
+        if(unit.unit_type == unit_id) return true;
+    }
+    return false;
+}
+
+fn unitTypesDontMatch(context: []UnitId, unit: Unit) bool {
+    for (context) |unit_id| {
+        if(unit.unit_type == unit_id) return false;
+    }
+    return true;
+}
+
+pub fn includeType(unit_type: UnitId, units: []Unit) UnitIterator(UnitId, unitTypesMatch) {
+    return UnitIterator(UnitId, unitTypeMatches){.buffer = units, .context = unit_type};
+}
+
+pub fn includeTypes(unit_types: []UnitId, units: []Unit) UnitIterator([]UnitId, unitTypesMatch) {
+    return UnitIterator([]UnitId, unitTypesMatch){.buffer = units, .context = unit_types};
+}
+
+pub fn excludeTypes(unit_types: []UnitId, units: []Unit) UnitIterator([]UnitId, unitTypesDontMatch) {
+    return UnitIterator([]UnitId, unitTypesDontMatch){.buffer = units, .context = unit_types};
+}
+
+pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: ContextType, unit: Unit) bool) type {
+    return struct {
+        index: usize = 0,
+        buffer: []Unit,
+        context: ContextType,
+
+        const Self = @This();
+        
+        pub fn next(self: *Self) ?Unit {
+            if (self.index >= self.buffer.len) return null;
+
+            var current = self.index;
+            var result: ?Unit = null;
+            while (current < self.buffer.len) {
+                if (filterFn(self.context, self.buffer[current])) {
+                    result = self.buffer[current];
+                    current += 1;
+                    break;
+                }
+                current += 1;
+            }
+            self.index = current;
+            return result;
+        }
+
+        pub fn reset(self: *Self) void {
+            self.index = 0;
+        }
+
+        pub fn count(self: *Self) usize {
+            self.index = 0;    
+
+            var result: usize = 0;
+            while (self.next()) |_| {
+                result += 1;
+            }
+            return result;
+        }
+    };
+}
