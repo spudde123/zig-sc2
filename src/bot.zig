@@ -98,7 +98,7 @@ pub const GameInfo = struct {
         temp_alloc: mem.Allocator,
     ) !GameInfo {
         
-        const received_map_name = proto_data.map_name.data.?;
+        const received_map_name = proto_data.map_name.?;
         var map_name = try allocator.alloc(u8, received_map_name.len);
         mem.copy(u8, map_name, received_map_name);
 
@@ -111,11 +111,11 @@ pub const GameInfo = struct {
         var enemy_requested_race: Race = Race.none;
         var enemy_name: ?[]u8 = null;
 
-        for (proto_data.player_info.data.?) |player_info| {
-            if (player_info.player_id.data.? != player_id) {
-                enemy_requested_race = player_info.race_requested.data.?;
+        for (proto_data.player_info.?) |player_info| {
+            if (player_info.player_id.? != player_id) {
+                enemy_requested_race = player_info.race_requested.?;
 
-                if (player_info.player_name.data) |received_enemy_name| {
+                if (player_info.player_name) |received_enemy_name| {
                     enemy_name = try allocator.alloc(u8, received_enemy_name.len);
                     mem.copy(u8, enemy_name.?, received_enemy_name);
                 }
@@ -124,42 +124,42 @@ pub const GameInfo = struct {
             }
         }
 
-        const raw_proto = proto_data.start_raw.data.?;
+        const raw_proto = proto_data.start_raw.?;
 
-        const map_size_proto = raw_proto.map_size.data.?;
-        const map_size = GridSize{.w = @intCast(usize, map_size_proto.x.data.?), .h = @intCast(usize, map_size_proto.y.data.?)};
+        const map_size_proto = raw_proto.map_size.?;
+        const map_size = GridSize{.w = @intCast(usize, map_size_proto.x.?), .h = @intCast(usize, map_size_proto.y.?)};
 
-        const playable_area_proto = raw_proto.playable_area.data.?;
-        const rect_p0 = playable_area_proto.p0.data.?;
-        const rect_p1 = playable_area_proto.p1.data.?;
+        const playable_area_proto = raw_proto.playable_area.?;
+        const rect_p0 = playable_area_proto.p0.?;
+        const rect_p1 = playable_area_proto.p1.?;
 
         const playable_area = Rectangle{
-            .p0 = .{.x = rect_p0.x.data.?, .y = rect_p0.y.data.?},
-            .p1 = .{.x = rect_p1.x.data.?, .y = rect_p1.y.data.?},
+            .p0 = .{.x = rect_p0.x.?, .y = rect_p0.y.?},
+            .p1 = .{.x = rect_p1.x.?, .y = rect_p1.y.?},
         };
 
         var start_locations = std.ArrayList(Point2).init(allocator);
-        for (raw_proto.start_locations.data.?) |loc_proto| {
+        for (raw_proto.start_locations.?) |loc_proto| {
             try start_locations.append(.{
-                .x = loc_proto.x.data.?,
-                .y = loc_proto.y.data.?,
+                .x = loc_proto.x.?,
+                .y = loc_proto.y.?,
             });
         }
 
-        const terrain_proto = raw_proto.terrain_height.data.?;
-        assert(terrain_proto.bits_per_pixel.data.? == 8);
-        assert(terrain_proto.size.data.?.x.data.? == map_size.w);
-        assert(terrain_proto.size.data.?.y.data.? == map_size.h);
-        const terrain_proto_slice = terrain_proto.image.data.?;
+        const terrain_proto = raw_proto.terrain_height.?;
+        assert(terrain_proto.bits_per_pixel.? == 8);
+        assert(terrain_proto.size.?.x.? == map_size.w);
+        assert(terrain_proto.size.?.y.? == map_size.h);
+        const terrain_proto_slice = terrain_proto.image.?;
         var terrain_slice = try allocator.alloc(u8, terrain_proto_slice.len);
         mem.copy(u8, terrain_slice, terrain_proto_slice);
         const terrain_height = Grid{.data = terrain_slice, .w = map_size.w, .h = map_size.h};
 
-        const pathing_proto = raw_proto.pathing_grid.data.?;
-        assert(pathing_proto.bits_per_pixel.data.? == 1);
-        assert(pathing_proto.size.data.?.x.data.? == map_size.w);
-        assert(pathing_proto.size.data.?.y.data.? == map_size.h);
-        const pathing_proto_slice = pathing_proto.image.data.?;
+        const pathing_proto = raw_proto.pathing_grid.?;
+        assert(pathing_proto.bits_per_pixel.? == 1);
+        assert(pathing_proto.size.?.x.? == map_size.w);
+        assert(pathing_proto.size.?.y.? == map_size.h);
+        const pathing_proto_slice = pathing_proto.image.?;
         var pathing_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
         
         const PackedIntType = PackedIntIo(u1, .Big);
@@ -169,12 +169,11 @@ pub const GameInfo = struct {
             pathing_slice[index] = PackedIntType.get(pathing_proto_slice, index, 0);
         }
         const pathing_grid = Grid{.data = pathing_slice, .w = map_size.w, .h = map_size.h};
-
-        const placement_proto = raw_proto.placement_grid.data.?;
-        assert(placement_proto.bits_per_pixel.data.? == 1);
-        assert(placement_proto.size.data.?.x.data.? == map_size.w);
-        assert(placement_proto.size.data.?.y.data.? == map_size.h);
-        const placement_proto_slice = placement_proto.image.data.?;
+        const placement_proto = raw_proto.placement_grid.?;
+        assert(placement_proto.bits_per_pixel.? == 1);
+        assert(placement_proto.size.?.x.? == map_size.w);
+        assert(placement_proto.size.?.y.? == map_size.h);
+        const placement_proto_slice = placement_proto.image.?;
         var placement_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
         index = 0;
         while (index < map_size.w * map_size.h) : (index += 1) {
@@ -618,11 +617,11 @@ pub const Bot = struct {
         allocator: mem.Allocator
     ) !Bot {
 
-        const game_loop: u32 = response.observation.data.?.game_loop.data.?;
+        const game_loop: u32 = response.observation.?.game_loop.?;
         
         const time = @intToFloat(f32, game_loop) / 22.4;
 
-        const obs: sc2p.ObservationRaw = response.observation.data.?.raw.data.?;
+        const obs: sc2p.ObservationRaw = response.observation.?.raw.?;
         
         var own_units = std.ArrayList(Unit).init(allocator);
         var own_structures = std.ArrayList(Unit).init(allocator);
@@ -636,18 +635,18 @@ pub const Bot = struct {
         var pending_units = std.AutoHashMap(UnitId, u64).init(allocator);
         var pending_upgrades = std.AutoHashMap(UpgradeId, f32).init(allocator);
 
-        if (obs.units.data) |units| {
+        if (obs.units) |units| {
             for (units) |unit| {
-                const proto_pos = unit.pos.data.?;
+                const proto_pos = unit.pos.?;
                 const position = Point2{
-                    .x = proto_pos.x.data.?, 
-                    .y = proto_pos.y.data.?
+                    .x = proto_pos.x.?, 
+                    .y = proto_pos.y.?
                 };
-                const z: f32 = proto_pos.z.data.?;
+                const z: f32 = proto_pos.z.?;
                 
                 var buff_ids: std.ArrayList(BuffId) = undefined;
                 
-                if (unit.buff_ids.data) |buffs| {
+                if (unit.buff_ids) |buffs| {
                     buff_ids = try std.ArrayList(BuffId).initCapacity(allocator, buffs.len);
                     for (buffs) |buff| {
                         buff_ids.appendAssumeCapacity(@intToEnum(BuffId, buff));
@@ -658,10 +657,10 @@ pub const Bot = struct {
                 
                 var passenger_tags: std.ArrayList(u64) = undefined;
                 
-                if (unit.passengers.data) |passengers| {
+                if (unit.passengers) |passengers| {
                     passenger_tags = try std.ArrayList(u64).initCapacity(allocator, passengers.len);
                     for (passengers) |passenger| {
-                        passenger_tags.appendAssumeCapacity(passenger.tag.data.?);
+                        passenger_tags.appendAssumeCapacity(passenger.tag.?);
                     }
                 } else {
                     passenger_tags = try std.ArrayList(u64).initCapacity(allocator, 0);
@@ -669,15 +668,15 @@ pub const Bot = struct {
 
                 var orders: std.ArrayList(UnitOrder) = undefined;
 
-                if (unit.orders.data) |orders_proto| {
+                if (unit.orders) |orders_proto| {
                     orders = try std.ArrayList(UnitOrder).initCapacity(allocator, orders_proto.len);
                     for (orders_proto) |order_proto| {
                         var target: OrderTarget = undefined;
-                        if (order_proto.target_world_space_pos.data) |pos_target| {
+                        if (order_proto.target_world_space_pos) |pos_target| {
                             target = OrderTarget{
-                                .position = .{.x = pos_target.x.data.?, .y = pos_target.y.data.?},
+                                .position = .{.x = pos_target.x.?, .y = pos_target.y.?},
                             };
-                        } else if (order_proto.target_unit_tag.data) |tag_target| {
+                        } else if (order_proto.target_unit_tag) |tag_target| {
                             target = OrderTarget{
                                 .tag = tag_target,
                             };
@@ -688,9 +687,9 @@ pub const Bot = struct {
                         }
 
                         const order = UnitOrder{
-                            .ability_id = @intToEnum(AbilityId, order_proto.ability_id.data orelse 0),
+                            .ability_id = @intToEnum(AbilityId, order_proto.ability_id orelse 0),
                             .target = target,
-                            .progress = order_proto.progress.data orelse 0,
+                            .progress = order_proto.progress orelse 0,
                         };
                         orders.appendAssumeCapacity(order);
                     }
@@ -699,14 +698,14 @@ pub const Bot = struct {
                 }
 
                 var rally_targets: std.ArrayList(RallyTarget) = undefined;
-                if (unit.rally_targets.data) |proto_rally_targets| {
+                if (unit.rally_targets) |proto_rally_targets| {
                     rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, proto_rally_targets.len);
 
                     for (proto_rally_targets) |proto_target| {
-                        const proto_point = proto_target.point.data.?;
+                        const proto_point = proto_target.point.?;
                         const rally_target = RallyTarget{
-                            .point = .{.x = proto_point.x.data.?, .y = proto_point.y.data.?},
-                            .tag = proto_target.tag.data,
+                            .point = .{.x = proto_point.x.?, .y = proto_point.y.?},
+                            .tag = proto_target.tag,
                         };
                         rally_targets.appendAssumeCapacity(rally_target);
                     }
@@ -715,56 +714,56 @@ pub const Bot = struct {
                 }
 
                 const u = Unit{
-                    .display_type = unit.display_type.data.?,
-                    .alliance = unit.alliance.data.?,
-                    .tag = unit.tag.data orelse 0,
-                    .unit_type = @intToEnum(UnitId, unit.unit_type.data.?),
-                    .owner = unit.owner.data orelse 0,
+                    .display_type = unit.display_type.?,
+                    .alliance = unit.alliance.?,
+                    .tag = unit.tag orelse 0,
+                    .unit_type = @intToEnum(UnitId, unit.unit_type.?),
+                    .owner = unit.owner orelse 0,
 
                     .position = position,
                     .z = z,
-                    .facing = unit.facing.data orelse 0,
-                    .radius = unit.radius.data orelse 0,
-                    .build_progress = unit.build_progress.data orelse 1,
-                    .cloak = unit.cloak.data orelse CloakState.unknown,
+                    .facing = unit.facing orelse 0,
+                    .radius = unit.radius orelse 0,
+                    .build_progress = unit.build_progress orelse 1,
+                    .cloak = unit.cloak orelse CloakState.unknown,
                     .buff_ids = buff_ids.toOwnedSlice(),
 
-                    .detect_range = unit.detect_range.data orelse 0,
-                    .radar_range = unit.radar_range.data orelse 0,
+                    .detect_range = unit.detect_range orelse 0,
+                    .radar_range = unit.radar_range orelse 0,
 
-                    .is_blip = unit.is_blip.data orelse false,
-                    .is_powered = unit.is_powered.data orelse false,
-                    .is_active = unit.is_powered.data orelse false,
+                    .is_blip = unit.is_blip orelse false,
+                    .is_powered = unit.is_powered orelse false,
+                    .is_active = unit.is_powered orelse false,
 
-                    .attack_upgrade_level = unit.attack_upgrade_level.data orelse 0,
-                    .armor_upgrade_level = unit.armor_upgrade_level.data orelse 0,
-                    .shield_upgrade_level = unit.shield_upgrade_level.data orelse 0,
+                    .attack_upgrade_level = unit.attack_upgrade_level orelse 0,
+                    .armor_upgrade_level = unit.armor_upgrade_level orelse 0,
+                    .shield_upgrade_level = unit.shield_upgrade_level orelse 0,
                     
-                    .health = unit.health.data orelse 0,
-                    .health_max = unit.health_max.data orelse 10,
-                    .shield = unit.shield.data orelse 0,
-                    .shield_max = unit.shield_max.data orelse 10,
-                    .energy = unit.energy.data orelse 0,
-                    .energy_max = unit.energy_max.data orelse 10,
+                    .health = unit.health orelse 0,
+                    .health_max = unit.health_max orelse 10,
+                    .shield = unit.shield orelse 0,
+                    .shield_max = unit.shield_max orelse 10,
+                    .energy = unit.energy orelse 0,
+                    .energy_max = unit.energy_max orelse 10,
 
-                    .mineral_contents = unit.mineral_contents.data orelse 0,
-                    .vespene_contents = unit.vespene_contents.data orelse 0,
-                    .is_flying = unit.is_flying.data orelse false,
-                    .is_burrowed = unit.is_burrowed.data orelse false,
-                    .is_hallucination = unit.is_hallucination.data orelse false,
+                    .mineral_contents = unit.mineral_contents orelse 0,
+                    .vespene_contents = unit.vespene_contents orelse 0,
+                    .is_flying = unit.is_flying orelse false,
+                    .is_burrowed = unit.is_burrowed orelse false,
+                    .is_hallucination = unit.is_hallucination orelse false,
 
                     .orders = orders.toOwnedSlice(),
-                    .addon_tag = unit.addon_tag.data orelse 0,
+                    .addon_tag = unit.addon_tag orelse 0,
                     .passengers = passenger_tags.toOwnedSlice(),
-                    .cargo_space_taken = unit.cargo_space_taken.data orelse 0,
-                    .cargo_space_max = unit.cargo_space_max.data orelse 0,
+                    .cargo_space_taken = unit.cargo_space_taken orelse 0,
+                    .cargo_space_max = unit.cargo_space_max orelse 0,
 
-                    .assigned_harvesters = unit.assigned_harvesters.data orelse 0,
-                    .ideal_harvesters = unit.ideal_harvesters.data orelse 0,
-                    .weapon_cooldown = unit.weapon_cooldown.data orelse 0,
-                    .engaged_target_tag = unit.engaged_target_tag.data orelse 0,
-                    .buff_duration_remain = unit.buff_duration_remain.data orelse 0,
-                    .buff_duration_max = unit.buff_duration_max.data orelse 0,
+                    .assigned_harvesters = unit.assigned_harvesters orelse 0,
+                    .ideal_harvesters = unit.ideal_harvesters orelse 0,
+                    .weapon_cooldown = unit.weapon_cooldown orelse 0,
+                    .engaged_target_tag = unit.engaged_target_tag orelse 0,
+                    .buff_duration_remain = unit.buff_duration_remain orelse 0,
+                    .buff_duration_max = unit.buff_duration_max orelse 0,
                     .rally_targets = rally_targets.toOwnedSlice(),
                     .available_abilities = &[_]AbilityId{},
                 };
@@ -875,16 +874,16 @@ pub const Bot = struct {
         }
 
         var result: ?Result = null;
-        if (response.player_result.data) |result_slice| {
+        if (response.player_result) |result_slice| {
             for (result_slice) |result_proto| {
-                if (result_proto.player_id.data.? == player_id) {
-                    result = result_proto.result.data.?;
+                if (result_proto.player_id.? == player_id) {
+                    result = result_proto.result.?;
                     break;
                 }
             }
         }
 
-        const upgrade_proto = obs.player.data.?.upgrade_ids.data;
+        const upgrade_proto = obs.player.?.upgrade_ids;
         if (upgrade_proto) |upgrade_slice| {
             for (upgrade_slice) |upgrade| {
                 const upgrade_id = @intToEnum(UpgradeId, upgrade);
@@ -892,19 +891,19 @@ pub const Bot = struct {
             }
         }
 
-        const visibility_proto = obs.map_state.data.?.visibility.data.?;
-        assert(visibility_proto.bits_per_pixel.data.? == 8);
+        const visibility_proto = obs.map_state.?.visibility.?;
+        assert(visibility_proto.bits_per_pixel.? == 8);
 
-        const grid_size_proto = visibility_proto.size.data.?;
-        const grid_width = @intCast(usize, grid_size_proto.x.data.?);
-        const grid_height = @intCast(usize, grid_size_proto.y.data.?);
+        const grid_size_proto = visibility_proto.size.?;
+        const grid_width = @intCast(usize, grid_size_proto.x.?);
+        const grid_height = @intCast(usize, grid_size_proto.y.?);
 
-        var visibility_data = try allocator.dupe(u8, visibility_proto.image.data.?);
+        var visibility_data = try allocator.dupe(u8, visibility_proto.image.?);
         const visibility_grid = Grid{.data = visibility_data, .w = grid_width, .h = grid_height};
 
-        const creep_proto = obs.map_state.data.?.creep.data.?;
-        assert(creep_proto.bits_per_pixel.data.? == 1);
-        const creep_proto_slice = creep_proto.image.data.?;
+        const creep_proto = obs.map_state.?.creep.?;
+        assert(creep_proto.bits_per_pixel.? == 1);
+        const creep_proto_slice = creep_proto.image.?;
         var creep_data = try allocator.alloc(u8, grid_width*grid_height);
         const PackedIntType = PackedIntIo(u1, .Big);
         
@@ -914,46 +913,43 @@ pub const Bot = struct {
         }
         const creep_grid = Grid{.data = creep_data, .w = grid_width, .h = grid_height};
 
-
-        const effects_proto = obs.effects.data;
+        const effects_proto = obs.effects;
         var effects: []Effect = &[_]Effect{};
         if (effects_proto) |effect_proto_slice| {
             effects = try allocator.alloc(Effect, effect_proto_slice.len);
             for (effect_proto_slice) |effect_proto, effect_index| {
-                var points = try allocator.alloc(Point2, effect_proto.pos.data.?.len);
-                for (effect_proto.pos.data.?) |pos_proto, pos_index| {
-                    points[pos_index] = Point2{.x = pos_proto.x.data.?, .y = pos_proto.y.data.?};
+                var points = try allocator.alloc(Point2, effect_proto.pos.?.len);
+                for (effect_proto.pos.?) |pos_proto, pos_index| {
+                    points[pos_index] = Point2{.x = pos_proto.x.?, .y = pos_proto.y.?};
                 }
                 effects[effect_index] = Effect{
-                    .id = @intToEnum(EffectId, effect_proto.effect_id.data.?),
-                    .alliance = effect_proto.alliance.data.?,
+                    .id = @intToEnum(EffectId, effect_proto.effect_id.?),
+                    .alliance = effect_proto.alliance.?,
                     .positions = points,
-                    .radius = effect_proto.radius.data.?,
+                    .radius = effect_proto.radius.?,
                 };
             }
         }
 
-
         var sensor_towers: []SensorTower = &[_]SensorTower{};
-        if (obs.radars.data) |sensor_towers_proto| {
+        if (obs.radars) |sensor_towers_proto| {
             sensor_towers = try allocator.alloc(SensorTower, sensor_towers_proto.len);
             for (sensor_towers_proto) |tower_proto, tower_index| {
                 sensor_towers[tower_index] = SensorTower{
-                    .position = Point2{.x = tower_proto.pos.data.?.x.data.?, .y = tower_proto.pos.data.?.y.data.?},
-                    .radius = tower_proto.radius.data.?,
+                    .position = Point2{.x = tower_proto.pos.?.x.?, .y = tower_proto.pos.?.y.?},
+                    .radius = tower_proto.radius.?,
                 };
             }
         }
 
-
         var dead_units: []u64 = &[_]u64{};
-        if (obs.event.data) |events_proto| {
-            if (events_proto.dead_units.data) |dead_unit_slice| {
+        if (obs.event) |events_proto| {
+            if (events_proto.dead_units) |dead_unit_slice| {
                 dead_units = try allocator.dupe(u64, dead_unit_slice);
             }
         }
 
-        const player_common = response.observation.data.?.player_common.data.?;
+        const player_common = response.observation.?.player_common.?;
 
         return Bot{
             .units = own_units.toOwnedSlice(),
@@ -968,16 +964,16 @@ pub const Bot = struct {
             .game_loop = game_loop,
             .time = time,
             .result = result,
-            .minerals = @intCast(i32, player_common.minerals.data orelse 0),
-            .vespene = @intCast(i32, player_common.vespene.data orelse 0),
-            .food_cap = player_common.food_cap.data orelse 0,
-            .food_used = player_common.food_used.data orelse 0,
-            .food_army = player_common.food_army.data orelse 0,
-            .food_workers = player_common.food_workers.data orelse 0,
-            .idle_worker_count = player_common.idle_worker_count.data orelse 0,
-            .army_count = player_common.army_count.data orelse 0,
-            .warp_gate_count = player_common.warp_gate_count.data orelse 0,
-            .larva_count = player_common.larva_count.data orelse 0,
+            .minerals = @intCast(i32, player_common.minerals orelse 0),
+            .vespene = @intCast(i32, player_common.vespene orelse 0),
+            .food_cap = player_common.food_cap orelse 0,
+            .food_used = player_common.food_used orelse 0,
+            .food_army = player_common.food_army orelse 0,
+            .food_workers = player_common.food_workers orelse 0,
+            .idle_worker_count = player_common.idle_worker_count orelse 0,
+            .army_count = player_common.army_count orelse 0,
+            .warp_gate_count = player_common.warp_gate_count orelse 0,
+            .larva_count = player_common.larva_count orelse 0,
             .pending_units = pending_units,
             .pending_upgrades = pending_upgrades,
             .visibility = visibility_grid,
@@ -1010,11 +1006,11 @@ pub const Bot = struct {
         // using getAllOwnUnitTags
         const units_count = self.units.len;
         for (proto) |query_proto, i| {
-            if (query_proto.abilities.data) |ability_slice_proto| {
+            if (query_proto.abilities) |ability_slice_proto| {
                 var ability_slice = allocator.alloc(AbilityId, ability_slice_proto.len) catch continue;
                 
                 for (ability_slice_proto) |ability_proto, j| {
-                    ability_slice[j] = @intToEnum(AbilityId, ability_proto.ability_id.data orelse 0);
+                    ability_slice[j] = @intToEnum(AbilityId, ability_proto.ability_id orelse 0);
                 }
 
                 if (i < units_count) {
@@ -1112,8 +1108,9 @@ pub const Actions = struct {
     // due to the size of the underlying enum
     combinable_abilities: std.AutoHashMap(AbilityId, void),
     leave_game: bool = false,
+    client: *ws.WebSocketClient,
 
-    pub fn init(game_data: GameData, perm_allocator: mem.Allocator, temp_allocator: mem.Allocator) !Actions {
+    pub fn init(game_data: GameData, client: *ws.WebSocketClient, perm_allocator: mem.Allocator, temp_allocator: mem.Allocator) !Actions {
 
         var ca = std.AutoHashMap(AbilityId, void).init(perm_allocator);
         
@@ -1146,6 +1143,7 @@ pub const Actions = struct {
         
         return Actions{
             .game_data = game_data,
+            .client = client,
             .combinable_abilities = ca,
             .temp_allocator = temp_allocator,
             .order_list = try std.ArrayList(BotAction).initCapacity(perm_allocator, 400),
@@ -1390,10 +1388,10 @@ pub const Actions = struct {
         
         for (self.chat_messages.items) |msg| {
             const action_chat = sc2p.ActionChat{
-                .channel = .{.data = msg.channel},
-                .message = .{.data = msg.message},
+                .channel = msg.channel,
+                .message = msg.message,
             };
-            const action = sc2p.Action{.action_chat = .{.data = action_chat}};
+            const action = sc2p.Action{.action_chat = action_chat};
             action_list.appendAssumeCapacity(action);
         }
 
@@ -1401,33 +1399,35 @@ pub const Actions = struct {
         // Hashing based on the ActionData, value is the index in the next array list
         var action_hashmap = std.AutoHashMap(ActionData.HashableActionData, usize).init(self.temp_allocator);
         var raw_unit_commands = std.ArrayList(sc2p.ActionRawUnitCommand).init(self.temp_allocator);
-
+        var unit_lists = std.ArrayList(std.ArrayList(u64)).initCapacity(self.temp_allocator, self.order_list.items.len) catch return null;
+        
         for (self.order_list.items) |order| {
             
             const hashable = order.data.toHashable();
 
             if (action_hashmap.get(hashable)) |index| {
-                raw_unit_commands.items[index].unit_tags.list.?.append(order.unit) catch break;
+                unit_lists.items[index].append(order.unit) catch break;
             } else {
                 var unit_command = sc2p.ActionRawUnitCommand{
-                    .ability_id = .{.data = @intCast(i32, @enumToInt(order.data.ability_id))},
-                    .queue_command = .{.data = order.data.queue},
+                    .ability_id = @intCast(i32, @enumToInt(order.data.ability_id)),
+                    .queue_command = order.data.queue,
                 };
                 switch (order.data.target) {
                     .position => |pos| {
-                        unit_command.target_world_space_pos.data = .{
-                            .x = .{.data = pos.x},
-                            .y = .{.data = pos.y},
+                        unit_command.target_world_space_pos = .{
+                            .x = pos.x,
+                            .y = pos.y,
                         };
                     },
                     .tag => |tag| {
-                        unit_command.target_unit_tag.data = tag;
+                        unit_command.target_unit_tag = tag;
                     },
                     else => {}
                 }
 
-                unit_command.unit_tags.list = std.ArrayList(u64).initCapacity(self.temp_allocator, 1) catch break;
-                unit_command.unit_tags.list.?.appendAssumeCapacity(order.unit);
+                var new_list = std.ArrayList(u64).initCapacity(self.temp_allocator, 1) catch break;
+                new_list.appendAssumeCapacity(order.unit);
+                unit_lists.appendAssumeCapacity(new_list);
                 raw_unit_commands.append(unit_command) catch break;
                 
                 if (self.combinable_abilities.contains(order.data.ability_id)) {
@@ -1436,15 +1436,15 @@ pub const Actions = struct {
             }
         }
 
-        for (raw_unit_commands.items) |*command| {
-            command.unit_tags.data = command.unit_tags.list.?.items;
-            const action_raw = sc2p.ActionRaw{.unit_command = .{.data = command.*}};
-            const action = sc2p.Action{.action_raw = .{.data = action_raw}};
+        for (raw_unit_commands.items) |*command, i| {
+            command.unit_tags = unit_lists.items[i].items;
+            const action_raw = sc2p.ActionRaw{.unit_command = command.*};
+            const action = sc2p.Action{.action_raw = action_raw};
             action_list.appendAssumeCapacity(action);
         }
 
         const action_request = sc2p.RequestAction{
-            .actions = .{.data = action_list.toOwnedSlice()},
+            .actions = action_list.toOwnedSlice(),
         };
 
         return action_request;
@@ -1452,40 +1452,40 @@ pub const Actions = struct {
 
     pub fn debugTextWorld(self: *Actions, text: []const u8, pos: Point3, color: Color, size: u32) void {
         const color_proto = sc2p.Color{
-            .r = .{.data = color.r},
-            .g = .{.data = color.g},
-            .b = .{.data = color.b},
+            .r = color.r,
+            .g = color.g,
+            .b = color.b,
         };
         const pos_proto = sc2p.Point{
-            .x = .{.data = pos.x},
-            .y = .{.data = pos.y},
-            .z = .{.data = pos.z},
+            .x = pos.x,
+            .y = pos.y,
+            .z = pos.z,
         };
         var proto = sc2p.DebugText{
-            .color = .{.data = color_proto},
-            .text = .{.data = text},
-            .world_pos = .{.data = pos_proto},
-            .size = .{.data = size},
+            .color = color_proto,
+            .text = text,
+            .world_pos = pos_proto,
+            .size = size,
         };
         self.debug_texts.append(proto) catch return;
     }
 
     pub fn debugTextScreen(self: *Actions, text: []const u8, pos: Point2, color: Color, size: u32) void {
         const color_proto = sc2p.Color{
-            .r = .{.data = color.r},
-            .g = .{.data = color.g},
-            .b = .{.data = color.b},
+            .r = color.r,
+            .g = color.g,
+            .b = color.b,
         };
         const pos_proto = sc2p.Point{
-            .x = .{.data = pos.x},
-            .y = .{.data = pos.y},
-            .z = .{.data = 0},
+            .x = pos.x,
+            .y = pos.y,
+            .z = 0,
         };
         const proto = sc2p.DebugText{
-            .color = .{.data = color_proto},
-            .text = .{.data = text},
-            .virtual_pos = .{.data = pos_proto},
-            .size = .{.data = size},
+            .color = color_proto,
+            .text = text,
+            .virtual_pos = pos_proto,
+            .size = size,
         };
         self.debug_texts.append(proto) catch return;
     }
@@ -1499,34 +1499,34 @@ pub const Actions = struct {
 
         if (self.debug_texts.items.len > 0) {
             add_draw_command = true;
-            debug_draw.text.data = self.debug_texts.items;
+            debug_draw.text = self.debug_texts.items;
         }
 
         if (self.debug_lines.items.len > 0) {
             add_draw_command = true;
-            debug_draw.lines.data = self.debug_lines.items;
+            debug_draw.lines = self.debug_lines.items;
         }
 
         if (self.debug_boxes.items.len > 0) {
             add_draw_command = true;
-            debug_draw.boxes.data = self.debug_boxes.items;
+            debug_draw.boxes = self.debug_boxes.items;
         }
 
         if (self.debug_spheres.items.len > 0) {
             add_draw_command = true;
-            debug_draw.spheres.data = self.debug_spheres.items;
+            debug_draw.spheres = self.debug_spheres.items;
         }
 
         if (add_draw_command) {
             const command = sc2p.DebugCommand{
-                .draw = .{.data = debug_draw},
+                .draw = debug_draw,
             };
             command_list.append(command) catch return null;
         }
 
         for (self.debug_create_unit.items) |debug_create_unit| {
             const command = sc2p.DebugCommand{
-                .create_unit = .{.data = debug_create_unit},
+                .create_unit = debug_create_unit,
             };
             command_list.append(command) catch return null;
         }
@@ -1534,12 +1534,11 @@ pub const Actions = struct {
         if (command_list.items.len == 0) return null;
 
         const debug_proto = sc2p.RequestDebug{
-            .commands = .{.data = command_list.items},
+            .commands = command_list.items,
         };
 
         return debug_proto;
     }
-
 };
 
 pub const GameData = struct {
@@ -1589,30 +1588,30 @@ pub const GameData = struct {
             .upgrade_map = std.AutoHashMap(AbilityId, UpgradeId).init(allocator),
         };
 
-        const proto_upgrades = proto.upgrades.data.?;
+        const proto_upgrades = proto.upgrades.?;
 
         for (proto_upgrades) |proto_upgrade| {
             const upg = UpgradeData{
-                .id = @intToEnum(UpgradeId, proto_upgrade.upgrade_id.data.?),
-                .mineral_cost = @intCast(i32, proto_upgrade.mineral_cost.data orelse 0),
-                .vespene_cost = @intCast(i32, proto_upgrade.vespene_cost.data orelse 0),
-                .research_time = proto_upgrade.research_time.data orelse 0,
-                .research_ability_id = @intToEnum(AbilityId, proto_upgrade.ability_id.data orelse 0),
+                .id = @intToEnum(UpgradeId, proto_upgrade.upgrade_id.?),
+                .mineral_cost = @intCast(i32, proto_upgrade.mineral_cost orelse 0),
+                .vespene_cost = @intCast(i32, proto_upgrade.vespene_cost orelse 0),
+                .research_time = proto_upgrade.research_time orelse 0,
+                .research_ability_id = @intToEnum(AbilityId, proto_upgrade.ability_id orelse 0),
             };
 
             try gd.upgrades.put(upg.id, upg);
             try gd.upgrade_map.put(upg.research_ability_id, upg.id);
         }
 
-        const proto_units = proto.units.data.?;
+        const proto_units = proto.units.?;
 
         for (proto_units) |proto_unit| {
-            const available = proto_unit.available.data orelse false;
+            const available = proto_unit.available orelse false;
             if (!available) continue;
 
             var attributes = std.EnumSet(Attribute){};
             
-            if (proto_unit.attributes.data) |proto_attrs| {
+            if (proto_unit.attributes) |proto_attrs| {
                 for (proto_attrs) |attr| {
                     attributes.insert(attr);
                 }
@@ -1625,13 +1624,13 @@ pub const GameData = struct {
 
             //@TODO: May need to do something with battlecruisers
             //and oracles if their weapons don't show up here
-            if (proto_unit.weapons.data) |weapons_proto| {
+            if (proto_unit.weapons) |weapons_proto| {
                 for (weapons_proto) |weapon_proto| {
-                    const target_type = weapon_proto.target_type.data.?;
-                    const range = weapon_proto.range.data.?;
-                    const speed = weapon_proto.speed.data.?;
-                    const attacks: f32 = @intToFloat(f32, weapon_proto.attacks.data.?);
-                    const damage = weapon_proto.damage.data.?;
+                    const target_type = weapon_proto.target_type.?;
+                    const range = weapon_proto.range.?;
+                    const speed = weapon_proto.speed.?;
+                    const attacks: f32 = @intToFloat(f32, weapon_proto.attacks.?);
+                    const damage = weapon_proto.damage.?;
                     const dps = (damage*attacks) / speed;
                     switch (target_type) {
                         .ground => {
@@ -1653,22 +1652,22 @@ pub const GameData = struct {
             }
 
             const unit = UnitData{
-                .id = @intToEnum(UnitId, proto_unit.unit_id.data.?),
-                .cargo_size = @intCast(i32, proto_unit.cargo_size.data orelse 0),
-                .movement_speed = proto_unit.movement_speed.data orelse 0,
-                .armor = proto_unit.armor.data orelse 0,
+                .id = @intToEnum(UnitId, proto_unit.unit_id.?),
+                .cargo_size = @intCast(i32, proto_unit.cargo_size orelse 0),
+                .movement_speed = proto_unit.movement_speed orelse 0,
+                .armor = proto_unit.armor orelse 0,
                 .air_dps = air_dps,
                 .ground_dps = ground_dps,
                 .air_range = air_range,
                 .ground_range = ground_range,
-                .mineral_cost = @intCast(i32, proto_unit.mineral_cost.data orelse 0),
-                .vespene_cost = @intCast(i32, proto_unit.vespene_cost.data orelse 0),
-                .food_required = proto_unit.food_required.data orelse 0,
-                .food_provided = proto_unit.food_provided.data orelse 0,
-                .train_ability_id = @intToEnum(AbilityId, proto_unit.ability_id.data orelse 0),
-                .race = proto_unit.race.data orelse Race.none,
-                .build_time = proto_unit.build_time.data orelse 0,
-                .sight_range = proto_unit.sight_range.data orelse 0,
+                .mineral_cost = @intCast(i32, proto_unit.mineral_cost orelse 0),
+                .vespene_cost = @intCast(i32, proto_unit.vespene_cost orelse 0),
+                .food_required = proto_unit.food_required orelse 0,
+                .food_provided = proto_unit.food_provided orelse 0,
+                .train_ability_id = @intToEnum(AbilityId, proto_unit.ability_id orelse 0),
+                .race = proto_unit.race orelse Race.none,
+                .build_time = proto_unit.build_time orelse 0,
+                .sight_range = proto_unit.sight_range orelse 0,
                 .attributes = attributes,
             };
 

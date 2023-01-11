@@ -365,13 +365,13 @@ pub fn run(
     };
 
     const game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
-    var actions = try bot_data.Actions.init(game_data, arena, fixed_buffer);
+    var actions = try bot_data.Actions.init(game_data, &client, arena, fixed_buffer);
 
     while (true) {
 
         const obs = client.getObservation();
 
-        if (obs.observation.data == null) {
+        if (obs.observation == null) {
             log.err("Got an invalid observation\n", .{});
             break;
         }

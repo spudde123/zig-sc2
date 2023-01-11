@@ -1,6 +1,5 @@
 const std = @import("std");
 const proto = @import("protobuf.zig");
-const ProtoField = proto.ProtoField;
 
 pub const Status = enum(u8) {
     default = 0,
@@ -14,48 +13,87 @@ pub const Status = enum(u8) {
 };
 
 pub const Request = struct {
-    create_game: ProtoField(1, RequestCreateGame) = .{},
-    join_game: ProtoField(2, RequestJoinGame) = .{},
-    leave_game: ProtoField(5, void) = .{},
-    quit: ProtoField(8, void) = .{},
-    game_info: ProtoField(9, void) = .{},
-    observation: ProtoField(10, RequestObservation) = .{},
-    action: ProtoField(11, RequestAction) = .{},
-    step: ProtoField(12, RequestStep) = .{},
-    game_data: ProtoField(13, RequestData) = .{},
-    query: ProtoField(14, RequestQuery) = .{},
-    save_replay: ProtoField(15, void) = .{},
-    ping: ProtoField(19, void) = .{},
-    debug: ProtoField(20, RequestDebug) = .{},
-
-    id: ProtoField(97, u32) = .{},
+    pub const field_nums = .{
+        .{"create_game", 1},
+        .{"join_game", 2},
+        .{"leave_game", 5},
+        .{"quit", 8},
+        .{"game_info", 9},
+        .{"observation", 10},
+        .{"action", 11},
+        .{"step", 12},
+        .{"game_data", 13},
+        .{"query", 14},
+        .{"save_replay", 15},
+        .{"ping", 19},
+        .{"debug", 20},
+        .{"id", 97},
+    };
+    create_game: ?RequestCreateGame = null,
+    join_game: ?RequestJoinGame = null,
+    leave_game: ?void = null,
+    quit: ?void = null,
+    game_info: ?void = null,
+    observation: ?RequestObservation = null,
+    action: ?RequestAction = null,
+    step: ?RequestStep = null,
+    game_data: ?RequestData = null,
+    query: ?RequestQuery = null,
+    save_replay: ?void = null,
+    ping: ?void = null,
+    debug: ?RequestDebug = null,
+    id: ?u32 = null,
 };
 
 pub const Response = struct {
-    create_game: ProtoField(1, ResponseCreateGame) = .{},
-    join_game: ProtoField(2, ResponseJoinGame) = .{},
-    leave_game: ProtoField(5, void) = .{},
-    quit: ProtoField(8, void) = .{},
-    game_info: ProtoField(9, ResponseGameInfo) = .{},
-    observation: ProtoField(10, ResponseObservation) = .{},
-    action: ProtoField(11, ResponseAction) = .{},
-    step: ProtoField(12, ResponseStep) = .{},
-    game_data: ProtoField(13, ResponseData) = .{},
-    query: ProtoField(14, ResponseQuery) = .{},
-    save_replay: ProtoField(15, ResponseSaveReplay) = .{},
-    ping: ProtoField(19, ResponsePing) = .{},
-    debug: ProtoField(20, void) = .{},
+    pub const field_nums = .{
+        .{"create_game", 1},
+        .{"join_game", 2},
+        .{"leave_game", 5},
+        .{"quit", 8},
+        .{"game_info", 9},
+        .{"observation", 10},
+        .{"action", 11},
+        .{"step", 12},
+        .{"game_data", 13},
+        .{"query", 14},
+        .{"save_replay", 15},
+        .{"ping", 19},
+        .{"debug", 20},
+        .{"id", 97},
+        .{"errors", 98},
+        .{"status", 99},
+    };
+    create_game: ?ResponseCreateGame = null,
+    join_game: ?ResponseJoinGame = null,
+    leave_game: ?void = null,
+    quit: ?void = null,
+    game_info: ?ResponseGameInfo = null,
+    observation: ?ResponseObservation = null,
+    action: ?ResponseAction = null,
+    step: ?ResponseStep = null,
+    game_data: ?ResponseData = null,
+    query: ?ResponseQuery = null,
+    save_replay: ?ResponseSaveReplay = null,
+    ping: ?ResponsePing = null,
+    debug: ?void = null,
 
-    id: ProtoField(97, u32) = .{},
-    errors: ProtoField(98, [][]const u8) = .{},
-    status: ProtoField(99, Status) = .{},
+    id: ?u32 = null,
+    errors: ?[][]const u8 = null,
+    status: ?Status = null,
 };
 
 pub const RequestCreateGame = struct {
-    map: ProtoField(1, LocalMap) = .{},
-    player_setup: ProtoField(3, []PlayerSetup) = .{},
-    disable_fog: ProtoField(4, bool) = .{},
-    realtime: ProtoField(6, bool) = .{},
+    pub const field_nums = .{
+        .{"map", 1},
+        .{"player_setup", 3},
+        .{"disable_fog", 4},
+        .{"realtime", 6},
+    };
+    map: ?LocalMap = null,
+    player_setup: ?[]PlayerSetup = null,
+    disable_fog: ?bool = null,
+    realtime: ?bool = null,
 };
 
 pub const ErrorCreateGame = enum(u8) {
@@ -70,17 +108,29 @@ pub const ErrorCreateGame = enum(u8) {
 };
 
 pub const ResponseCreateGame = struct {
-    error_code: ProtoField(1, ErrorCreateGame) = .{},
-    error_details: ProtoField(2, []const u8) = .{},
+    pub const field_nums = .{
+        .{"error_code", 1},
+        .{"error_details", 2},
+    };
+    error_code: ?ErrorCreateGame = null,
+    error_details: ?[]const u8 = null,
 };
 
 pub const RequestJoinGame = struct {
-    race: ProtoField(1, Race) = .{},
-    options: ProtoField(3, InterfaceOptions) = .{},
-    server_ports: ProtoField(4, PortSet) = .{},
-    client_ports: ProtoField(5, PortSet) = .{},
-    player_name: ProtoField(7, []const u8) = .{},
-    host_ip: ProtoField(8, []const u8) = .{},
+    pub const field_nums = .{
+        .{"race", 1},
+        .{"options", 3},
+        .{"server_ports", 4},
+        .{"client_ports", 5},
+        .{"player_name", 7},
+        .{"host_ip", 8},
+    };
+    race: ?Race = null,
+    options: ?InterfaceOptions = null,
+    server_ports: ?PortSet = null,
+    client_ports: ?PortSet = null,
+    player_name: ?[]const u8 = null,
+    host_ip: ?[]const u8 = null,
 };
 
 pub const ErrorJoinGame = enum(u8) {
@@ -102,85 +152,154 @@ pub const ErrorJoinGame = enum(u8) {
 };
 
 pub const ResponseJoinGame = struct {
-    player_id: ProtoField(1, u32) = .{},
-    error_code: ProtoField(2, ErrorJoinGame) = .{},
-    error_details: ProtoField(3, []const u8) = .{},
+    pub const field_nums = .{
+        .{"player_id", 1},
+        .{"error_code", 2},
+        .{"error_details", 3},
+    };
+    player_id: ?u32 = null,
+    error_code: ?ErrorJoinGame = null,
+    error_details: ?[]const u8 = null,
 };
 
 pub const ResponseGameInfo = struct {
-    map_name: ProtoField(1, []const u8) = .{},
-    local_map_path: ProtoField(2, []const u8) = .{},
-    player_info: ProtoField(3, []PlayerInfo) = .{},
-    start_raw: ProtoField(4, StartRaw) = .{},
-    options: ProtoField(5, InterfaceOptions) = .{},
-    mod_names: ProtoField(6, [][]const u8) = .{}
+    pub const field_nums = .{
+        .{"map_name", 1},
+        .{"local_map_path", 2},
+        .{"player_info", 3},
+        .{"start_raw", 4},
+        .{"options", 5},
+        .{"mod_names", 6},
+    };
+    map_name: ?[]const u8 = null,
+    local_map_path: ?[]const u8 = null,
+    player_info: ?[]PlayerInfo = null,
+    start_raw: ?StartRaw = null,
+    options: ?InterfaceOptions = null,
+    mod_names: ?[][]const u8 = null,
 };
 
 pub const RequestAction = struct {
-    actions: ProtoField(1, []Action) = .{},
+    pub const field_nums = .{
+        .{"actions", 1},
+    };
+    actions: ?[]Action = null,
 };
 
 pub const ResponseAction = struct {
-    results: ProtoField(1, []ActionResult) = .{},
+    pub const field_nums = .{
+        .{"results", 1},
+    };
+    results: ?[]ActionResult = null,
 };
 
 pub const RequestObservation = struct {
-    disable_fog: ProtoField(1, bool) = .{},
-    game_loop: ProtoField(2, u32) = .{},
+    pub const field_nums = .{
+        .{"disable_fog", 1},
+        .{"game_loop", 2},
+    };
+    disable_fog: ?bool = null,
+    game_loop: ?u32 = null,
 };
 
 pub const RequestStep = struct {
-    count: ProtoField(1, u32) = .{},
+    pub const field_nums = .{
+        .{"count", 1},
+    };
+    count: ?u32 = null,
 };
 
 pub const ResponseStep = struct {
-    simulation_loop: ProtoField(1, u32) = .{},
+    pub const field_nums = .{
+        .{"simulation_loop", 1},
+    };
+    simulation_loop: ?u32 = null,
 };
 
 pub const ResponsePing = struct {
-    game_version: ProtoField(1, []const u8) = .{},
-    data_version: ProtoField(2, []const u8) = .{},
-    data_build: ProtoField(3, u32) = .{},
-    base_build: ProtoField(4, u32) = .{},
+    pub const field_nums = .{
+        .{"game_version", 1},
+        .{"data_version", 2},
+        .{"data_build", 3},
+        .{"base_build", 4},
+    };
+    game_version: ?[]const u8 = null,
+    data_version: ?[]const u8 = null,
+    data_build: ?u32 = null,
+    base_build: ?u32 = null,
 };
 
 pub const ResponseSaveReplay = struct {
-    bytes: ProtoField(1, []u8) = .{},
+    pub const field_nums = .{
+        .{"bytes", 1},
+    };
+    bytes: ?[]u8 = null,
 };
 
 pub const ResponseObservation = struct {
-    actions: ProtoField(1, []Action) = .{},
-    action_errors: ProtoField(2, []ActionError) = .{},
-    observation: ProtoField(3, Observation) = .{},
-    player_result: ProtoField(4, []PlayerResult) = .{},
-    chat: ProtoField(5, []ChatReceived) = .{},
+    pub const field_nums = .{
+        .{"actions", 1},
+        .{"action_errors", 2},
+        .{"observation", 3},
+        .{"player_result", 4},
+        .{"chat", 5},
+    };
+    actions: ?[]Action = null,
+    action_errors: ?[]ActionError = null,
+    observation: ?Observation = null,
+    player_result: ?[]PlayerResult = null,
+    chat: ?[]ChatReceived = null,
 };
 
 pub const Observation = struct {
-    player_common: ProtoField(1, PlayerCommon) = .{},
-    abilities: ProtoField(3, []AvailableAbility) = .{},
-    score: ProtoField(4, Score) = .{},
+    pub const field_nums = .{
+        .{"player_common", 1},
+        .{"abilities", 3},
+        .{"score", 4},
+        .{"raw", 5},
+        //.{"feature_layer", 6},
+        //.{"render", 7},
+        //.{"ui", 8},
+        .{"game_loop", 9},
+        .{"alerts", 10},
+    };
+    player_common: ?PlayerCommon = null,
+    abilities: ?[]AvailableAbility = null,
+    score: ?Score = null,
 
-    raw: ProtoField(5, ObservationRaw) = .{},
-    //feature_layer: ProtoField(6, ObservationFeatureLayer) = .{},
-    //render: ProtoField(7, ObservationRender) = .{},
-    //ui: ProtoField(8, ObservationUI) = .{},
-    game_loop: ProtoField(9, u32) = .{},
-    alerts: ProtoField(10, []Alert) = .{},
+    raw: ?ObservationRaw = null,
+    //feature_layer: ?ObservationFeatureLayer = null,
+    //render: ?ObservationRender = null,
+    //ui: ?ObservationUI = null,
+    game_loop: ?u32 = null,
+    alerts: ?[]Alert = null,
 };
 
 pub const PlayerCommon = struct {
-    player_id: ProtoField(1, u32) = .{},
-    minerals: ProtoField(2, u32) = .{},
-    vespene: ProtoField(3, u32) = .{},
-    food_cap: ProtoField(4, u32) = .{},
-    food_used: ProtoField(5, u32) = .{},
-    food_army: ProtoField(6, u32) = .{},
-    food_workers: ProtoField(7, u32) = .{},
-    idle_worker_count: ProtoField(8, u32) = .{},
-    army_count: ProtoField(9, u32) = .{},
-    warp_gate_count: ProtoField(10, u32) = .{},
-    larva_count: ProtoField(11, u32) = .{},
+    pub const field_nums = .{
+        .{"player_id", 1},
+        .{"minerals", 2},
+        .{"vespene", 3},
+        .{"food_cap", 4},
+        .{"food_used", 5},
+        .{"food_army", 6},
+        .{"food_workers", 7},
+        .{"idle_worker_count", 8},
+        .{"army_count", 9},
+        .{"warp_gate_count", 10},
+        .{"larva_count", 11},
+    };
+    player_id: ?u32 = null,
+    minerals: ?u32 = null,
+    vespene: ?u32 = null,
+    food_cap: ?u32 = null,
+    food_used: ?u32 = null,
+    food_army: ?u32 = null,
+    food_workers: ?u32 = null,
+    idle_worker_count: ?u32 = null,
+    army_count: ?u32 = null,
+    warp_gate_count: ?u32 = null,
+    larva_count: ?u32 = null,
 };
 
 pub const ScoreType = enum(u8) {
@@ -189,89 +308,165 @@ pub const ScoreType = enum(u8) {
 };
 
 pub const Score = struct {
-    score_type: ProtoField(6, ScoreType) = .{},
-    score: ProtoField(7, i32) = .{},
-    details: ProtoField(8, ScoreDetails) = .{},
+    pub const field_nums = .{
+        .{"score_type", 6},
+        .{"score", 7},
+        .{"details", 8},
+    };
+    score_type: ?ScoreType = null,
+    score: ?i32 = null,
+    details: ?ScoreDetails = null,
 };
 
 pub const CategoryScoreDetails = struct {
-    none: ProtoField(1, f32) = .{},
-    army: ProtoField(2, f32) = .{},
-    economy: ProtoField(3, f32) = .{},
-    technology: ProtoField(4, f32) = .{},
-    upgrade: ProtoField(5, f32) = .{},
+    pub const field_nums = .{
+        .{"none", 1},
+        .{"army", 2},
+        .{"economy", 3},
+        .{"technology", 4},
+        .{"upgrade", 5},
+    };
+    none: ?f32 = null,
+    army: ?f32 = null,
+    economy: ?f32 = null,
+    technology: ?f32 = null,
+    upgrade: ?f32 = null,
 };
 
 pub const VitalScoreDetails = struct {
-    life: ProtoField(1, f32) = .{},
-    shields: ProtoField(2, f32) = .{},
-    energy: ProtoField(3, f32) = .{},
+    pub const field_nums = .{
+        .{"life", 1},
+        .{"shields", 2},
+        .{"energy", 3},
+    };
+    life: ?f32 = null,
+    shields: ?f32 = null,
+    energy: ?f32 = null,
 };
 
 pub const ScoreDetails = struct {
-    idle_production_time: ProtoField(1, f32) = .{},
-    idle_worker_time: ProtoField(2, f32) = .{},
-    total_value_units: ProtoField(3, f32) = .{},
-    total_value_structures: ProtoField(4, f32) = .{},
-    killed_value_units: ProtoField(5, f32) = .{},
-    killed_value_structures: ProtoField(6, f32) = .{},
-    collected_minerals: ProtoField(7, f32) = .{},
-    collected_vespene: ProtoField(8, f32) = .{},
-    collection_rate_minerals: ProtoField(9, f32) = .{},
-    collection_rate_vespene: ProtoField(10, f32) = .{},
-    spent_minerals: ProtoField(11, f32) = .{},
-    spent_vespene: ProtoField(12, f32) = .{},
-    food_used: ProtoField(13, CategoryScoreDetails) = .{},
-    killed_minerals: ProtoField(14, CategoryScoreDetails) = .{},
-    killed_vespene: ProtoField(15, CategoryScoreDetails) = .{},
-    lost_minerals: ProtoField(16, CategoryScoreDetails) = .{},
-    lost_vespene: ProtoField(17, CategoryScoreDetails) = .{},
-    friendly_fire_minerals: ProtoField(18, CategoryScoreDetails) = .{},
-    friendly_fire_vespene: ProtoField(19, CategoryScoreDetails) = .{},
-    used_minerals: ProtoField(20, CategoryScoreDetails) = .{},
-    used_vespene: ProtoField(21, CategoryScoreDetails) = .{},
-    total_used_minerals: ProtoField(22, CategoryScoreDetails) = .{},
-    total_used_vespene: ProtoField(23, CategoryScoreDetails) = .{},
-    total_damage_dealt: ProtoField(24, VitalScoreDetails) = .{},
-    total_damage_taken: ProtoField(25, VitalScoreDetails) = .{},
-    total_healed: ProtoField(26, VitalScoreDetails) = .{},
-    current_apm: ProtoField(27, f32) = .{},
-    current_effective_apm: ProtoField(28, f32) = .{},
+    pub const field_nums = .{
+        .{"idle_production_time", 1},
+        .{"idle_worker_time", 2},
+        .{"total_value_units", 3},
+        .{"total_value_structures", 4},
+        .{"killed_value_units", 5},
+        .{"killed_value_structures", 6},
+        .{"collected_minerals", 7},
+        .{"collected_vespene", 8},
+        .{"collection_rate_minerals", 9},
+        .{"collection_rate_vespene", 10},
+        .{"spent_minerals", 11},
+        .{"spent_vespene", 12},
+        .{"food_used", 13},
+        .{"killed_minerals", 14},
+        .{"killed_vespene", 15},
+        .{"lost_minerals", 16},
+        .{"lost_vespene", 17},
+        .{"friendly_fire_minerals", 18},
+        .{"friendly_fire_vespene", 19},
+        .{"used_minerals", 20},
+        .{"used_vespene", 21},
+        .{"total_used_minerals", 22},
+        .{"total_used_vespene", 23},
+        .{"total_damage_dealt", 24},
+        .{"total_damage_taken", 25},
+        .{"total_healed", 26},
+        .{"current_apm", 27},
+        .{"current_effective_apm", 28},
+    };
+    idle_production_time: ?f32 = null,
+    idle_worker_time: ?f32 = null,
+    total_value_units: ?f32 = null,
+    total_value_structures: ?f32 = null,
+    killed_value_units: ?f32 = null,
+    killed_value_structures: ?f32 = null,
+    collected_minerals: ?f32 = null,
+    collected_vespene: ?f32 = null,
+    collection_rate_minerals: ?f32 = null,
+    collection_rate_vespene: ?f32 = null,
+    spent_minerals: ?f32 = null,
+    spent_vespene: ?f32 = null,
+    food_used: ?CategoryScoreDetails = null,
+    killed_minerals: ?CategoryScoreDetails = null,
+    killed_vespene: ?CategoryScoreDetails = null,
+    lost_minerals: ?CategoryScoreDetails = null,
+    lost_vespene: ?CategoryScoreDetails = null,
+    friendly_fire_minerals: ?CategoryScoreDetails = null,
+    friendly_fire_vespene: ?CategoryScoreDetails = null,
+    used_minerals: ?CategoryScoreDetails = null,
+    used_vespene: ?CategoryScoreDetails = null,
+    total_used_minerals: ?CategoryScoreDetails = null,
+    total_used_vespene: ?CategoryScoreDetails = null,
+    total_damage_dealt: ?VitalScoreDetails = null,
+    total_damage_taken: ?VitalScoreDetails = null,
+    total_healed: ?VitalScoreDetails = null,
+    current_apm: ?f32 = null,
+    current_effective_apm: ?f32 = null,
 };
 
 pub const ObservationRaw = struct {
-    player: ProtoField(1, PlayerRaw) = .{},
-    units: ProtoField(2, []Unit) = .{},
-    map_state: ProtoField(3, MapState) = .{},
-    event: ProtoField(4, Event) = .{},
-    effects: ProtoField(5, []Effect) = .{},
-    radars: ProtoField(6, []RadarRing) = .{},
+    pub const field_nums = .{
+        .{"player", 1},
+        .{"units", 2},
+        .{"map_state", 3},
+        .{"event", 4},
+        .{"effects", 5},
+        .{"radars", 6},
+    };
+    player: ?PlayerRaw = null,
+    units: ?[]Unit = null,
+    map_state: ?MapState = null,
+    event: ?Event = null,
+    effects: ?[]Effect = null,
+    radars: ?[]RadarRing = null,
 };
 
 pub const RadarRing = struct {
-    pos: ProtoField(1, Point) = .{},
-    radius: ProtoField(2, f32) = .{},
+    pub const field_nums = .{
+        .{"pos", 1},
+        .{"radius", 2},
+    };
+    pos: ?Point = null,
+    radius: ?f32 = null,
 };
 
 pub const PowerSource = struct {
-    pos: ProtoField(1, Point) = .{},
-    radius: ProtoField(2, f32) = .{},
-    tag: ProtoField(3, u64) = .{},
+    pub const field_nums = .{
+        .{"pos", 1},
+        .{"radius", 2},
+        .{"tag", 3},
+    };
+    pos: ?Point = null,
+    radius: ?f32 = null,
+    tag: ?u64 = null,
 };
 
 pub const PlayerRaw = struct {
-    power_sources: ProtoField(1, []PowerSource) = .{},
-    camera: ProtoField(2, Point) = .{},
-    upgrade_ids: ProtoField(3, []u32) = .{},
+    pub const field_nums = .{
+        .{"power_sources", 1},
+        .{"camera", 2},
+        .{"upgrade_ids", 3},
+    };
+    power_sources: ?[]PowerSource = null,
+    camera: ?Point = null,
+    upgrade_ids: ?[]u32 = null,
 };
 
 pub const MapState = struct {
-    visibility: ProtoField(1, ImageData) = .{},
-    creep: ProtoField(2, ImageData) = .{},
+    pub const field_nums = .{
+        .{"visibility", 1},
+        .{"creep", 2},
+    };
+    visibility: ?ImageData = null,
+    creep: ?ImageData = null,
 };
 
 pub const Event = struct {
-    dead_units: ProtoField(1, []u64) = .{},
+    pub const field_nums = .{
+        .{"dead_units", 1},
+    };
+    dead_units: ?[]u64 = null,
 };
 
 pub const DisplayType = enum(u8) {
@@ -297,108 +492,198 @@ pub const CloakState = enum(u8) {
 };
 
 pub const Effect = struct {
-    effect_id: ProtoField(1, u32) = .{},
-    pos: ProtoField(2, []Point2D) = .{},
-    alliance: ProtoField(3, Alliance) = .{},
-    owner: ProtoField(4, i32) = .{},
-    radius: ProtoField(5, f32) = .{},
+    pub const field_nums = .{
+        .{"effect_id", 1},
+        .{"pos", 2},
+        .{"alliance", 3},
+        .{"owner", 4},
+        .{"radius", 5},
+    };
+    effect_id: ?u32 = null,
+    pos: ?[]Point2D = null,
+    alliance: ?Alliance = null,
+    owner: ?i32 = null,
+    radius: ?f32 = null,
 };
 
 pub const RallyTarget = struct {
-    point: ProtoField(1, Point) = .{},
-    tag: ProtoField(2, u64) = .{},
+    pub const field_nums = .{
+        .{"point", 1},
+        .{"tag", 2},
+    };
+    point: ?Point = null,
+    tag: ?u64 = null,
 };
 
 pub const UnitOrder = struct {
-    ability_id: ProtoField(1, u32) = .{},
-    target_world_space_pos: ProtoField(2, Point) = .{},
-    target_unit_tag: ProtoField(3, u64) = .{},
-    progress: ProtoField(4, f32) = .{},
+    pub const field_nums = .{
+        .{"ability_id", 1},
+        .{"target_world_space_pos", 2},
+        .{"target_unit_tag", 3},
+        .{"progress", 4},
+    };
+    ability_id: ?u32 = null,
+    target_world_space_pos: ?Point = null,
+    target_unit_tag: ?u64 = null,
+    progress: ?f32 = null,
 };
 
 pub const PassengerUnit = struct {
-    tag: ProtoField(1, u64) = .{},
-    health: ProtoField(2, f32) = .{},
-    health_max: ProtoField(3, f32) = .{},
-    shield: ProtoField(4, f32) = .{},
-    shield_max: ProtoField(7, f32) = .{},
-    energy: ProtoField(5, f32) = .{},
-    energy_max: ProtoField(8, f32) = .{},
-    unit_type: ProtoField(6, u32) = .{},
+    pub const field_nums = .{
+        .{"tag", 1},
+        .{"health", 2},
+        .{"health_max", 3},
+        .{"shield", 4},
+        .{"shield_max", 7},
+        .{"energy", 5},
+        .{"energy_max", 8},
+        .{"unit_type", 6},
+    };
+    tag: ?u64 = null,
+    health: ?f32 = null,
+    health_max: ?f32 = null,
+    shield: ?f32 = null,
+    shield_max: ?f32 = null,
+    energy: ?f32 = null,
+    energy_max: ?f32 = null,
+    unit_type: ?u32 = null,
 };
 
 pub const Unit = struct {
-    display_type: ProtoField(1, DisplayType) = .{},
-    alliance: ProtoField(2, Alliance) = .{},
-    tag: ProtoField(3, u64) = .{},
-    unit_type: ProtoField(4, u32) = .{},
-    owner: ProtoField(5, i32) = .{},
+    pub const field_nums = .{
+        .{"display_type", 1},
+        .{"alliance", 2},
+        .{"tag", 3},
+        .{"unit_type", 4},
+        .{"owner", 5},
+        .{"pos", 6},
+        .{"facing", 7},
+        .{"radius", 8},
+        .{"build_progress", 9},
+        .{"cloak", 10},
+        .{"buff_ids", 27},
+        .{"detect_range", 31},
+        .{"radar_range", 32},
+        .{"is_selected", 11},
+        .{"is_on_screen", 12},
+        .{"is_blip", 13},
+        .{"is_powered", 35},
+        .{"is_active", 39},
+        .{"attack_upgrade_level", 40},
+        .{"armor_upgrade_level", 41},
+        .{"shield_upgrade_level", 42},
+        .{"health", 14},
+        .{"health_max", 15},
+        .{"shield", 16},
+        .{"shield_max", 36},
+        .{"energy", 17},
+        .{"energy_max", 37},
+        .{"mineral_contents", 18},
+        .{"vespene_contents", 19},
+        .{"is_flying", 20},
+        .{"is_burrowed", 21},
+        .{"is_hallucination", 38},
+        .{"orders", 22},
+        .{"addon_tag", 23},
+        .{"passengers", 24},
+        .{"cargo_space_taken", 25},
+        .{"cargo_space_max", 26},
+        .{"assigned_harvesters", 28},
+        .{"ideal_harvesters", 29},
+        .{"weapon_cooldown", 30},
+        .{"engaged_target_tag", 34},
+        .{"buff_duration_remain", 43},
+        .{"buff_duration_max", 44},
+        .{"rally_targets", 45},
+    };
+    display_type: ?DisplayType = null,
+    alliance: ?Alliance = null,
+    tag: ?u64 = null,
+    unit_type: ?u32 = null,
+    owner: ?i32 = null,
     
-    pos: ProtoField(6, Point) = .{},
-    facing: ProtoField(7, f32) = .{},
-    radius: ProtoField(8, f32) = .{},
-    build_progress: ProtoField(9, f32) = .{},
-    cloak: ProtoField(10, CloakState) = .{},
-    buff_ids: ProtoField(27, []u32) = .{},
+    pos: ?Point = null,
+    facing: ?f32 = null,
+    radius: ?f32 = null,
+    build_progress: ?f32 = null,
+    cloak: ?CloakState = null,
+    buff_ids: ?[]u32 = null,
 
-    detect_range: ProtoField(31, f32) = .{},
-    radar_range: ProtoField(32, f32) = .{},
+    detect_range: ?f32 = null,
+    radar_range: ?f32 = null,
 
-    is_selected: ProtoField(11, bool) = .{},
-    is_on_screen: ProtoField(12, bool) = .{},
-    is_blip: ProtoField(13, bool) = .{},
-    is_powered: ProtoField(35, bool) = .{},
-    is_active: ProtoField(39, bool) = .{},
+    is_selected: ?bool = null,
+    is_on_screen: ?bool = null,
+    is_blip: ?bool = null,
+    is_powered: ?bool = null,
+    is_active: ?bool = null,
 
-    attack_upgrade_level: ProtoField(40, i32) = .{},
-    armor_upgrade_level: ProtoField(41, i32) = .{},
-    shield_upgrade_level: ProtoField(42, i32) = .{},
+    attack_upgrade_level: ?i32 = null,
+    armor_upgrade_level: ?i32 = null,
+    shield_upgrade_level: ?i32 = null,
 
-    health: ProtoField(14, f32) = .{},
-    health_max: ProtoField(15, f32) = .{},
-    shield: ProtoField(16, f32) = .{},
-    shield_max: ProtoField(36, f32) = .{},
-    energy: ProtoField(17, f32) = .{},
-    energy_max: ProtoField(37, f32) = .{},
-    mineral_contents: ProtoField(18, i32) = .{},
-    vespene_contents: ProtoField(19, i32) = .{},
-    is_flying: ProtoField(20, bool) = .{},
-    is_burrowed: ProtoField(21, bool) = .{},
-    is_hallucination: ProtoField(38, bool) = .{},
+    health: ?f32 = null,
+    health_max: ?f32 = null,
+    shield: ?f32 = null,
+    shield_max: ?f32 = null,
+    energy: ?f32 = null,
+    energy_max: ?f32 = null,
+    mineral_contents: ?i32 = null,
+    vespene_contents: ?i32 = null,
+    is_flying: ?bool = null,
+    is_burrowed: ?bool = null,
+    is_hallucination: ?bool = null,
 
-    orders: ProtoField(22, []UnitOrder) = .{},
-    addon_tag: ProtoField(23, u64) = .{},
-    passengers: ProtoField(24, []PassengerUnit) = .{},
-    cargo_space_taken: ProtoField(25, i32) = .{},
-    cargo_space_max: ProtoField(26, i32) = .{},
+    orders: ?[]UnitOrder = null,
+    addon_tag: ?u64 = null,
+    passengers: ?[]PassengerUnit = null,
+    cargo_space_taken: ?i32 = null,
+    cargo_space_max: ?i32 = null,
     
-    assigned_harvesters: ProtoField(28, i32) = .{},
-    ideal_harvesters: ProtoField(29, i32) = .{},
-    weapon_cooldown: ProtoField(30, f32) = .{},
-    engaged_target_tag: ProtoField(34, u64) = .{},
-    buff_duration_remain: ProtoField(43, i32) = .{},
-    buff_duration_max: ProtoField(44, i32) = .{},
-    rally_targets:ProtoField(45, []RallyTarget) = .{},    
+    assigned_harvesters: ?i32 = null,
+    ideal_harvesters: ?i32 = null,
+    weapon_cooldown: ?f32 = null,
+    engaged_target_tag: ?u64 = null,
+    buff_duration_remain: ?i32 = null,
+    buff_duration_max: ?i32 = null,
+    rally_targets:?[]RallyTarget = null,    
 };
 
 pub const Action = struct {
-    action_raw: ProtoField(1, ActionRaw) = .{},
-    //action_feature_layer: ProtoField(2, ActionSpatial) = .{},
-    //action_render: ProtoField(3, ActionSpatial) = .{},
-    //action_ui: ProtoField(4, ActionUI) = .{},
-    action_chat: ProtoField(6, ActionChat) = .{},
-    game_loop: ProtoField(7, u32) = .{},
+    pub const field_nums = .{
+        .{"action_raw", 1},
+        //.{"action_feature_layer", 2},
+        //.{"action_render", 3},
+        //.{"action_ui", 4},
+        .{"action_chat", 6},
+        .{"game_loop", 7}
+    };
+    action_raw: ?ActionRaw = null,
+    //action_feature_layer: ?ActionSpatial = null,
+    //action_render: ?ActionSpatial = null,
+    //action_ui: ?ActionUI = null,
+    action_chat: ?ActionChat = null,
+    game_loop: ?u32 = null,
 };
 
 pub const ActionError = struct {
-    unit_tag: ProtoField(1, u64) = .{},
-    ability_id: ProtoField(2, u64) = .{},
-    result: ProtoField(3, ActionResult) = .{},
+    pub const field_nums = .{
+        .{"unit_tag", 1},
+        .{"ability_id", 2},
+        .{"result", 3},
+    };
+    unit_tag: ?u64 = null,
+    ability_id: ?u64 = null,
+    result: ?ActionResult = null,
 };
 
 pub const PlayerResult = struct {
-    player_id: ProtoField(1, u32) = .{},
-    result: ProtoField(2, Result) = .{},
+    pub const field_nums = .{
+        .{"player_id", 1},
+        .{"result", 2},
+    };
+    player_id: ?u32 = null,
+    result: ?Result = null,
 };
 
 pub const Result = enum(u8) {
@@ -409,8 +694,12 @@ pub const Result = enum(u8) {
 };
 
 pub const ChatReceived = struct {
-    player_id: ProtoField(1, u32) = .{},
-    message: ProtoField(2, []const u8) = .{},
+    pub const field_nums = .{
+        .{"player_id", 1},
+        .{"message", 2},
+    };
+    player_id: ?u32 = null,
+    message: ?[]const u8 = null,
 };
 
 pub const Channel = enum(u8) {
@@ -419,62 +708,112 @@ pub const Channel = enum(u8) {
 };
 
 pub const ActionChat = struct {
-    channel: ProtoField(1, Channel) = .{},
-    message: ProtoField(2, []const u8) = .{},
+    pub const field_nums = .{
+        .{"channel", 1},
+        .{"message", 2},
+    };
+    channel: ?Channel = null,
+    message: ?[]const u8 = null,
 };
 
 pub const ActionRaw = struct {
-    unit_command: ProtoField(1, ActionRawUnitCommand) = .{},
-    camera_move: ProtoField(2, ActionRawCameraMove) = .{},
-    toggle_autocast: ProtoField(3, ActionRawToggleAutocast) = .{},
+    pub const field_nums = .{
+        .{"unit_command", 1},
+        .{"camera_move", 2},
+        .{"toggle_autocast", 3},
+    };
+    unit_command: ?ActionRawUnitCommand = null,
+    camera_move: ?ActionRawCameraMove = null,
+    toggle_autocast: ?ActionRawToggleAutocast = null,
 };
 
 pub const ActionRawUnitCommand = struct {
-    ability_id: ProtoField(1, i32) = .{},
-    target_world_space_pos: ProtoField(2, Point2D) = .{},
-    target_unit_tag: ProtoField(3, u64) = .{},
-    unit_tags: ProtoField(4, []u64) = .{},
-    queue_command: ProtoField(5, bool) = .{},
+    pub const field_nums = .{
+        .{"ability_id", 1},
+        .{"target_world_space_pos", 2},
+        .{"target_unit_tag", 3},
+        .{"unit_tags", 4},
+        .{"queue_command", 5},
+    };
+    ability_id: ?i32 = null,
+    target_world_space_pos: ?Point2D = null,
+    target_unit_tag: ?u64 = null,
+    unit_tags: ?[]u64 = null,
+    queue_command: ?bool = null,
 };
 
 pub const ActionRawCameraMove = struct {
-    point: ProtoField(1, Point) = .{},
+    pub const field_nums = .{
+        .{"point", 1},
+    };
+    point: ?Point = null,
 };
 
 pub const ActionRawToggleAutocast = struct {
-    ability_id: ProtoField(1, i32) = .{},
-    unit_tags: ProtoField(2, []u64) = .{},
+    pub const field_nums = .{
+        .{"ability_id", 1},
+        .{"unit_tags", 2},
+    };
+    ability_id: ?i32 = null,
+    unit_tags: ?[]u64 = null,
 };
 
 pub const PlayerInfo = struct {
-    player_id: ProtoField(1, u32) = .{},
-    player_type: ProtoField(2, PlayerType) = .{},
-    race_requested: ProtoField(3, Race) = .{},
-    race_actual: ProtoField(4, Race) = .{},
-    difficulty: ProtoField(5, AiDifficulty) = .{},
-    player_name: ProtoField(6, []const u8) = .{},
-    ai_build: ProtoField(7, AiBuild) = .{},
+    pub const field_nums = .{
+        .{"player_id", 1},
+        .{"player_type", 2},
+        .{"race_requested", 3},
+        .{"race_actual", 4},
+        .{"difficulty", 5},
+        .{"player_name", 6},
+        .{"ai_build", 7},
+    };
+    player_id: ?u32 = null,
+    player_type: ?PlayerType = null,
+    race_requested: ?Race = null,
+    race_actual: ?Race = null,
+    difficulty: ?AiDifficulty = null,
+    player_name: ?[]const u8 = null,
+    ai_build: ?AiBuild = null,
 };
 
 pub const InterfaceOptions = struct {
-    raw: ProtoField(1, bool) = .{},
-    score: ProtoField(2, bool) = .{},
-    //feature_layer: ProtoField(3, SpatialCameraSetu) = .{},
-    //render: ProtoField(4, SpatialCameraSetup) = .{},
-    show_cloaked: ProtoField(5, bool) = .{},
-    raw_affects_selection: ProtoField(6, bool) = .{},
-    raw_crop_to_playable_area: ProtoField(7, bool) = .{},
-    show_placeholders: ProtoField(8, bool) = .{},
-    show_burrowed_shadows: ProtoField(9, bool) = .{},
+    pub const field_nums = .{
+        .{"raw", 1},
+        .{"score", 2},
+        //.{"feature_layer", 3},
+        //.{"render", 4},
+        .{"show_cloaked", 5},
+        .{"raw_affects_selection", 6},
+        .{"raw_crop_to_playable_area", 7},
+        .{"show_placeholders", 8},
+        .{"show_burrowed_shadows", 9},
+    };
+    raw: ?bool = null,
+    score: ?bool = null,
+    //feature_layer: ?SpatialCameraSetu = null,
+    //render: ?SpatialCameraSetup = null,
+    show_cloaked: ?bool = null,
+    raw_affects_selection: ?bool = null,
+    raw_crop_to_playable_area: ?bool = null,
+    show_placeholders: ?bool = null,
+    show_burrowed_shadows: ?bool = null,
 };
 
 pub const PortSet = struct {
-    game_port: ProtoField(1, i32) = .{},
-    base_port: ProtoField(2, i32) = .{},
+    pub const field_nums = .{
+        .{"game_port", 1},
+        .{"base_port", 2},
+    };
+    game_port: ?i32 = null,
+    base_port: ?i32 = null,
 };
 
 pub const LocalMap = struct {
-    map_path: ProtoField(1, []const u8) = .{},
+    pub const field_nums = .{
+        .{"map_path", 1},
+    };
+    map_path: ?[]const u8 = null,
 };
 
 pub const PlayerType = enum(u8) {
@@ -514,59 +853,104 @@ pub const AiBuild = enum(u8) {
 };
 
 pub const PlayerSetup = struct {
-    player_type: ProtoField(1, PlayerType) = .{},
+    pub const field_nums = .{
+        .{"player_type", 1},
+        .{"race", 2},
+        .{"difficulty", 3},
+        .{"name", 4},
+        .{"ai_build", 5},
+    };
+    player_type: ?PlayerType = null,
 
     // For computer players
-    race: ProtoField(2, Race) = .{},
-    difficulty: ProtoField(3, AiDifficulty) = .{},
-    name: ProtoField(4, []const u8) = .{},
-    ai_build: ProtoField(5, AiBuild) = .{},
+    race: ?Race = null,
+    difficulty: ?AiDifficulty = null,
+    name: ?[]const u8 = null,
+    ai_build: ?AiBuild = null,
 };
 
 pub const Size2DI = struct {
-    x: ProtoField(1, i32) = .{},
-    y: ProtoField(2, i32) = .{},
+    pub const field_nums = .{
+        .{"x", 1},
+        .{"y", 2},
+    };
+    x: ?i32 = null,
+    y: ?i32 = null,
 };
 
 pub const PointI = struct {
-    x: ProtoField(1, i32) = .{},
-    y: ProtoField(2, i32) = .{},
+    pub const field_nums = .{
+        .{"x", 1},
+        .{"y", 2},
+    };
+    x: ?i32 = null,
+    y: ?i32 = null,
 };
 
 pub const RectangleI = struct {
-    p0: ProtoField(1, PointI) = .{},
-    p1: ProtoField(2, PointI) = .{},
+    pub const field_nums = .{
+        .{"p0", 1},
+        .{"p1", 2},
+    };
+    p0: ?PointI = null,
+    p1: ?PointI = null,
 };
 
 pub const Point2D = struct {
-    x: ProtoField(1, f32) = .{},
-    y: ProtoField(2, f32) = .{},
+    pub const field_nums = .{
+        .{"x", 1},
+        .{"y", 2},
+    };
+    x: ?f32 = null,
+    y: ?f32 = null,
 };
 
 pub const Point = struct {
-    x: ProtoField(1, f32) = .{},
-    y: ProtoField(2, f32) = .{},
-    z: ProtoField(3, f32) = .{},
+    pub const field_nums = .{
+        .{"x", 1},
+        .{"y", 2},
+        .{"z", 3},
+    };
+    x: ?f32 = null,
+    y: ?f32 = null,
+    z: ?f32 = null,
 };
 
 pub const ImageData = struct {
-    bits_per_pixel: ProtoField(1, i32) = .{},
-    size: ProtoField(2, Size2DI) = .{},
-    image: ProtoField(3, []u8) = .{},
+    pub const field_nums = .{
+        .{"bits_per_pixel", 1},
+        .{"size", 2},
+        .{"image", 3},
+    };
+    bits_per_pixel: ?i32 = null,
+    size: ?Size2DI = null,
+    image: ?[]u8 = null,
 };
 
 pub const AvailableAbility = struct {
-    ability_id: ProtoField(1, i32) = .{},
-    requires_point: ProtoField(2, bool) = .{},
+    pub const field_nums = .{
+        .{"ability_id", 1},
+        .{"requires_point", 2},
+    };
+    ability_id: ?i32 = null,
+    requires_point: ?bool = null,
 };
 
 pub const StartRaw = struct {
-    map_size: ProtoField(1, Size2DI) = .{},
-    pathing_grid: ProtoField(2, ImageData) = .{},
-    terrain_height: ProtoField(3, ImageData) = .{},
-    placement_grid: ProtoField(4, ImageData) = .{},
-    playable_area: ProtoField(5, RectangleI) = .{},
-    start_locations: ProtoField(6, []Point2D) = .{},
+    pub const field_nums = .{
+        .{"map_size", 1},
+        .{"pathing_grid", 2},
+        .{"terrain_height", 3},
+        .{"placement_grid", 4},
+        .{"playable_area", 5},
+        .{"start_locations", 6},
+    };
+    map_size: ?Size2DI = null,
+    pathing_grid: ?ImageData = null,
+    terrain_height: ?ImageData = null,
+    placement_grid: ?ImageData = null,
+    playable_area: ?RectangleI = null,
+    start_locations: ?[]Point2D = null,
 };
 
 pub const ActionResult = enum(u8) {
@@ -812,61 +1196,110 @@ pub const Alert = enum(u8) {
 };
 
 pub const RequestDebug = struct {
-    commands: ProtoField(1, []DebugCommand) = .{},
+    pub const field_nums = .{
+        .{"commands", 1},
+    };
+    commands: ?[]DebugCommand = null,
 };
 
 pub const DebugCommand = struct {
-    draw: ProtoField(1, DebugDraw) = .{},
-    game_state: ProtoField(2, DebugGameState) = .{},
-    create_unit: ProtoField(3, DebugCreateUnit) = .{},
-    kill_unit: ProtoField(4, DebugKillUnit) = .{},
-    test_process: ProtoField(5, DebugTestProcess) = .{},
-    score: ProtoField(6, DebugSetScore) = .{},
-    end_game: ProtoField(7, DebugEndGame) = .{},
-    unit_value: ProtoField(8, DebugSetUnitValue) = .{},
+    pub const field_nums = .{
+        .{"draw", 1},
+        .{"game_state", 2},
+        .{"create_unit", 3},
+        .{"kill_unit", 4},
+        .{"test_process", 5},
+        .{"score", 6},
+        .{"end_game", 7},
+        .{"unit_value", 8},
+    };
+    draw: ?DebugDraw = null,
+    game_state: ?DebugGameState = null,
+    create_unit: ?DebugCreateUnit = null,
+    kill_unit: ?DebugKillUnit = null,
+    test_process: ?DebugTestProcess = null,
+    score: ?DebugSetScore = null,
+    end_game: ?DebugEndGame = null,
+    unit_value: ?DebugSetUnitValue = null,
 };
 
 pub const DebugDraw = struct {
-    text: ProtoField(1, []DebugText) = .{},
-    lines: ProtoField(2, []DebugLine) = .{},
-    boxes: ProtoField(3, []DebugBox) = .{},
-    spheres: ProtoField(4, []DebugSphere) = .{},
+    pub const field_nums = .{
+        .{"text", 1},
+        .{"lines", 2},
+        .{"boxes", 3},
+        .{"spheres", 4},
+    };
+    text: ?[]DebugText = null,
+    lines: ?[]DebugLine = null,
+    boxes: ?[]DebugBox = null,
+    spheres: ?[]DebugSphere = null,
 };
 
 pub const Color = struct {
-    r: ProtoField(1, u32) = .{},
-    g: ProtoField(2, u32) = .{},
-    b: ProtoField(3, u32) = .{},
+    pub const field_nums = .{
+        .{"r", 1},
+        .{"g", 2},
+        .{"b", 3},
+    };
+    r: ?u32 = null,
+    g: ?u32 = null,
+    b: ?u32 = null,
 };
 
 pub const DebugText = struct {
-    color: ProtoField(1, Color) = .{},
-    text: ProtoField(2, []const u8) = .{},
-    virtual_pos: ProtoField(3, Point) = .{},
-    world_pos: ProtoField(4, Point) = .{},
-    size: ProtoField(5, u32) = .{},
+    pub const field_nums = .{
+        .{"color", 1},
+        .{"text", 2},
+        .{"virtual_pos", 3},
+        .{"world_pos", 4},
+        .{"size", 5},
+    };
+    color: ?Color = null,
+    text: ?[]const u8 = null,
+    virtual_pos: ?Point = null,
+    world_pos: ?Point = null,
+    size: ?u32 = null,
 };
 
 pub const Line = struct {
-    p0: ProtoField(1, Point) = .{},
-    p1: ProtoField(2, Point) = .{},
+    pub const field_nums = .{
+        .{"p0", 1},
+        .{"p1", 2},
+    };
+    p0: ?Point = null,
+    p1: ?Point = null,
 };
 
 pub const DebugLine = struct {
-    color: ProtoField(1, Color) = .{},
-    line: ProtoField(2, Line) = .{},
+    pub const field_nums = .{
+        .{"color", 1},
+        .{"line", 2},
+    };
+    color: ?Color = null,
+    line: ?Line = null,
 };
 
 pub const DebugBox = struct {
-    color: ProtoField(1, Color) = .{},
-    min: ProtoField(2, Point) = .{},
-    max: ProtoField(3, Point) = .{},
+    pub const field_nums = .{
+        .{"color", 1},
+        .{"min", 2},
+        .{"max", 3},
+    };
+    color: ?Color = null,
+    min: ?Point = null,
+    max: ?Point = null,
 };
 
 pub const DebugSphere = struct {
-    color: ProtoField(1, Color) = .{},
-    p: ProtoField(2, Point) = .{},
-    r: ProtoField(3, f32) = .{},
+    pub const field_nums = .{
+        .{"color", 1},
+        .{"p", 2},
+        .{"r", 3},
+    };
+    color: ?Color = null,
+    p: ?Point = null,
+    r: ?f32 = null,
 };
 
 pub const DebugGameState = enum(u8) {
@@ -885,14 +1318,23 @@ pub const DebugGameState = enum(u8) {
 };
 
 pub const DebugCreateUnit = struct {
-    unit_type: ProtoField(1, u32) = .{},
-    owner: ProtoField(2, i32) = .{},
-    pos: ProtoField(3, Point2D) = .{},
-    quantity: ProtoField(4, u32) = .{},
+    pub const field_nums = .{
+        .{"unit_type", 1},
+        .{"owner", 2},
+        .{"pos", 3},
+        .{"quantity", 4},
+    };
+    unit_type: ?u32 = null,
+    owner: ?i32 = null,
+    pos: ?Point2D = null,
+    quantity: ?u32 = null,
 };
 
 pub const DebugKillUnit = struct {
-    tags: ProtoField(1, []u64) = .{},
+    pub const field_nums = .{
+        .{"tags", 1},
+    };
+    tags: ?[]u64 = null,
 };
 
 pub const TestProcessState = enum(u8) {
@@ -902,12 +1344,19 @@ pub const TestProcessState = enum(u8) {
 };
 
 pub const DebugTestProcess = struct {
-    state: ProtoField(1, TestProcessState) = .{},
-    delay_ms: ProtoField(2, i32) = .{},
+    pub const field_nums = .{
+        .{"state", 1},
+        .{"delay_ms", 2},
+    };
+    state: ?TestProcessState = null,
+    delay_ms: ?i32 = null,
 };
 
 pub const DebugSetScore = struct {
-    score: ProtoField(1, f32) = .{},
+    pub const field_nums = .{
+        .{"score", 1},
+    };
+    score: ?f32 = null,
 };
 
 pub const EndResult = enum(u8) {
@@ -916,7 +1365,10 @@ pub const EndResult = enum(u8) {
 };
 
 pub const DebugEndGame = struct {
-    end_result: ProtoField(1, EndResult) = .{},
+    pub const field_nums = .{
+        .{"end_result", 1},
+    };
+    end_result: ?EndResult = null,
 };
 
 pub const UnitValue = enum(u8) {
@@ -926,25 +1378,44 @@ pub const UnitValue = enum(u8) {
 };
 
 pub const DebugSetUnitValue = struct {
-    unit_value: ProtoField(1, UnitValue) = .{},
-    value: ProtoField(2, f32) = .{},
-    unit_tag: ProtoField(3, u64) = .{},
+    pub const field_nums = .{
+        .{"unit_value", 1},
+        .{"value", 2},
+        .{"unit_tag", 3},
+    };
+    unit_value: ?UnitValue = null,
+    value: ?f32 = null,
+    unit_tag: ?u64 = null,
 };
 
 pub const RequestData = struct {
-    ability_id: ProtoField(1, bool) = .{},
-    unit_id: ProtoField(2, bool) = .{},
-    upgrade_id: ProtoField(3, bool) = .{},
-    buff_id: ProtoField(4, bool) = .{},
-    effect_id: ProtoField(5, bool) = .{},
+    pub const field_nums = .{
+        .{"ability_id", 1},
+        .{"unit_id", 2},
+        .{"upgrade_id", 3},
+        .{"buff_id", 4},
+        .{"effect_id", 5},
+    };
+    ability_id: ?bool = null,
+    unit_id: ?bool = null,
+    upgrade_id: ?bool = null,
+    buff_id: ?bool = null,
+    effect_id: ?bool = null,
 };
 
 pub const ResponseData = struct {
-    //abilities: ProtoField(1, []AbilityData) = .{},
-    units: ProtoField(2, []UnitTypeData) = .{},
-    upgrades: ProtoField(3, []UpgradeData) = .{},
-    //buffs: ProtoField(4, []BuffData) = .{},
-    //effects: ProtoField(5, []EffectData) = .{},
+    pub const field_nums = .{
+        //.{"abilities", 1},
+        .{"units", 2},
+        .{"upgrades", 3},
+        //.{"buffs", 4},
+        //.{"effects", 5},
+    };
+    //abilities: ?[]AbilityData = null,
+    units: ?[]UnitTypeData = null,
+    upgrades: ?[]UpgradeData = null,
+    //buffs: ?[]BuffData = null,
+    //effects: ?[]EffectData = null,
 };
 
 pub const Attribute = enum(u8) {
@@ -968,92 +1439,171 @@ pub const TargetType = enum(u8) {
 };
 
 pub const DamageBonus = struct {
-    attribute: ProtoField(1, Attribute) = .{},
-    bonus: ProtoField(2, f32) = .{},
+    pub const field_nums = .{
+        .{"attribute", 1},
+        .{"bonus", 2},
+    };
+    attribute: ?Attribute = null,
+    bonus: ?f32 = null,
 };
 
 pub const Weapon = struct {
-    target_type: ProtoField(1, TargetType) = .{},
-    damage: ProtoField(2, f32) = .{},
-    damage_bonus: ProtoField(3, []DamageBonus) = .{},
-    attacks: ProtoField(4, u32) = .{},
-    range: ProtoField(5, f32) = .{},
-    speed: ProtoField(6, f32) = .{},
+    pub const field_nums = .{
+        .{"target_type", 1},
+        .{"damage", 2},
+        .{"damage_bonus", 3},
+        .{"attacks", 4},
+        .{"range", 5},
+        .{"speed", 6},
+    };
+    target_type: ?TargetType = null,
+    damage: ?f32 = null,
+    damage_bonus: ?[]DamageBonus = null,
+    attacks: ?u32 = null,
+    range: ?f32 = null,
+    speed: ?f32 = null,
 };
 
 pub const UpgradeData = struct {
-    upgrade_id: ProtoField(1, u32) = .{},
-    name: ProtoField(2, []const u8) = .{},
-    mineral_cost: ProtoField(3, u32) = .{},
-    vespene_cost: ProtoField(4, u32) = .{},
-    research_time: ProtoField(5, f32) = .{},
-    ability_id: ProtoField(6, u32) = .{},
+    pub const field_nums = .{
+        .{"upgrade_id", 1},
+        .{"name", 2},
+        .{"mineral_cost", 3},
+        .{"vespene_cost", 4},
+        .{"research_time", 5},
+        .{"ability_id", 6},
+    };
+    upgrade_id: ?u32 = null,
+    name: ?[]const u8 = null,
+    mineral_cost: ?u32 = null,
+    vespene_cost: ?u32 = null,
+    research_time: ?f32 = null,
+    ability_id: ?u32 = null,
 };
 
 pub const UnitTypeData = struct {
-    unit_id: ProtoField(1, u32) = .{},
-    name: ProtoField(2, []const u8) = .{},
-    available: ProtoField(3, bool) = .{},
-    cargo_size: ProtoField(4, u32) = .{},
-    attributes: ProtoField(8, []Attribute) = .{},
-    movement_speed: ProtoField(9, f32) = .{},
-    armor: ProtoField(10, f32) = .{},
-    weapons: ProtoField(11, []Weapon) = .{},
-    mineral_cost: ProtoField(12, u32) = .{},
-    vespene_cost: ProtoField(13, u32) = .{},
-    food_required: ProtoField(14, f32) = .{},
-    ability_id: ProtoField(15, u32) = .{},
-    race: ProtoField(16, Race) = .{},
-    build_time: ProtoField(17, f32) = .{},
-    food_provided: ProtoField(18, f32) = .{},
-    has_vespene: ProtoField(19, bool) = .{},
-    has_minerals: ProtoField(20, bool) = .{},
-    sight_range: ProtoField(25, f32) = .{},
-    tech_alias: ProtoField(21, []u32) = .{},
-    unit_alias: ProtoField(22, u32) = .{},
-    tech_requirement: ProtoField(23, u32) = .{},
-    require_attached: ProtoField(24, bool) = .{},
+    pub const field_nums = .{
+        .{"unit_id", 1},
+        .{"name", 2},
+        .{"available", 3},
+        .{"cargo_size", 4},
+        .{"attributes", 8},
+        .{"movement_speed", 9},
+        .{"armor", 10},
+        .{"weapons", 11},
+        .{"mineral_cost", 12},
+        .{"vespene_cost", 13},
+        .{"food_required", 14},
+        .{"ability_id", 15},
+        .{"race", 16},
+        .{"build_time", 17},
+        .{"food_provided", 18},
+        .{"has_vespene", 19},
+        .{"has_minerals", 20},
+        .{"sight_range", 25},
+        .{"tech_alias", 21},
+        .{"unit_alias", 22},
+        .{"tech_requirement", 23},
+        .{"require_attached", 24},
+    };
+    unit_id: ?u32 = null,
+    name: ?[]const u8 = null,
+    available: ?bool = null,
+    cargo_size: ?u32 = null,
+    attributes: ?[]Attribute = null,
+    movement_speed: ?f32 = null,
+    armor: ?f32 = null,
+    weapons: ?[]Weapon = null,
+    mineral_cost: ?u32 = null,
+    vespene_cost: ?u32 = null,
+    food_required: ?f32 = null,
+    ability_id: ?u32 = null,
+    race: ?Race = null,
+    build_time: ?f32 = null,
+    food_provided: ?f32 = null,
+    has_vespene: ?bool = null,
+    has_minerals: ?bool = null,
+    sight_range: ?f32 = null,
+    tech_alias: ?[]u32 = null,
+    unit_alias: ?u32 = null,
+    tech_requirement: ?u32 = null,
+    require_attached: ?bool = null,
 };
 
 pub const RequestQuery = struct {
-    pathing: ProtoField(1, []RequestQueryPathing) = .{},
-    abilities: ProtoField(2, []RequestQueryAvailableAbilities) = .{},
-    placements: ProtoField(3, []RequestQueryBuildingPlacement) = .{},
-    ignore_resource_requirements: ProtoField(4, bool) = .{},
+    pub const field_nums = .{
+        .{"pathing", 1},
+        .{"abilities", 2},
+        .{"placements", 3},
+        .{"ignore_resource_requirements", 4},
+    };
+    pathing: ?[]RequestQueryPathing = null,
+    abilities: ?[]RequestQueryAvailableAbilities = null,
+    placements: ?[]RequestQueryBuildingPlacement = null,
+    ignore_resource_requirements: ?bool = null,
 };
 
 pub const ResponseQuery = struct {
-    pathing: ProtoField(1, []ResponseQueryPathing) = .{},
-    abilities: ProtoField(2, []ResponseQueryAvailableAbilities) = .{},
-    placements: ProtoField(3, []ResponseQueryBuildingPlacement) = .{},
+    pub const field_nums = .{
+        .{"pathing", 1},
+        .{"abilities", 2},
+        .{"placements", 3},
+    };
+    pathing: ?[]ResponseQueryPathing = null,
+    abilities: ?[]ResponseQueryAvailableAbilities = null,
+    placements: ?[]ResponseQueryBuildingPlacement = null,
 };
 
 pub const RequestQueryPathing = struct {
-    start_pos: ProtoField(1, Point2D) = .{},
-    unit_tag: ProtoField(2, u64) = .{},
-    end_pos: ProtoField(3, Point2D) = .{},
+    pub const field_nums = .{
+        .{"start_pos", 1},
+        .{"unit_tag", 2},
+        .{"end_pos", 3},
+    };
+    start_pos: ?Point2D = null,
+    unit_tag: ?u64 = null,
+    end_pos: ?Point2D = null,
 };
 
 pub const ResponseQueryPathing = struct {
-    distance: ProtoField(1, f32) = .{},
+    pub const field_nums = .{
+        .{"distance", 1},
+    };
+    distance: ?f32 = null,
 };
 
 pub const RequestQueryAvailableAbilities = struct {
-    unit_tag: ProtoField(1, u64) = .{},
+    pub const field_nums = .{
+        .{"unit_tag", 1},
+    };
+    unit_tag: ?u64 = null,
 };
 
 pub const ResponseQueryAvailableAbilities = struct {
-    abilities: ProtoField(1, []AvailableAbility) = .{},
-    unit_tag: ProtoField(2, u64) = .{},
-    unit_type_id: ProtoField(3, u32) = .{}
+    pub const field_nums = .{
+        .{"abilities", 1},
+        .{"unit_tag", 2},
+        .{"unit_type_id", 3},
+    };
+    abilities: ?[]AvailableAbility = null,
+    unit_tag: ?u64 = null,
+    unit_type_id: ?u32 = null
 };
 
 pub const RequestQueryBuildingPlacement = struct {
-    ability_id: ProtoField(1, i32) = .{},
-    target_pos: ProtoField(2, Point2D) = .{},
-    placing_unit_tag: ProtoField(3, u64) = .{},
+    pub const field_nums = .{
+        .{"ability_id", 1},
+        .{"target_pos", 2},
+        .{"placing_unit_tag", 3},
+    };
+    ability_id: ?i32 = null,
+    target_pos: ?Point2D = null,
+    placing_unit_tag: ?u64 = null,
 };
 
 pub const ResponseQueryBuildingPlacement = struct {
-    result: ProtoField(1, ActionResult) = .{},
+    pub const field_nums = .{
+        .{"result", 1},
+    };
+    result: ?ActionResult = null,
 };

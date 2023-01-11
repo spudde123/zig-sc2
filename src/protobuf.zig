@@ -21,26 +21,6 @@ const WriteError = error{
     EndOfBuffer,
 };
 
-pub fn ProtoField(comptime field_num: comptime_int,  comptime data_type: type) type {
-
-    const info = @typeInfo(data_type);
-    switch (info) {
-        .Pointer => |ptr| {
-            return struct {
-                field_num: u8 = field_num,
-                data: ?data_type = null,
-                list: ?std.ArrayList(ptr.child) = null,
-            };
-        },
-        else => {
-            return struct {
-                field_num: u8 = field_num,
-                data: ?data_type = null,
-            };
-        }
-    }
-}
-
 const ProtoHeader = struct {
     wire_type: WireType,
     field_number: u8,
@@ -66,46 +46,67 @@ pub const ProtoReader = struct {
 
         var start: usize = self.bytes_read;
 
+        const field_nums_tuple = @field(T, "field_nums");
+        comptime var tuple_types: [field_nums_tuple.len]type = undefined;
+        inline for (field_nums_tuple) |field_info, i| {
+            const field_name = field_info[0];
+            const info = @typeInfo(@TypeOf(@field(res, field_name)));
+            const child_type = info.Optional.child;
+            const child_info = @typeInfo(child_type);
+            tuple_types[i] = switch (child_info) {
+                .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child),
+                else => u8,
+            };
+        }
+        const TupleType = std.meta.Tuple(&tuple_types);
+        var list_type: TupleType = undefined;
+        inline for (field_nums_tuple) |field_info, i| {
+            const field_name = field_info[0];
+            const info = @typeInfo(@TypeOf(@field(res, field_name)));
+            const child_type = info.Optional.child;
+            const child_info = @typeInfo(child_type);
+            list_type[i] = switch (child_info) {
+                .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child){},
+                else => 0,
+            };
+        }
         while (self.bytes_read - start < size) {
             const header = try self.decodeProtoHeader();
 
             var recognized_field = false;
-            inline for (@typeInfo(T).Struct.fields) |field| {
-                var obj_field = &@field(res, field.name);
-                
-                const field_num = obj_field.field_num;
+            inline for (field_nums_tuple) |field_info, i| {
+                const field_name = field_info[0];
+                const field_num = field_info[1];
 
                 if (header.field_number == field_num) {
                     recognized_field = true;
-                    const data_info = @typeInfo(@TypeOf(obj_field.data));
-                    const child_type = data_info.Optional.child;
+                    var obj_field = &@field(res, field_name);
+                    const info = @typeInfo(@TypeOf(obj_field.*));
+                    const child_type = info.Optional.child;
                     const child_info = @typeInfo(child_type);
 
                     switch (child_info) {
                         .Struct => {
                             const struct_encoding_size = try self.decodeUInt64();
-                            obj_field.data = try self.decodeStruct(struct_encoding_size, child_type, allocator);
+                            obj_field.* = try self.decodeStruct(struct_encoding_size, child_type, allocator);
                         },
                         .Pointer => |ptr| {
                             if (ptr.child == u8) {
-                                obj_field.data = try self.decodeBytes(allocator);
+                                obj_field.* = try self.decodeBytes(allocator);
                             } else {
-                                if (obj_field.list == null) {
-                                    obj_field.list = std.ArrayList(ptr.child).init(allocator);
-                                }
 
                                 switch(ptr.child) {
                                     []const u8 => {
                                         var string = try self.decodeBytes(allocator);
-                                        try obj_field.list.?.append(string);
+                                        try list_type[i].append(allocator, string);
                                     },
                                     u32, u64 => {
                                         const int_to_add = @intCast(ptr.child, try self.decodeUInt64());
-                                        try obj_field.list.?.append(int_to_add);
+                                        try list_type[i].append(allocator, int_to_add);
                                     },
                                     i32, i64 => {
                                         const int_to_add = @intCast(ptr.child, try self.decodeInt64());
-                                        try obj_field.list.?.append(int_to_add);
+                                        try list_type[i].append(allocator, int_to_add);
                                     },
                                     else => {
                                         const element_info = @typeInfo(ptr.child);
@@ -113,44 +114,44 @@ pub const ProtoReader = struct {
                                             .Struct => {
                                                 const struct_encoding_size = try self.decodeUInt64();
                                                 const struct_to_add = try self.decodeStruct(struct_encoding_size, ptr.child, allocator);
-                                                try obj_field.list.?.append(struct_to_add);
+                                                try list_type[i].append(allocator, struct_to_add);
                                             },
                                             .Enum => {
                                                 const enum_int = try self.decodeUInt64();
-                                                try obj_field.list.?.append(@intToEnum(ptr.child, enum_int));
+                                                try list_type[i].append(allocator, @intToEnum(ptr.child, enum_int));
                                             },
                                             else => unreachable,
                                         }
                                     }
                                 }
-                                obj_field.data = obj_field.list.?.items;
+                                obj_field.* = list_type[i].items;
                             }
                         },
                         .Int => |int| {
                             if (int.signedness == .unsigned) {
-                                obj_field.data = @intCast(child_type, try self.decodeUInt64());
+                                obj_field.* = @intCast(child_type, try self.decodeUInt64());
                             } else {
-                                obj_field.data = @intCast(child_type, try self.decodeInt64());
+                                obj_field.* = @intCast(child_type, try self.decodeInt64());
                             }
                         },
                         .Float => |float| {
                             if (float.bits == 32) {
-                                obj_field.data = try self.decodeFloat();
-                            }
+                                obj_field.* = try self.decodeFloat();
+                            } else unreachable;
                         },
                         .Bool => {
                             const num = try self.decodeUInt64();
-                            obj_field.data = num > 0;
+                            obj_field.* = num > 0;
                         },
                         .Void => {
                             // This only comes up when a message has an empty embedded message
                             // so we move forward by reading the zero size
                             _ = try self.decodeUInt64();
-                            obj_field.data = {};
+                            obj_field.* = {};
                         },
                         .Enum => {
                             const enum_int = try self.decodeUInt64();
-                            obj_field.data = @intToEnum(child_type, enum_int);
+                            obj_field.* = @intToEnum(child_type, enum_int);
                         },
                         else => unreachable,
                     }
@@ -249,13 +250,14 @@ pub const ProtoWriter = struct {
         self.cursor += 1;
 
         const content_start: usize = self.cursor;
+        const field_nums_tuple = @field(@TypeOf(s), "field_nums");
         
-        inline for (@typeInfo(@TypeOf(s)).Struct.fields) |field| {
-            const obj_field = @field(s, field.name);
-            const field_num = @field(obj_field, "field_num");
-            const optional_data = @field(obj_field, "data");
+        inline for (field_nums_tuple) |field_info| {
+            const field_name = field_info[0];
+            const field_num = field_info[1];
+            const obj_field = @field(s, field_name);
 
-            if (optional_data) |data| {
+            if (obj_field) |data| {
                 
                 const info = @typeInfo(@TypeOf(data));
                 switch (info) {
@@ -495,19 +497,26 @@ test "protobuf_varint" {
 }
 
 test "protobuf_struct" {
+    const start = std.time.nanoTimestamp();
     var buf1: [2048]u8 = undefined;
     var writer = ProtoWriter{.buffer = buf1[0..]};
 
     const Test1 = struct {
-        a: ProtoField(1, i32) = .{},
+        pub const field_nums = .{
+            .{"a", 1},
+        };
+        a: ?i32 = null,
     };
 
     const Test2 = struct {
-        c: ProtoField(3, Test1) = .{},
+        pub const field_nums = .{
+            .{"c", 3},
+        };
+        c: ?Test1 = null,
     };
 
-    var t1 = Test1{.a = .{.data = 150}};
-    var t2 = Test2{.c = .{.data = t1}};
+    var t1 = Test1{.a = 150};
+    var t2 = Test2{.c = t1};
 
     const encoding = writer.encodeBaseStruct(t2);
     const comparison1 = [_]u8 {0b00011010, 0b00000011, 0b00001000, 0b10010110, 0b00000001};
@@ -518,16 +527,27 @@ test "protobuf_struct" {
     );
 
     const Test3 = struct {
-        a: ProtoField(1, bool) = .{},
-        b: ProtoField(2, f32) = .{},
-        c: ProtoField(3, i32) = .{},
-        d: ProtoField(4, u32) = .{},
-        e: ProtoField(5, []const u8) = .{},
+        pub const field_nums = .{
+            .{"a", 1},
+            .{"b", 2},
+            .{"c", 3},
+            .{"d", 4},
+            .{"e", 5},
+        };
+        a: ?bool = null,
+        b: ?f32 = null,
+        c: ?i32 = null,
+        d: ?u32 = null,
+        e: ?[]const u8 = null,
     };
 
     const Test5 = struct {
-        a: ProtoField(1, u32) = .{},
-        b: ProtoField(2, f32) = .{},
+        pub const field_nums = .{
+            .{"a", 1},
+            .{"b", 2},
+        };
+        a: ?u32 = null,
+        b: ?f32 = null,
     };
 
     const TestEnum = enum(u8) {
@@ -536,28 +556,39 @@ test "protobuf_struct" {
     };
 
     const Test4 = struct {
-        f: ProtoField(1, f32) = .{},
-        g: ProtoField(2, []const u8) = .{},
-        h: ProtoField(3, Test3) = .{},
-        i: ProtoField(4, u32) = .{},
-        j: ProtoField(5, []Test5) = .{},
-        k: ProtoField(6, [][]const u8) = .{},
-        l: ProtoField(7, TestEnum) = .{},
-        m: ProtoField(8, []u64) = .{},
-        n: ProtoField(9, []u8) = .{},
+        pub const field_nums = .{
+            .{"f", 1},
+            .{"g", 2},
+            .{"h", 3},
+            .{"i", 4},
+            .{"j", 5},
+            .{"k", 6},
+            .{"l", 7},
+            .{"m", 8},
+            .{"n", 9},
+        };
+        f: ?f32 = null,
+        g: ?[]const u8 = null,
+        h: ?Test3 = null,
+        i: ?u32 = null,
+        j: ?[]Test5 = null,
+        k: ?[][]const u8 = null,
+        l: ?TestEnum = null,
+        m: ?[]u64 = null,
+        n: ?[]u8 = null,
     };
 
     var t3 = Test3{
-        .a = .{.data = true},
-        .b = .{.data = 4.5},
-        .c = .{.data = -1},
-        .d = .{.data = 32},
-        .e = .{.data = "testing"},
+        .a = true,
+        .b = 4.5,
+        .c = -1,
+        .d = 32,
+        .e = "testing",
     };
 
     var t5 = Test5{
-        .a = .{.data = 6},
-        .b = .{.data = 7.5},
+        .a = 6,
+        .b = 7.5,
     };
 
     var t5_array: [2]Test5 = .{t5, t5};
@@ -567,15 +598,15 @@ test "protobuf_struct" {
     var tag_array = [_]u64{32, 66, 128, 256, 1000};
     var bytes_array = [_]u8{1,2,3,4,5,6,7,8,9,10};
     var t4 = Test4{
-        .f = .{.data = 1.5},
-        .g = .{.data = "testing"},
-        .h = .{.data = t3},
-        .i = .{.data = 4},
-        .j = .{.data = t5_array[0..]},
-        .k = .{.data = string_array[0..]},
-        .l = .{.data = .opt2},
-        .m = .{.data = tag_array[0..]},
-        .n = .{.data = bytes_array[0..]},
+        .f = 1.5,
+        .g = "testing",
+        .h = t3,
+        .i = 4,
+        .j = t5_array[0..],
+        .k = string_array[0..],
+        .l = .opt2,
+        .m = tag_array[0..],
+        .n = bytes_array[0..],
     };
 
     const res = writer.encodeBaseStruct(t4);
@@ -597,16 +628,17 @@ test "protobuf_struct" {
     const decoded_t4 = try reader2.decodeStruct(res.len, Test4, arena);
     //std.debug.print("{any}\n", .{decoded_t4});
     
-    try std.testing.expectEqual(t4.f.data.?, decoded_t4.f.data.?);
-    try std.testing.expectEqualSlices(u8, t4.g.data.?, decoded_t4.g.data.?);
-    try std.testing.expectEqual(t4.j.data.?[1].a.data.?, decoded_t4.j.data.?[1].a.data.?);
-    try std.testing.expectEqual(t4.h.data.?.a.data.?, decoded_t4.h.data.?.a.data.?);
-    try std.testing.expectEqual(t4.h.data.?.c.data.?, decoded_t4.h.data.?.c.data.?);
-    try std.testing.expectEqualSlices(u8, t4.h.data.?.e.data.?, decoded_t4.h.data.?.e.data.?);
-    try std.testing.expectEqualSlices(u8, t4.k.data.?[0], decoded_t4.k.data.?[0]);
-    std.debug.print("{s}\n", .{decoded_t4.k.data.?[0]});
-    try std.testing.expectEqual(t4.l.data.?, decoded_t4.l.data.?);
-    try std.testing.expectEqual(t4.m.data.?[3], decoded_t4.m.data.?[3]);
-    try std.testing.expectEqualSlices(u8, t4.n.data.?, decoded_t4.n.data.?);
-
+    try std.testing.expectEqual(t4.f.?, decoded_t4.f.?);
+    try std.testing.expectEqualSlices(u8, t4.g.?, decoded_t4.g.?);
+    try std.testing.expectEqual(t4.j.?[1].a.?, decoded_t4.j.?[1].a.?);
+    try std.testing.expectEqual(t4.h.?.a.?, decoded_t4.h.?.a.?);
+    try std.testing.expectEqual(t4.h.?.c.?, decoded_t4.h.?.c.?);
+    try std.testing.expectEqualSlices(u8, t4.h.?.e.?, decoded_t4.h.?.e.?);
+    try std.testing.expectEqualSlices(u8, t4.k.?[0], decoded_t4.k.?[0]);
+    std.debug.print("{s}\n", .{decoded_t4.k.?[0]});
+    try std.testing.expectEqual(t4.l.?, decoded_t4.l.?);
+    try std.testing.expectEqual(t4.m.?[3], decoded_t4.m.?[3]);
+    try std.testing.expectEqualSlices(u8, t4.n.?, decoded_t4.n.?);
+    const end = std.time.nanoTimestamp();
+    std.debug.print("{d}\n", .{end - start});
 }
