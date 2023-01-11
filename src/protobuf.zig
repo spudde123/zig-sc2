@@ -497,7 +497,6 @@ test "protobuf_varint" {
 }
 
 test "protobuf_struct" {
-    const start = std.time.nanoTimestamp();
     var buf1: [2048]u8 = undefined;
     var writer = ProtoWriter{.buffer = buf1[0..]};
 
@@ -639,6 +638,4 @@ test "protobuf_struct" {
     try std.testing.expectEqual(t4.l.?, decoded_t4.l.?);
     try std.testing.expectEqual(t4.m.?[3], decoded_t4.m.?[3]);
     try std.testing.expectEqualSlices(u8, t4.n.?, decoded_t4.n.?);
-    const end = std.time.nanoTimestamp();
-    std.debug.print("{d}\n", .{end - start});
 }
