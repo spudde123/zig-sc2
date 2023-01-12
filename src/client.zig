@@ -443,6 +443,20 @@ pub const WebSocketClient = struct {
         return null;
     }
 
+    pub fn sendPlacementQuery(self: *WebSocketClient, query: sc2p.RequestQuery) ?[]sc2p.ResponseQueryBuildingPlacement {
+        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+
+        const request = sc2p.Request{.query = query};
+        const payload = writer.encodeBaseStruct(request);
+
+        const res = self.writeAndWaitForMessage(payload) catch return null;
+
+        if (res.query) |query_proto| {
+            return query_proto.placements;
+        }
+        return null;
+    }
+
     pub fn step(self: *WebSocketClient, count: u32) bool {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 

@@ -1539,6 +1539,90 @@ pub const Actions = struct {
 
         return debug_proto;
     }
+
+    pub fn findPlacement(self: *Actions, structure_to_build: UnitId, near: Point2, max_distance: f32) ?Point2 {
+        assert(max_distance >= 1 and max_distance <= 30);
+        const structure_data = self.game_data.units.get(structure_to_build);
+        if (structure_data == null) {
+            log.debug("Did not find {d} in game data\n", .{structure_to_build});
+            return null;
+        }
+
+        const ability = structure_data.?.train_ability_id;
+        const ability_int = @intCast(i32, @enumToInt(ability));
+        
+        var options: [256]sc2p.RequestQueryBuildingPlacement = undefined;
+        var outer_dist: f32 = 1;
+        while (outer_dist <= max_distance) : (outer_dist += 1) {
+            var option_count: usize = 0;
+            var inner_dist: f32 = -outer_dist;
+            while (inner_dist <= outer_dist) : (inner_dist += 1) {
+                options[option_count] = .{
+                    .ability_id = ability_int,
+                    .target_pos = .{.x = near.x + inner_dist, .y = near.y + outer_dist},
+                };
+                options[option_count + 1] = .{
+                    .ability_id = ability_int,
+                    .target_pos = .{.x = near.x + inner_dist, .y = near.y - outer_dist},
+                };
+                options[option_count + 2] = .{
+                    .ability_id = ability_int,
+                    .target_pos = .{.x = near.x + outer_dist, .y = near.y + inner_dist},
+                };
+                options[option_count + 3] = .{
+                    .ability_id = ability_int,
+                    .target_pos = .{.x = near.x - outer_dist, .y = near.y + inner_dist},
+                };
+                option_count += 4;
+            }
+            const query = sc2p.RequestQuery{
+                .placements = options[0..option_count],    
+                .ignore_resource_requirements = true,
+            };
+            const result = self.client.sendPlacementQuery(query);
+            var min_dist: f32 = math.f32_max;
+            var min_index: usize = options.len;
+            if (result) |query_res| {
+                for (query_res) |option, i| {
+                    if (option.result.? == .success) {
+                        const dist = near.distanceSquaredTo(.{.x = options[i].target_pos.?.x.?, .y = options[i].target_pos.?.y.?});
+                        if (dist < min_dist) {
+                            min_dist = dist;
+                            min_index = i;
+                        }
+                    }
+                }
+                if (min_index < options.len) return .{
+                    .x = options[min_index].target_pos.?.x.?, .y = options[min_index].target_pos.?.y.?,
+                };
+            }
+        }
+
+        return null;
+    }
+
+    pub fn queryPlacement(self: *Actions, structure_to_build: UnitId, spot: Point2) bool {
+        if (self.game_data.units.get(structure_to_build)) |structure_data| {
+            const ability = structure_data.train_ability_id;
+            var placements = [_]sc2p.RequestQueryBuildingPlacement{.{
+                .ability_id = @intCast(i32, @enumToInt(ability)),
+                .target_pos = .{.x = spot.x, .y = spot.y},
+            }};
+            const query = sc2p.RequestQuery{
+                .placements = placements[0..],    
+                .ignore_resource_requirements = true,
+            };
+            const result = self.client.sendPlacementQuery(query);
+            if (result) |query_res| {
+                return query_res[0].result.? == .success;
+            }
+            return false;
+        } else {
+            log.debug("Did not find {d} in game data\n", .{structure_to_build});
+            return false;
+        }
+        
+    }
 };
 
 pub const GameData = struct {
