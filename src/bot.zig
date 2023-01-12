@@ -598,7 +598,7 @@ pub const Bot = struct {
     game_loop: u32,
     time: f32,
 
-    pending_units: std.AutoHashMap(UnitId, u64),
+    pending_units: std.AutoHashMap(UnitId, usize),
     pending_upgrades: std.AutoHashMap(UpgradeId, f32),
 
     visibility: Grid,
@@ -632,7 +632,7 @@ pub const Bot = struct {
         var mineral_patches = std.ArrayList(Unit).init(allocator);
         var vespene_geysers = std.ArrayList(Unit).init(allocator);
         var watch_towers = std.ArrayList(Unit).init(allocator);
-        var pending_units = std.AutoHashMap(UnitId, u64).init(allocator);
+        var pending_units = std.AutoHashMap(UnitId, usize).init(allocator);
         var pending_upgrades = std.AutoHashMap(UpgradeId, f32).init(allocator);
 
         if (obs.units) |units| {
@@ -1023,7 +1023,7 @@ pub const Bot = struct {
         }
     }
 
-    pub fn unitsPending(self: Bot, id: UnitId) u64 {
+    pub fn unitsPending(self: Bot, id: UnitId) usize {
         return self.pending_units.get(id) orelse 0;
     }
 
