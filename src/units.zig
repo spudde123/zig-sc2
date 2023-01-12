@@ -271,7 +271,30 @@ fn unitTypesDontMatch(context: []UnitId, unit: Unit) bool {
     return true;
 }
 
-pub fn includeType(unit_type: UnitId, units: []Unit) UnitIterator(UnitId, unitTypesMatch) {
+fn tagsMatch(context: []u64, unit: Unit) bool {
+    for (context) |tag| {
+        if(unit.tag == tag) return true;
+    }
+    return false;
+}
+
+fn tagsDontMatch(context: []u64, unit: Unit) bool {
+    for (context) |tag| {
+        if(unit.tag == tag) return false;
+    }
+    
+    return true;
+}
+
+pub fn includeTags(tags: []u64, units: []Unit) UnitIterator([]u64, tagsMatch) {
+    return UnitIterator([]u64, tagsMatch){.buffer = units, .context = tags};
+}
+
+pub fn excludeTags(tags: []u64, units: []Unit) UnitIterator([]u64, tagsDontMatch) {
+    return UnitIterator([]u64, tagsDontMatch){.buffer = units, .context = tags};
+}
+
+pub fn includeType(unit_type: UnitId, units: []Unit) UnitIterator(UnitId, unitTypeMatches) {
     return UnitIterator(UnitId, unitTypeMatches){.buffer = units, .context = unit_type};
 }
 
@@ -319,6 +342,24 @@ pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: 
             while (self.next()) |_| {
                 result += 1;
             }
+            return result;
+        }
+
+        pub fn findClosest(self: *Self, pos: Point2) ?UnitDistanceResult {
+            self.index = 0;
+            var min_dist: f32 = math.f32_max;
+            var result: ?UnitDistanceResult = null;
+            while (self.next()) |unit| {
+                const dist = pos.distanceSquaredTo(unit.position);
+                if (dist < min_dist) {
+                    min_dist = dist;
+                    result = .{
+                        .distance = dist,
+                        .unit = unit,
+                    };
+                }
+            }
+
             return result;
         }
     };
