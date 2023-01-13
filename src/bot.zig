@@ -326,8 +326,7 @@ pub const GameInfo = struct {
         var flood_fill_list = std.ArrayList(usize).init(temp_alloc);
         var group_count: u8 = 0;
 
-        var current_group: [256]usize = undefined;
-        var current_group_size: usize = 0;
+        var current_group = std.BoundedArray(usize, 256){};
 
         var vbs = std.ArrayList(VisionBlocker).init(perm_alloc);
         var ramps = std.ArrayList(Ramp).init(perm_alloc);
@@ -341,8 +340,8 @@ pub const GameInfo = struct {
                 groups[i] = group_count;
 
                 try flood_fill_list.append(i);
-                current_group[0] = i;
-                current_group_size = 1;
+                try current_group.resize(0);
+                try current_group.append(i);
 
                 while (flood_fill_list.items.len > 0) {
                     const cur = flood_fill_list.pop();
@@ -361,8 +360,7 @@ pub const GameInfo = struct {
                         const neighbor_placement = placement.data[neighbor];
                         const neighbor_group = groups[neighbor];
                         if (neighbor_pathing == 1 and neighbor_placement == 0 and neighbor_group == 0) {
-                            current_group[current_group_size] = neighbor;
-                            current_group_size += 1;
+                            try current_group.append(neighbor);
                             groups[neighbor] = group_count;
                             try flood_fill_list.append(neighbor);
                         }
@@ -371,8 +369,8 @@ pub const GameInfo = struct {
 
                 // Check if this group has points in uneven terrain indicating a ramp
 
-                const current_group_slice = current_group[0..current_group_size];
-                const terrain_reference = terrain_height.data[current_group[0]];
+                const current_group_slice = current_group.slice();
+                const terrain_reference = terrain_height.data[current_group.get(0)];
                 var same_height = true;
                 var max_height = terrain_reference;
                 var min_height = terrain_reference;
@@ -392,7 +390,7 @@ pub const GameInfo = struct {
                 const grid_width = terrain_height.w;
 
                 if (same_height) {
-                    var points = try perm_alloc.alloc(GridPoint, current_group_size);
+                    var points = try perm_alloc.alloc(GridPoint, current_group.len);
                     for (current_group_slice) |point, j| {
                         const x = @intCast(i32, @mod(point, grid_width));
                         const y = @intCast(i32, @divFloor(point, grid_width));
@@ -401,8 +399,8 @@ pub const GameInfo = struct {
                     const vision_blocker = VisionBlocker{.points = points};
                     try vbs.append(vision_blocker);
                 } else {
-                    if (current_group_size < 8) continue;
-                    var points = try perm_alloc.alloc(GridPoint, current_group_size);
+                    if (current_group.len < 8) continue;
+                    var points = try perm_alloc.alloc(GridPoint, current_group.len);
 
                     var max_count: f32 = 0;
                     var min_count: f32 = 0;
@@ -724,7 +722,7 @@ pub const Bot = struct {
                     .z = z,
                     .facing = unit.facing orelse 0,
                     .radius = unit.radius orelse 0,
-                    .build_progress = unit.build_progress orelse 1,
+                    .build_progress = unit.build_progress orelse 0,
                     .cloak = unit.cloak orelse CloakState.unknown,
                     .buff_ids = buff_ids.toOwnedSlice(),
 
@@ -1378,6 +1376,11 @@ pub const Actions = struct {
         var msg_copy = self.temp_allocator.alloc(u8, message.len) catch return;
         mem.copy(u8, msg_copy, message);
         self.chat_messages.append(.{.channel = channel, .message = msg_copy}) catch return;
+    }
+
+    pub fn tagGame(self: *Actions, tag: []const u8) void {
+        const msg = std.fmt.allocPrint(self.temp_allocator, "tag: {s}", .{tag}) catch return;
+        self.chat_messages.append(.{.channel = .broadcast, .message = msg}) catch return;
     }
 
     pub fn toProto(self: *Actions) ?sc2p.RequestAction {
