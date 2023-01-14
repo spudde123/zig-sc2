@@ -307,16 +307,20 @@ pub fn run(
     }
     
     defer client.deinit();
-    defer {
-        if (sc2_process) |_| {
-            _ = client.quit();
-        }
-    }
 
     const handshake_ok = try client.completeHandshake("/sc2api");
     if (!handshake_ok) {
         log.err("Failed websocket handshake\n", .{});
+        if (sc2_process) |*sc2| {
+            _ = try sc2.kill();
+        }
         return;
+    }
+
+    defer {
+        if (sc2_process) |_| {
+            _ = client.quit();
+        }
     }
 
     var game_join: ws.GameJoin = .{};
