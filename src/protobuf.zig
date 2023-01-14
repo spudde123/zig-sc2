@@ -233,10 +233,9 @@ pub const ProtoWriter = struct {
 
     pub fn encodeBaseStruct(self: *ProtoWriter, s: anytype) []u8 {
         self.cursor = 0;
-        self.encodeElementStruct(s);
-        const encoding_size = self.cursor;
-        const varint_byte_length = varIntByteLength(@as(u64, encoding_size));
-        return self.buffer[varint_byte_length .. encoding_size];   
+        const varint_byte_length = self.encodeElementStruct(s);
+        const total_size = self.cursor;
+        return self.buffer[varint_byte_length .. total_size];   
     }
 
     fn encodeProtoHeader(self: *ProtoWriter, header: ProtoHeader) void {
@@ -245,7 +244,9 @@ pub const ProtoWriter = struct {
         self.encodeUInt64(num);
     }
 
-    fn encodeElementStruct(self: *ProtoWriter, s: anytype) void {
+    // Returns the number of bytes the preceding varint takes
+    // so encodeBaseStruct can use it
+    fn encodeElementStruct(self: *ProtoWriter, s: anytype) usize {
         
         // Leave 1 space for varint size by default
         self.cursor += 1;
@@ -265,7 +266,7 @@ pub const ProtoWriter = struct {
                     .Struct => {
                         const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
                         self.encodeProtoHeader(field_header);
-                        self.encodeElementStruct(data);
+                        _ = self.encodeElementStruct(data);
                     },
                     .Pointer => |ptr| {
                         if (ptr.child == u8) {
@@ -288,7 +289,7 @@ pub const ProtoWriter = struct {
 
                                     for (data) |d| {
                                         self.encodeProtoHeader(field_header);
-                                        self.encodeElementStruct(d);
+                                        _ = self.encodeElementStruct(d);
                                     }
                                 },
                                 .Int => |int| {
@@ -360,6 +361,7 @@ pub const ProtoWriter = struct {
 
         const total_size = varint_byte_length + struct_encoding_size;
         self.cursor = content_start - 1 + total_size;
+        return varint_byte_length;
     }
     
     fn encodeUInt64(self: *ProtoWriter, data: u64) void {
