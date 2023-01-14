@@ -29,20 +29,8 @@ pub const OpCode = enum(u4) {
     _,
 };
 
-pub const SocketInitError = error {
-    ParseAddress,
-    TCPConnect,
-};
-
 pub const ClientError = error {
     BadResponse,
-};
-
-pub const Ping = struct {
-    game_version: []const u8 = "",
-    data_version: []const u8 = "",
-    data_build: u32 = 0,
-    base_build: u32 = 0,
 };
 
 pub const ComputerSetup = struct {
@@ -61,8 +49,15 @@ pub const GameJoin = struct {
     player_id: u32 = 0,
 };
 
+/// Sc2 uses websockets for communication
+/// with a protobuf format
+/// https://github.com/Blizzard/s2client-proto.
+/// It doesn't other frame types specified
+/// in the websocket protocol besides binary
+/// and it doesn't use masking of the messages 
 pub const WebSocketClient = struct {
-
+    
+    // @TODO
     addr: net.Address,
     socket: net.Stream,
     prng: rand.Random,
@@ -150,27 +145,6 @@ pub const WebSocketClient = struct {
         }
 
         return key_ok;
-    }
-
-    /// Write websocket protocol control messages without a payload.
-    /// These don't seem needed when communicating with sc2.
-    pub fn writeEmptyControlMessage(self: *WebSocketClient, op: OpCode) !void {
-        var bytes: [6]u8 = undefined;
-
-        bytes[0] = @enumToInt(op);
-        // Set this to be the final message
-        bytes[0] |= 0x80;
-        var mask: [4]u8 = undefined;
-        self.prng.bytes(&mask);
-
-        // Payload length to 0 and mask bit to 1
-        bytes[1] = 0;
-        bytes[1] |= 0x80;
-
-        mem.copy(u8, bytes[2..], mask[0..]);
-
-        const stream = self.socket.writer();
-        try stream.writeAll(bytes[0..]);
     }
 
     pub fn createGameVsComputer(
@@ -516,22 +490,17 @@ pub const WebSocketClient = struct {
         return false;
     }
 
-    pub fn ping(self: *WebSocketClient) Ping {
+    pub fn ping(self: *WebSocketClient) sc2p.ResponsePing {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
         const request = sc2p.Request{.ping = {}};
         const payload = writer.encodeBaseStruct(request);
-        const res = self.writeAndWaitForMessage(payload) catch return Ping{};
+        const res = self.writeAndWaitForMessage(payload) catch return .{};
 
         if (res.ping) |ping_res| {
-            return Ping{
-                .game_version = ping_res.game_version.?,
-                .data_version = ping_res.data_version.?,
-                .data_build = ping_res.data_build.?,
-                .base_build = ping_res.data_build.?,
-            };
+            return ping_res;
         }
 
-        return Ping{};
+        return .{};
     }
 
     pub fn writeAndWaitForMessage(self: *WebSocketClient, payload: []u8) !sc2p.Response {
