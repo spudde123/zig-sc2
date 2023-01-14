@@ -75,9 +75,9 @@ const Sc2Paths = struct {
 
 const LocalRunSetup = struct {
     sc2_base_folder: []const u8 = switch (builtin.os.tag) {
-        .windows => "C:/Program Files (x86)/StarCraft II/",
-        .macos => "/Applications/StarCraft II/",
-        .linux => "~/StarCraftII/",
+        .windows => "C:/Program Files (x86)/StarCraft II",
+        .macos => "/Applications/StarCraft II",
+        .linux => "~/StarCraftII",
         else => unreachable,
     },
     game_port: u16 = 5001,
