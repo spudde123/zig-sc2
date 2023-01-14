@@ -100,7 +100,7 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
     while (try iter.next()) |version| {
         if (mem.startsWith(u8, version.name, "Base")) {
             const version_num_string = version.name[4..];
-            const num = fmt.parseUnsigned(u32, version_num_string, 0) catch continue;
+            const num = fmt.parseUnsigned(u64, version_num_string, 0) catch continue;
             if (num > max_version) max_version = num;
         }
     }
