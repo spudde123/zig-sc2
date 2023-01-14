@@ -509,7 +509,7 @@ fn createReplayName(
 
 
 test "runner_test_basic" {
-    // Mainly checking that memory isn't leaking
+    // Just test that we can connect without problems
     
     const TestBot = struct {
         const Self = @This();
