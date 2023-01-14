@@ -57,7 +57,6 @@ pub const GameJoin = struct {
 /// and it doesn't use masking of the messages 
 pub const WebSocketClient = struct {
     
-    // @TODO
     addr: net.Address,
     socket: net.Stream,
     prng: rand.Random,
@@ -459,6 +458,8 @@ pub const WebSocketClient = struct {
         return true;
     }
 
+    // @TODO: not getting replay data back for some reason??
+    // Used to work at some point for a brief while
     pub fn saveReplay(self: *WebSocketClient, replay_path: []const u8) bool {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 
