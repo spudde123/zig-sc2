@@ -1,7 +1,10 @@
+/// Implements the necessary things to
+/// use read and write sc2 protobuf
+/// messages.
 const std = @import("std");
 const mem = std.mem;
 
-pub const WireType = enum(u8) {
+const WireType = enum(u8) {
     varint = 0,
     _64bit = 1,
     length_delim = 2,

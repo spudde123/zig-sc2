@@ -19,7 +19,7 @@ const handshake_key_length = 16;
 const handshake_key_length_b64 = base64.standard.Encoder.calcSize(handshake_key_length);
 const encoded_key_length_b64 = base64.standard.Encoder.calcSize(Sha1.digest_length);
 
-pub const OpCode = enum(u4) {
+const OpCode = enum(u4) {
     continuation = 0x0,
     text = 0x1,
     binary = 0x2,
@@ -50,9 +50,9 @@ pub const GameJoin = struct {
 };
 
 /// Sc2 uses websockets for communication
-/// with a protobuf format
+/// with a protobuf 2 format
 /// https://github.com/Blizzard/s2client-proto.
-/// It doesn't other frame types specified
+/// It doesn't use other frame types specified
 /// in the websocket protocol besides binary
 /// and it doesn't use masking of the messages 
 pub const WebSocketClient = struct {
