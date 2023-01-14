@@ -569,11 +569,9 @@ pub const GameInfo = struct {
 };
 
 pub const Bot = struct {
-    units: []Unit,
-    structures: []Unit,
+    units: *const std.AutoArrayHashMap(u64, Unit),
+    enemy_units: *const std.AutoArrayHashMap(u64, Unit),
     placeholders: []Unit,
-    enemy_units: []Unit,
-    enemy_structures: []Unit,
     destructables: []Unit,
     mineral_patches: []Unit,
     vespene_geysers: []Unit,
@@ -603,12 +601,20 @@ pub const Bot = struct {
     creep: Grid,
 
     dead_units: []u64,
+    units_created: []u64,
+    damaged_units: []u64,
+    construction_complete: []u64,
+    enemies_entered_vision: []u64,
+    enemies_left_vision: []Unit,
+
     effects: []Effect,
     sensor_towers: []SensorTower,
 
     result: ?Result,
 
     pub fn fromProto(
+        prev_units: *std.AutoArrayHashMap(u64, Unit),
+        prev_enemy: *std.AutoArrayHashMap(u64, Unit),
         response: sc2p.ResponseObservation,
         game_data: GameData,
         player_id: u32,
@@ -621,17 +627,18 @@ pub const Bot = struct {
 
         const obs: sc2p.ObservationRaw = response.observation.?.raw.?;
         
-        var own_units = std.ArrayList(Unit).init(allocator);
-        var own_structures = std.ArrayList(Unit).init(allocator);
         var placeholders = std.ArrayList(Unit).init(allocator);
-        var enemy_units = std.ArrayList(Unit).init(allocator);
-        var enemy_structures = std.ArrayList(Unit).init(allocator);
         var destructables = std.ArrayList(Unit).init(allocator);
         var mineral_patches = std.ArrayList(Unit).init(allocator);
         var vespene_geysers = std.ArrayList(Unit).init(allocator);
         var watch_towers = std.ArrayList(Unit).init(allocator);
         var pending_units = std.AutoHashMap(UnitId, usize).init(allocator);
         var pending_upgrades = std.AutoHashMap(UpgradeId, f32).init(allocator);
+        var units_created = std.ArrayList(u64).init(allocator);
+        var damaged_units = std.ArrayList(u64).init(allocator);
+        var construction_complete = std.ArrayList(u64).init(allocator);
+        var enemies_entered_vision = std.ArrayList(u64).init(allocator);
+        var enemies_left_vision = std.ArrayList(Unit).init(allocator); 
 
         if (obs.units) |units| {
             for (units) |unit| {
@@ -711,12 +718,16 @@ pub const Bot = struct {
                     rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, 0);
                 }
 
+                const unit_type = @intToEnum(UnitId, unit.unit_type.?);
+                const unit_data = game_data.units.get(unit_type).?;
+
                 const u = Unit{
                     .display_type = unit.display_type.?,
                     .alliance = unit.alliance.?,
                     .tag = unit.tag orelse 0,
-                    .unit_type = @intToEnum(UnitId, unit.unit_type.?),
+                    .unit_type = unit_type,
                     .owner = unit.owner orelse 0,
+                    .prev_seen_loop = game_loop,
 
                     .position = position,
                     .z = z,
@@ -732,6 +743,7 @@ pub const Bot = struct {
                     .is_blip = unit.is_blip orelse false,
                     .is_powered = unit.is_powered orelse false,
                     .is_active = unit.is_powered orelse false,
+                    .is_structure = unit_data.attributes.contains(.structure),
 
                     .attack_upgrade_level = unit.attack_upgrade_level orelse 0,
                     .armor_upgrade_level = unit.armor_upgrade_level orelse 0,
@@ -766,24 +778,32 @@ pub const Bot = struct {
                     .available_abilities = &[_]AbilityId{},
                 };
                 
-                const unit_data = game_data.units.get(u.unit_type).?;
-
                 if (u.display_type == DisplayType.placeholder) {
                     try placeholders.append(u);
-                    if (pending_units.get(u.unit_type)) |pending_count| {
-                        try pending_units.put(u.unit_type, pending_count + 1);
-                    } else {
-                        try pending_units.put(u.unit_type, 1);
-                    }
                     continue;
                 }
 
+                // Add both buildings and units under construction/morph
+                // to a map so we can see how many we are producing
                 switch (u.alliance) {
                     .self, .ally => {
-                        if (unit_data.attributes.contains(.structure)) {
-                            try own_structures.append(u);
+                        const prev = try prev_units.getOrPut(u.tag);
+                        if (!prev.found_existing) {
+                            try units_created.append(u.tag);
+                        } else {
+                            if (u.build_progress >= 1 and prev.value_ptr.build_progress < 1) {
+                                try construction_complete.append(u.tag);
+                            }
+                            if (u.health < prev.value_ptr.health) {
+                                try damaged_units.append(u.tag);
+                            }
+                        }
+                        prev.value_ptr.* = u;
 
-                            if (u.build_progress < 1) {
+                        if (u.is_structure) {
+                            // Terran buildings are already calculated via
+                            // scv orders below
+                            if (u.build_progress < 1 and unit_data.race != .terran) {
                                 if (pending_units.get(u.unit_type)) |pending_count| {
                                     try pending_units.put(u.unit_type, pending_count + 1);
                                 } else {
@@ -804,12 +824,14 @@ pub const Bot = struct {
                                     }
                                 }
                             }
-                            
                         } else {
-                            try own_units.append(u);
-
-                            // Make sure we don't count terran buildings twice
-                            if (u.unit_type != UnitId.SCV) {
+                            if (u.build_progress < 1) {
+                                if (pending_units.get(u.unit_type)) |pending_count| {
+                                    try pending_units.put(u.unit_type, pending_count + 1);
+                                } else {
+                                    try pending_units.put(u.unit_type, 1);
+                                }
+                            } else {
                                 for (u.orders) |order| {
                                     if (game_data.build_map.get(order.ability_id)) |training_unit_id| {
                                         if (pending_units.get(training_unit_id)) |pending_count| {
@@ -820,13 +842,14 @@ pub const Bot = struct {
                                     }
                                 }
                             }
+                            
                         }
                     },
                     .enemy => {
-                        if (unit_data.attributes.contains(.structure)) {
-                            try enemy_structures.append(u);
-                        } else {
-                            try enemy_units.append(u);
+                        const prev = try prev_enemy.getOrPut(u.tag);
+                        prev.value_ptr.* = u;
+                        if (!prev.found_existing) {
+                            try enemies_entered_vision.append(u.tag);
                         }
                     },
                     else => {
@@ -949,12 +972,29 @@ pub const Bot = struct {
 
         const player_common = response.observation.?.player_common.?;
 
+        var enemy_iter = prev_enemy.iterator();
+        while (enemy_iter.next()) |enemy_val| {
+            if (enemy_val.value_ptr.prev_seen_loop == game_loop) continue;
+
+            try enemies_left_vision.append(enemy_val.value_ptr.*);
+            prev_enemy.swapRemoveAt(enemy_iter.index - 1);
+            enemy_iter.index -= 1;
+            enemy_iter.len -= 1;
+        }
+
+        var units_iter = prev_units.iterator();
+        while (units_iter.next()) |unit_val| {
+            if (unit_val.value_ptr.prev_seen_loop == game_loop) continue;
+
+            prev_units.swapRemoveAt(units_iter.index - 1);
+            units_iter.index -= 1;
+            units_iter.len -= 1;
+        }
+
         return Bot{
-            .units = own_units.toOwnedSlice(),
-            .structures = own_structures.toOwnedSlice(),
+            .units = prev_units,
+            .enemy_units = prev_enemy,
             .placeholders = placeholders.toOwnedSlice(),
-            .enemy_units = enemy_units.toOwnedSlice(),
-            .enemy_structures = enemy_structures.toOwnedSlice(),
             .destructables = destructables.toOwnedSlice(),
             .vespene_geysers = vespene_geysers.toOwnedSlice(),
             .mineral_patches = mineral_patches.toOwnedSlice(),
@@ -977,32 +1017,21 @@ pub const Bot = struct {
             .visibility = visibility_grid,
             .creep = creep_grid,
             .dead_units = dead_units,
+            .units_created = units_created.toOwnedSlice(),
+            .damaged_units = damaged_units.toOwnedSlice(),
+            .construction_complete = construction_complete.toOwnedSlice(),
+            .enemies_entered_vision = enemies_entered_vision.toOwnedSlice(),
+            .enemies_left_vision = enemies_left_vision.toOwnedSlice(),
             .effects = effects,
             .sensor_towers = sensor_towers,
         };
     }
 
-    pub fn getAllOwnUnitTags(self: *Bot, allocator: mem.Allocator) []u64 {
-        var tag_slice = allocator.alloc(u64, self.units.len + self.structures.len) catch return &[_]u64{};
-        
-        for (self.units) |unit, i| {
-            tag_slice[i] = unit.tag;
-        }
-
-        const unit_count = self.units.len;
-        
-        for (self.structures) |structure, i| {
-            tag_slice[unit_count + i] = structure.tag;
-        }
-
-        return tag_slice;
-    }
-
     pub fn setUnitAbilitiesFromProto(self: *Bot, proto: []sc2p.ResponseQueryAvailableAbilities, allocator: mem.Allocator) void {
         
         // These should be in the same order as the tags were given
-        // using getAllOwnUnitTags
-        const units_count = self.units.len;
+        // using keys()
+        var unit_slice = self.units.values();
         for (proto) |query_proto, i| {
             if (query_proto.abilities) |ability_slice_proto| {
                 var ability_slice = allocator.alloc(AbilityId, ability_slice_proto.len) catch continue;
@@ -1011,12 +1040,7 @@ pub const Bot = struct {
                     ability_slice[j] = @intToEnum(AbilityId, ability_proto.ability_id orelse 0);
                 }
 
-                if (i < units_count) {
-                    self.units[i].available_abilities = ability_slice;
-                } else {
-                    self.structures[i - units_count].available_abilities = ability_slice;
-                }
-
+                unit_slice[i].available_abilities = ability_slice;
             }
         }
     }

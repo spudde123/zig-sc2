@@ -19,7 +19,13 @@ const TestBot = struct {
         game_info: bot_data.GameInfo,
         actions: *bot_data.Actions
     ) void {
-        self.first_cc_tag = bot.structures[0].tag;
+        const units = bot.units.values();
+        self.first_cc_tag = calc: {
+            for (units) |unit| {
+                if (unit.unit_type == .CommandCenter) break :calc unit.tag;
+            }    
+            break :calc 0;
+        };
         _ = game_info;
         _ = actions;
     }
@@ -30,8 +36,9 @@ const TestBot = struct {
         game_info: bot_data.GameInfo,
         actions: *bot_data.Actions
     ) void {
+        const units = bot.units.values();
         
-        const maybe_first_cc = unit_group.getUnitByTag(bot.structures, self.first_cc_tag);
+        const maybe_first_cc = bot.units.get(self.first_cc_tag);
         if (maybe_first_cc == null) {
             actions.leaveGame();
             return;
@@ -40,40 +47,40 @@ const TestBot = struct {
 
         var current_minerals = bot.minerals;
         if (bot.minerals > 50 and first_cc.isIdle()) {
-            actions.train(self.first_cc_tag, bot_data.UnitId.SCV, false);
+            actions.train(self.first_cc_tag, .SCV, false);
             current_minerals -= 50;
         }
 
-        if (current_minerals > 100 and unit_group.amountOfType(bot.structures, bot_data.UnitId.SupplyDepot) == 0) {
-            const closest_scv = findClosestCollectingUnit(bot.units, first_cc.position);
+        if (current_minerals > 100 and unit_group.amountOfType(units, .SupplyDepot) == 0) {
+            const closest_scv = findClosestCollectingUnit(units, first_cc.position);
             const main_base_ramp = game_info.getMainBaseRamp();
             actions.build(
                 closest_scv.tag,
-                bot_data.UnitId.SupplyDepot,
+                .SupplyDepot,
                 main_base_ramp.depot_first.?,
                 false,
             );
             current_minerals -= 100;
         }
 
-        if (current_minerals > 100 and unit_group.amountOfType(bot.structures, bot_data.UnitId.SupplyDepot) == 1) {
-            const closest_scv = findClosestCollectingUnit(bot.units, first_cc.position);
+        if (current_minerals > 100 and unit_group.amountOfType(units, .SupplyDepot) == 1) {
+            const closest_scv = findClosestCollectingUnit(units, first_cc.position);
             const main_base_ramp = game_info.getMainBaseRamp();
             actions.build(
                 closest_scv.tag,
-                bot_data.UnitId.SupplyDepot,
+                .SupplyDepot,
                 main_base_ramp.depot_second.?,
                 false,
             );
             current_minerals -= 100;
         }
 
-        if (current_minerals > 150 and unit_group.amountOfType(bot.structures, bot_data.UnitId.SupplyDepot) == 2) {
-            const closest_scv = findClosestCollectingUnit(bot.units, first_cc.position);
+        if (current_minerals > 150 and unit_group.amountOfType(units, .SupplyDepot) == 2) {
+            const closest_scv = findClosestCollectingUnit(units, first_cc.position);
             const main_base_ramp = game_info.getMainBaseRamp();
             actions.build(
                 closest_scv.tag,
-                bot_data.UnitId.Barracks,
+                .Barracks,
                 main_base_ramp.barracks_middle.?,
                 false,
             );
@@ -81,10 +88,10 @@ const TestBot = struct {
         }
 
         if (current_minerals > 400 and !self.countdown_started) {
-            const closest_scv = findClosestCollectingUnit(bot.units, first_cc.position);
+            const closest_scv = findClosestCollectingUnit(units, first_cc.position);
             actions.build(
                 closest_scv.tag,
-                bot_data.UnitId.CommandCenter,
+                .CommandCenter,
                 game_info.expansion_locations[self.locations_expanded_to],
                 false,
             );

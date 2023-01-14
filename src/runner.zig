@@ -367,6 +367,12 @@ pub fn run(
     const game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
     var actions = try bot_data.Actions.init(game_data, &client, arena, fixed_buffer);
 
+    var own_units = std.AutoArrayHashMap(u64, bot_data.Unit).init(arena);
+    try own_units.ensureTotalCapacity(200);
+
+    var enemy_units = std.AutoArrayHashMap(u64, bot_data.Unit).init(arena);
+    try enemy_units.ensureTotalCapacity(200);
+
     while (true) {
 
         const obs = client.getObservation();
@@ -376,7 +382,7 @@ pub fn run(
             break;
         }
         
-        var bot = try bot_data.Bot.fromProto(obs, game_data, player_id, fixed_buffer);
+        var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, fixed_buffer);
 
         if (bot.result) |res| {
             user_bot.onResult(bot, game_info, res);
@@ -390,7 +396,7 @@ pub fn run(
             break;
         }
 
-        const all_own_unit_tags = bot.getAllOwnUnitTags(fixed_buffer);
+        const all_own_unit_tags = bot.units.keys();
         if (all_own_unit_tags.len > 0) {
             if (client.getAvailableAbilities(all_own_unit_tags, true)) |abilities_proto| {
                 bot.setUnitAbilitiesFromProto(abilities_proto, fixed_buffer);
@@ -405,7 +411,8 @@ pub fn run(
             };
 
             const start_location: bot_data.Point2 = sl: {
-                for (bot.structures) |unit| {
+                const unit_slice = bot.units.values();
+                for (unit_slice) |unit| {
                     if (unit.unit_type == bot_data.UnitId.CommandCenter
                         or unit.unit_type == bot_data.UnitId.Hatchery
                         or unit.unit_type == bot_data.UnitId.Nexus) {
@@ -431,8 +438,8 @@ pub fn run(
         }
 
         // Set enemy race to the observed race when we can
-        if (game_info.enemy_race == .random and (bot.enemy_units.len > 0 or bot.enemy_structures.len > 0)) {
-            const enemy_unit = if (bot.enemy_units.len > 0) bot.enemy_units[0] else bot.enemy_structures[0];
+        if (game_info.enemy_race == .random and bot.enemy_units.count() > 0) {
+            const enemy_unit = bot.enemy_units.values()[0];
             if (game_data.units.get(enemy_unit.unit_type)) |unit_data| {
                 game_info.enemy_race = unit_data.race;
             } else {
@@ -501,7 +508,7 @@ fn createReplayName(
 }
 
 
-test "runner_test" {
+test "runner_test_basic" {
     // Mainly checking that memory isn't leaking
     
     const TestBot = struct {
@@ -517,8 +524,9 @@ test "runner_test" {
         ) void {
             _ = self;
             const enemy_start_location = game_info.enemy_start_locations[0];
+            const units = bot.units.values();
 
-            for (bot.units) |unit| {
+            for (units) |unit| {
                 if (unit.unit_type == bot_data.UnitId.SCV) {
                     actions.attackPosition(unit.tag, enemy_start_location, false);
                 }
@@ -574,7 +582,13 @@ test "runner_test_expansion_locations" {
             game_info: bot_data.GameInfo,
             actions: *bot_data.Actions
         ) void {
-            self.first_cc_tag = bot.structures[0].tag;
+            const units = bot.units.values();
+            self.first_cc_tag = calc: {
+                for (units) |unit| {
+                    if (unit.unit_type == .CommandCenter) break :calc unit.tag;
+                }    
+                break :calc 0;
+            };
             std.debug.print("Exp: {d}\n", .{game_info.expansion_locations.len});
             for (game_info.expansion_locations) |exp| {
                 std.debug.print("Loc: {d} {d}\n", .{exp.x, exp.y});
@@ -588,8 +602,9 @@ test "runner_test_expansion_locations" {
             game_info: bot_data.GameInfo,
             actions: *bot_data.Actions
         ) void {
+            const units = bot.units.values();
             
-            const maybe_first_cc = bot_data.unit_group.getUnitByTag(bot.structures, self.first_cc_tag);
+            const maybe_first_cc = bot_data.unit_group.getUnitByTag(units, self.first_cc_tag);
             if (maybe_first_cc == null) {
                 actions.leaveGame();
                 return;
@@ -602,7 +617,7 @@ test "runner_test_expansion_locations" {
             }
 
             if (current_minerals > 400 and !self.countdown_started) {
-                const closest_scv = findClosestCollectingUnit(bot.units, first_cc.position);
+                const closest_scv = findClosestCollectingUnit(units, first_cc.position);
                 actions.build(
                     closest_scv.tag,
                     bot_data.UnitId.CommandCenter,

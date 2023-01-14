@@ -59,6 +59,7 @@ pub const Unit = struct {
     tag: u64,
     unit_type: UnitId,
     owner: i32,
+    prev_seen_loop: u32,
 
     position: Point2,
     z: f32,
@@ -74,6 +75,7 @@ pub const Unit = struct {
     is_blip: bool,
     is_powered: bool,
     is_active: bool,
+    is_structure: bool,
 
     attack_upgrade_level: i32,
     armor_upgrade_level: i32,
