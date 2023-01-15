@@ -129,6 +129,17 @@ pub const Unit = struct {
         );
     }
 
+    pub fn isRepairing(self: Unit) bool {
+        if (self.orders.len == 0) return false;
+        const order = self.orders[0];
+        
+        return (
+            order.ability_id == .Effect_Repair
+            or order.ability_id == .Effect_Repair_Mule
+            or order.ability_id == .Effect_Repair_SCV
+        );
+    }
+
     pub fn isUsingAbility(self: Unit, ability: AbilityId) bool {
         if (self.orders.len == 0) return false;
         const order = self.orders[0];
@@ -157,7 +168,7 @@ pub fn getUnitByTag(units: []Unit, tag: u64) ?Unit {
 
 pub const UnitDistanceResult = struct {
     unit: Unit,
-    distance: f32,
+    distance_squared: f32,
 };
 
 pub fn findClosestUnit(units: []Unit, pos: Point2) UnitDistanceResult {
@@ -171,7 +182,7 @@ pub fn findClosestUnit(units: []Unit, pos: Point2) UnitDistanceResult {
             closest_unit = unit;
         }
     }
-    return .{.unit = closest_unit, .distance = min_distance};
+    return .{.unit = closest_unit, .distance_squared = min_distance};
 }
 
 pub fn findFurthestUnit(units: []Unit, pos: Point2) UnitDistanceResult {
@@ -185,7 +196,7 @@ pub fn findFurthestUnit(units: []Unit, pos: Point2) UnitDistanceResult {
             furthest_unit = unit;
         }
     }
-    return .{.unit = furthest_unit, .distance = max_distance};
+    return .{.unit = furthest_unit, .distance_squared = max_distance};
 }
 
 pub fn filter(
@@ -216,11 +227,11 @@ pub fn amountOfType(
 
 pub fn amountOfTypes(
     units: []Unit,
-    unit_types: []UnitId,
+    unit_types: []const UnitId,
 ) usize {
     var count: usize = 0;
     for (units) |unit| {
-        if (mem.indexOf(UnitId, unit_types, unit.unit_type)) |_| {
+        if (mem.indexOfScalar(UnitId, unit_types, unit.unit_type)) |_| {
             count += 1;
         }
     }
@@ -243,7 +254,7 @@ pub fn ofType(
 
 pub fn ofTypes(
     units: []Unit,
-    unit_types: []UnitId,
+    unit_types: []const UnitId,
     allocator: mem.Allocator,
 ) []Unit {
     var list = std.ArrayList(Unit).init(allocator);
@@ -356,7 +367,26 @@ pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: 
                 if (dist < min_dist) {
                     min_dist = dist;
                     result = .{
-                        .distance = dist,
+                        .distance_squared = dist,
+                        .unit = unit,
+                    };
+                }
+            }
+
+            return result;
+        }
+
+        pub fn findClosestUsingAbility(self: *Self, pos: Point2, ability: AbilityId) ?UnitDistanceResult {
+            self.index = 0;
+            var min_dist: f32 = math.f32_max;
+            var result: ?UnitDistanceResult = null;
+            while (self.next()) |unit| {
+                if (!unit.isUsingAbility(ability)) continue;
+                const dist = pos.distanceSquaredTo(unit.position);
+                if (dist < min_dist) {
+                    min_dist = dist;
+                    result = .{
+                        .distance_squared = dist,
                         .unit = unit,
                     };
                 }
