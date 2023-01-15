@@ -274,14 +274,14 @@ fn unitTypeMatches(context: UnitId, unit: Unit) bool {
     return context == unit.unit_type;
 }
 
-fn unitTypesMatch(context: []UnitId, unit: Unit) bool {
+fn unitTypesMatch(context: []const UnitId, unit: Unit) bool {
     for (context) |unit_id| {
         if(unit.unit_type == unit_id) return true;
     }
     return false;
 }
 
-fn unitTypesDontMatch(context: []UnitId, unit: Unit) bool {
+fn unitTypesDontMatch(context: []const UnitId, unit: Unit) bool {
     for (context) |unit_id| {
         if(unit.unit_type == unit_id) return false;
     }
@@ -315,12 +315,12 @@ pub fn includeType(unit_type: UnitId, units: []Unit) UnitIterator(UnitId, unitTy
     return UnitIterator(UnitId, unitTypeMatches){.buffer = units, .context = unit_type};
 }
 
-pub fn includeTypes(unit_types: []UnitId, units: []Unit) UnitIterator([]UnitId, unitTypesMatch) {
-    return UnitIterator([]UnitId, unitTypesMatch){.buffer = units, .context = unit_types};
+pub fn includeTypes(unit_types: []const UnitId, units: []Unit) UnitIterator([]const UnitId, unitTypesMatch) {
+    return UnitIterator([]const UnitId, unitTypesMatch){.buffer = units, .context = unit_types};
 }
 
-pub fn excludeTypes(unit_types: []UnitId, units: []Unit) UnitIterator([]UnitId, unitTypesDontMatch) {
-    return UnitIterator([]UnitId, unitTypesDontMatch){.buffer = units, .context = unit_types};
+pub fn excludeTypes(unit_types: []const UnitId, units: []Unit) UnitIterator([]const UnitId, unitTypesDontMatch) {
+    return UnitIterator([]const UnitId, unitTypesDontMatch){.buffer = units, .context = unit_types};
 }
 
 pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: ContextType, unit: Unit) bool) type {
