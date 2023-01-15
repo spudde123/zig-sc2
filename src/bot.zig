@@ -56,7 +56,12 @@ pub const Ramp = struct {
     bottom_center: Point2,
     depot_first: ?Point2,
     depot_second: ?Point2,
+    // This is the regular barracks placement
+    // on top of the ramp
     barracks_middle: ?Point2,
+    // This moves the barracks placement if
+    // necessary so an addon fits
+    barracks_with_addon: ?Point2,
 };
 
 const RampsAndVisionBlockers = struct {
@@ -432,6 +437,7 @@ pub const GameInfo = struct {
                     var depot_first: ?Point2 = null;
                     var depot_second: ?Point2 = null;
                     var barracks_middle: ?Point2 = null;
+                    var barracks_with_addon: ?Point2 = null;
 
                     // Only main base ramps will have depot
                     // and barracks locations set
@@ -448,6 +454,11 @@ pub const GameInfo = struct {
                         depot_second = searchDepotPosition(placement, depot_index2); 
                         
                         barracks_middle = top_center.add(ramp_dir.multiply(2)).floor().add(.{.x = 0.5, .y = 0.5});
+                        
+                        const depot_max_x = math.max(depot_first.?.x, depot_second.?.x);
+                        
+                        const can_fit_addon = barracks_middle.?.x + 1 > depot_max_x;
+                        barracks_with_addon = if (can_fit_addon) barracks_middle else barracks_middle.?.add(.{.x = -2, .y = 0});
                     }
 
                     const ramp = Ramp{
@@ -457,6 +468,7 @@ pub const GameInfo = struct {
                         .depot_first = depot_first,
                         .depot_second = depot_second,
                         .barracks_middle = barracks_middle,
+                        .barracks_with_addon = barracks_with_addon,
                     };
 
                     try ramps.append(ramp);
