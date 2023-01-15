@@ -1415,7 +1415,7 @@ pub const Actions = struct {
     }
 
     pub fn tagGame(self: *Actions, tag: []const u8) void {
-        const msg = std.fmt.allocPrint(self.temp_allocator, "tag: {s}", .{tag}) catch return;
+        const msg = std.fmt.allocPrint(self.temp_allocator, "Tag:{s}", .{tag}) catch return;
         self.chat_messages.append(.{.channel = .broadcast, .message = msg}) catch return;
     }
 
