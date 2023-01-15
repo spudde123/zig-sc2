@@ -171,32 +171,36 @@ pub const UnitDistanceResult = struct {
     distance_squared: f32,
 };
 
-pub fn findClosestUnit(units: []Unit, pos: Point2) UnitDistanceResult {
-    assert(units.len > 0);
+pub fn findClosestUnit(units: []Unit, pos: Point2) ?UnitDistanceResult {
     var min_distance: f32 = math.f32_max;
-    var closest_unit: Unit = undefined;
+    var closest_unit_result: ?UnitDistanceResult = null;
     for (units) |unit| {
         const dist_sqrd = unit.position.distanceSquaredTo(pos);
         if (dist_sqrd < min_distance) {
             min_distance = dist_sqrd;
-            closest_unit = unit;
+            closest_unit_result = .{
+                .unit = unit,
+                .distance_squared = dist_sqrd,
+            };
         }
     }
-    return .{.unit = closest_unit, .distance_squared = min_distance};
+    return closest_unit_result;
 }
 
-pub fn findFurthestUnit(units: []Unit, pos: Point2) UnitDistanceResult {
-    assert(units.len > 0);
+pub fn findFurthestUnit(units: []Unit, pos: Point2) ?UnitDistanceResult {
     var max_distance: f32 = 0;
-    var furthest_unit: Unit = undefined;
+    var furthest_unit_result: ?UnitDistanceResult = null;
     for (units) |unit| {
         const dist_sqrd = unit.position.distanceSquaredTo(pos);
         if (dist_sqrd > max_distance) {
             max_distance = dist_sqrd;
-            furthest_unit = unit;
+            furthest_unit_result = .{
+                .unit = unit,
+                .distance_squared = dist_sqrd,
+            };
         }
     }
-    return .{.unit = furthest_unit, .distance_squared = max_distance};
+    return furthest_unit_result;
 }
 
 pub fn filter(
