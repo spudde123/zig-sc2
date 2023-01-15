@@ -92,6 +92,8 @@ pub const GameInfo = struct {
     vision_blockers: []VisionBlocker,
     ramps: []Ramp,
 
+    const main_base_ramp_size = 16;
+
     pub fn fromProto(
         proto_data: sc2p.ResponseGameInfo,
         player_id: u32,
@@ -441,17 +443,16 @@ pub const GameInfo = struct {
 
                     // Only main base ramps will have depot
                     // and barracks locations set
-                    const base_ramp_size = 16;
-                    if (points.len == base_ramp_size) {
+                    if (points.len == main_base_ramp_size) {
                         const ramp_dir = top_center.subtract(bottom_center).normalize();
 
                         const depot_candidate1 = top_center.add(ramp_dir.rotate(math.pi / 2.0).multiply(2)).floor();
                         const depot_index1 = placement.pointToIndex(depot_candidate1);
-                        depot_first = searchDepotPosition(placement, depot_index1);                        
+                        depot_first = searchDepotPosition(placement, points, depot_index1);                        
 
                         const depot_candidate2 = top_center.add(ramp_dir.rotate(-math.pi / 2.0).multiply(2)).floor();
                         const depot_index2 = placement.pointToIndex(depot_candidate2);
-                        depot_second = searchDepotPosition(placement, depot_index2); 
+                        depot_second = searchDepotPosition(placement, points, depot_index2); 
                         
                         barracks_middle = top_center.add(ramp_dir.multiply(2)).floor().add(.{.x = 0.5, .y = 0.5});
                         
@@ -482,12 +483,12 @@ pub const GameInfo = struct {
         };
     }
 
-    fn searchDepotPosition(placement: Grid, depot_index: usize) Point2 {
+    fn searchDepotPosition(placement: Grid, ramp_points: []const GridPoint, depot_index: usize) Point2 {
         var res = Point2{.x = 0, .y = 0};
         var max_blocked_neighbors: u64 = 0;
 
         const grid_width = placement.w;
-        const grid_width_i32= @intCast(i32, placement.w);
+        const grid_width_i32 = @intCast(i32, placement.w);
         const offsets = [_]i32{
             0,
             1,
@@ -500,6 +501,13 @@ pub const GameInfo = struct {
             -grid_width_i32 + 1
         };
         
+        assert(ramp_points.len == main_base_ramp_size);
+        var ramp_points_usize: [main_base_ramp_size]usize = undefined;
+        for (ramp_points) |point, i| {
+            const x = @intCast(usize, point.x);
+            const y = @intCast(usize, point.y);
+            ramp_points_usize[i] = x + y*grid_width;
+        }
 
         for (offsets) |offset| {
             const current_index = @intCast(usize, @intCast(i32, depot_index) + offset);
@@ -523,9 +531,12 @@ pub const GameInfo = struct {
                 current_index + grid_width - 1,
                 current_index - 1,
             };
-            const blocked_neighbors = 12 - placement.count(edge[0..]);
-            if (placement.allEqual(depot_points[0..], 1) and blocked_neighbors > max_blocked_neighbors) {
-                max_blocked_neighbors = blocked_neighbors;
+            var ramp_neighbors: u64 = 0;
+            for (edge) |edge_point| {
+                if (mem.indexOfScalar(usize, &ramp_points_usize, edge_point)) |_| ramp_neighbors += 1;
+            }
+            if (placement.allEqual(depot_points[0..], 1) and ramp_neighbors > max_blocked_neighbors) {
+                max_blocked_neighbors = ramp_neighbors;
                 res = placement.indexToPoint(current_index + grid_width + 1);
             }
         }
@@ -550,7 +561,6 @@ pub const GameInfo = struct {
     }
 
     pub fn getMainBaseRamp(self: GameInfo) Ramp {
-        const main_base_ramp_size = 16;
         var closest_dist: f32 = math.f32_max;
         var main_base_ramp: Ramp = undefined;
         for (self.ramps) |ramp| {
@@ -564,7 +574,6 @@ pub const GameInfo = struct {
     }
 
     pub fn getEnemyMainBaseRamp(self: GameInfo) Ramp {
-        const main_base_ramp_size = 16;
         var closest_dist: f32 = math.f32_max;
         var main_base_ramp: Ramp = undefined;
         for (self.ramps) |ramp| {
