@@ -1669,7 +1669,19 @@ pub const Actions = struct {
             log.debug("Did not find {d} in game data\n", .{structure_to_build});
             return false;
         }
-        
+    }
+
+    /// owner should be 1 if creating a unit for yourself
+    /// and 2 if creating for the opponent
+    pub fn debugCreateUnit(self: *Actions, unit_type: UnitId, owner: i32, pos: Point2, quantity: u32) void {
+        const debug_unit = sc2p.DebugCreateUnit{
+            .unit_type = @enumToInt(unit_type),
+            .owner = owner,
+            .pos = .{.x = pos.x, .y = pos.y},
+            .quantity = quantity,
+        };
+
+        self.debug_create_unit.append(debug_unit) catch return;
     }
 };
 
