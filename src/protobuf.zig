@@ -46,33 +46,40 @@ pub const ProtoReader = struct {
     /// Use an arena allocator and free all allocations afterwards when the results aren't needed anymore
     pub fn decodeStruct(self: *ProtoReader, size: usize, comptime T: type, allocator: mem.Allocator) ParseError!T {
         var res = T{};
+        
+        const field_nums_tuple = @field(T, "field_nums");
+        const TupleType = comptime t: {
+            var tuple_types: [field_nums_tuple.len]type = undefined;
+            inline for (field_nums_tuple) |field_info, i| {
+                const field_name = field_info[0];
+                const info = @typeInfo(@TypeOf(@field(res, field_name)));
+                const child_type = info.Optional.child;
+                const child_info = @typeInfo(child_type);
+                tuple_types[i] = switch (child_info) {
+                    .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child),
+                    else => u8,
+                };
+            }
+            break :t std.meta.Tuple(&tuple_types);
+        };
+        
+        var list_type: TupleType = comptime l: {
+            var list: TupleType = undefined;
+            inline for (field_nums_tuple) |field_info, i| {
+                const field_name = field_info[0];
+                const info = @typeInfo(@TypeOf(@field(res, field_name)));
+                const child_type = info.Optional.child;
+                const child_info = @typeInfo(child_type);
+                list[i] = switch (child_info) {
+                    .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child){},
+                    else => 0,
+                };
+            }
+            break :l list;
+        };
 
         var start: usize = self.bytes_read;
-
-        const field_nums_tuple = @field(T, "field_nums");
-        comptime var tuple_types: [field_nums_tuple.len]type = undefined;
-        inline for (field_nums_tuple) |field_info, i| {
-            const field_name = field_info[0];
-            const info = @typeInfo(@TypeOf(@field(res, field_name)));
-            const child_type = info.Optional.child;
-            const child_info = @typeInfo(child_type);
-            tuple_types[i] = switch (child_info) {
-                .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child),
-                else => u8,
-            };
-        }
-        const TupleType = std.meta.Tuple(&tuple_types);
-        var list_type: TupleType = undefined;
-        inline for (field_nums_tuple) |field_info, i| {
-            const field_name = field_info[0];
-            const info = @typeInfo(@TypeOf(@field(res, field_name)));
-            const child_type = info.Optional.child;
-            const child_info = @typeInfo(child_type);
-            list_type[i] = switch (child_info) {
-                .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child){},
-                else => 0,
-            };
-        }
+        
         while (self.bytes_read - start < size) {
             const header = try self.decodeProtoHeader();
 
