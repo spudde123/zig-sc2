@@ -598,8 +598,8 @@ pub const GameInfo = struct {
 /// iterate through them quickly and
 /// quickly identify units with their tags
 pub const Bot = struct {
-    units: *const std.AutoArrayHashMap(u64, Unit),
-    enemy_units: *const std.AutoArrayHashMap(u64, Unit),
+    units: std.AutoArrayHashMap(u64, Unit),
+    enemy_units: std.AutoArrayHashMap(u64, Unit),
     placeholders: []Unit,
     destructables: []Unit,
     mineral_patches: []Unit,
@@ -629,7 +629,10 @@ pub const Bot = struct {
     visibility: Grid,
     creep: Grid,
 
-    dead_units: []u64,
+    // Giving the previous unit structs
+    // if we don't keep the data in the current frame
+    // anymore. Otherwise the tag is enough.
+    dead_units: []Unit,
     units_created: []u64,
     damaged_units: []u64,
     construction_complete: []u64,
@@ -668,6 +671,7 @@ pub const Bot = struct {
         var construction_complete = std.ArrayList(u64).init(allocator);
         var enemies_entered_vision = std.ArrayList(u64).init(allocator);
         var enemies_left_vision = std.ArrayList(Unit).init(allocator); 
+        var dead_units = std.ArrayList(Unit).init(allocator);
 
         if (obs.units) |units| {
             for (units) |unit| {
@@ -992,10 +996,10 @@ pub const Bot = struct {
             }
         }
 
-        var dead_units: []u64 = &[_]u64{};
+        var dead_unit_tags: []u64 = &[_]u64{};
         if (obs.event) |events_proto| {
             if (events_proto.dead_units) |dead_unit_slice| {
-                dead_units = try allocator.dupe(u64, dead_unit_slice);
+                dead_unit_tags = dead_unit_slice;
             }
         }
 
@@ -1004,8 +1008,12 @@ pub const Bot = struct {
         var enemy_iter = prev_enemy.iterator();
         while (enemy_iter.next()) |enemy_val| {
             if (enemy_val.value_ptr.prev_seen_loop == game_loop) continue;
+            if (mem.indexOfScalar(u64, dead_unit_tags, enemy_val.value_ptr.tag)) |_| {
+                try dead_units.append(enemy_val.value_ptr.*);
+            } else {
+                try enemies_left_vision.append(enemy_val.value_ptr.*);
+            }
 
-            try enemies_left_vision.append(enemy_val.value_ptr.*);
             prev_enemy.swapRemoveAt(enemy_iter.index - 1);
             enemy_iter.index -= 1;
             enemy_iter.len -= 1;
@@ -1014,15 +1022,17 @@ pub const Bot = struct {
         var units_iter = prev_units.iterator();
         while (units_iter.next()) |unit_val| {
             if (unit_val.value_ptr.prev_seen_loop == game_loop) continue;
-
+            if (mem.indexOfScalar(u64, dead_unit_tags, unit_val.value_ptr.tag)) |_| {
+                try dead_units.append(unit_val.value_ptr.*);
+            }
             prev_units.swapRemoveAt(units_iter.index - 1);
             units_iter.index -= 1;
             units_iter.len -= 1;
         }
 
         return Bot{
-            .units = prev_units,
-            .enemy_units = prev_enemy,
+            .units = prev_units.*,
+            .enemy_units = prev_enemy.*,
             .placeholders = placeholders.toOwnedSlice(),
             .destructables = destructables.toOwnedSlice(),
             .vespene_geysers = vespene_geysers.toOwnedSlice(),
@@ -1045,7 +1055,7 @@ pub const Bot = struct {
             .pending_upgrades = pending_upgrades,
             .visibility = visibility_grid,
             .creep = creep_grid,
-            .dead_units = dead_units,
+            .dead_units = dead_units.toOwnedSlice(),
             .units_created = units_created.toOwnedSlice(),
             .damaged_units = damaged_units.toOwnedSlice(),
             .construction_complete = construction_complete.toOwnedSlice(),
