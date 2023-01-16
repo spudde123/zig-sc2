@@ -73,7 +73,7 @@ const Sc2Paths = struct {
     working_directory: ?[]const u8,
 };
 
-const LocalRunSetup = struct {
+pub const LocalRunSetup = struct {
     sc2_base_folder: []const u8 = switch (builtin.os.tag) {
         .windows => "C:/Program Files (x86)/StarCraft II",
         .macos => "/Applications/StarCraft II",
