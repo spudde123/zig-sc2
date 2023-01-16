@@ -69,6 +69,9 @@ const RampsAndVisionBlockers = struct {
     ramps: []Ramp,
 };
 
+/// Includes various information
+/// about the ongoing match
+/// which doesn't change from step to step
 pub const GameInfo = struct {
 
     pathing_grid: Grid,
@@ -589,6 +592,11 @@ pub const GameInfo = struct {
     
 };
 
+/// Includes all the step by step information
+/// in the game. Your own and enemy units are
+/// held in an ArrayHashMap, so we can both
+/// iterate through them quickly and
+/// quickly identify units with their tags
 pub const Bot = struct {
     units: *const std.AutoArrayHashMap(u64, Unit),
     enemy_units: *const std.AutoArrayHashMap(u64, Unit),
@@ -1076,6 +1084,10 @@ pub const Bot = struct {
     
 };
 
+/// Call functions in this struct to
+/// interact with the sc2 client by giving
+/// unit orders, finding building placements,
+/// making debug queries
 pub const Actions = struct {
 
     const ActionData = struct {
