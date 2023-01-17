@@ -504,7 +504,6 @@ pub const WebSocketClient = struct {
     }
 
     pub fn writeAndWaitForMessage(self: *WebSocketClient, payload: []u8) !sc2p.Response {
-        self.storage_cursor = 0;
         {
             const max_len = 2 + payload.len + 8;
             var bytes = try self.step_allocator.alloc(u8, max_len);
@@ -531,49 +530,29 @@ pub const WebSocketClient = struct {
             try stream.writeAll(bytes[0..(payload_start + payload.len)]);
         }
 
-        var res: sc2p.Response = undefined;
-
-        while (true) {
-            var read_length = try self.socket.read(self.storage);
-            if (read_length == 0) continue;
-
-            var start: usize = 0;
-            var found_ws_start = false;
-            for (self.storage[0..read_length]) |byte, i| {
-                if (byte == 130) {
-                    start = i;
-                    found_ws_start = true;
-                    break;
-                } else {
-                    std.debug.print("{b} ", .{byte});
-                }
-            }
-
-            if (!found_ws_start) continue;
-
-            self.storage_cursor += read_length - start;
-            
-            while (!self.messageReceived()) {
-                read_length = try self.socket.read(self.storage[self.storage_cursor..]);
-                self.storage_cursor += read_length - start;
-            }
-
-            const payload_desc = self.storage[1];
-            var payload_start: usize = 2;
-            var payload_length = @as(u64, payload_desc);
-
-            if (payload_desc == 126) {
-                payload_length = mem.readIntBig(u16, self.storage[2..4]);
-                payload_start += 2;
-            } else if (payload_desc == 127) {
-                payload_length = mem.readIntBig(u64, self.storage[2..10]);
-                payload_start += 8;
-            }
-
-            var reader = proto.ProtoReader{.bytes = self.storage[payload_start .. (payload_start + payload_length)]};
-            res = try reader.decodeStruct(reader.bytes.len, sc2p.Response, self.step_allocator);
-            break;
+        self.storage_cursor = 0;
+        var read_length = try self.socket.read(self.storage);
+        self.storage_cursor += read_length;
+        
+        while (!self.messageReceived()) {
+            read_length = try self.socket.read(self.storage[self.storage_cursor..]);
+            self.storage_cursor += read_length;
         }
+
+        const payload_desc = self.storage[1];
+        var payload_start: usize = 2;
+        var payload_length = @as(u64, payload_desc);
+
+        if (payload_desc == 126) {
+            payload_length = mem.readIntBig(u16, self.storage[2..4]);
+            payload_start += 2;
+        } else if (payload_desc == 127) {
+            payload_length = mem.readIntBig(u64, self.storage[2..10]);
+            payload_start += 8;
+        }
+
+        var reader = proto.ProtoReader{.bytes = self.storage[payload_start .. (payload_start + payload_length)]};
+        const res = try reader.decodeStruct(reader.bytes.len, sc2p.Response, self.step_allocator);
 
         if (res.errors) |errors| {
             for (errors) |error_string| {
