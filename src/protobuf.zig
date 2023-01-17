@@ -435,9 +435,9 @@ test "protobuf_floats" {
 
     var data: f32 = 9.81;
     var writer = ProtoWriter{.buffer = buffer[0..]};
-    const float_size = writer.encodeFloat(data);
+    writer.encodeFloat(data);
 
-    var reader = ProtoReader{.bytes = buffer[0..float_size]};
+    var reader = ProtoReader{.bytes = buffer[0..writer.cursor]};
     var decoded_data = try reader.decodeFloat();
 
     try std.testing.expectEqual(data, decoded_data);
