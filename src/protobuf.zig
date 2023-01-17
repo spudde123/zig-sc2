@@ -48,6 +48,10 @@ pub const ProtoReader = struct {
         var res = T{};
         
         const field_nums_tuple = @field(T, "field_nums");
+        // Make a tuple to store arraylists for the fields
+        // where we need to generate slices of unknown length.
+        // Using a zero bit type for the other tuple members
+        // seemed to cause a crash during compilation?
         const TupleType = comptime t: {
             var tuple_types: [field_nums_tuple.len]type = undefined;
             inline for (field_nums_tuple) |field_info, i| {
@@ -63,19 +67,19 @@ pub const ProtoReader = struct {
             break :t std.meta.Tuple(&tuple_types);
         };
         
-        var list_type: TupleType = comptime l: {
-            var list: TupleType = undefined;
+        var list_tuple: TupleType = comptime l: {
+            var tuple: TupleType = undefined;
             inline for (field_nums_tuple) |field_info, i| {
                 const field_name = field_info[0];
                 const info = @typeInfo(@TypeOf(@field(res, field_name)));
                 const child_type = info.Optional.child;
                 const child_info = @typeInfo(child_type);
-                list[i] = switch (child_info) {
+                tuple[i] = switch (child_info) {
                     .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child){},
                     else => 0,
                 };
             }
-            break :l list;
+            break :l tuple;
         };
 
         var start: usize = self.bytes_read;
@@ -108,15 +112,15 @@ pub const ProtoReader = struct {
                                 switch(ptr.child) {
                                     []const u8 => {
                                         var string = try self.decodeBytes(allocator);
-                                        try list_type[i].append(allocator, string);
+                                        try list_tuple[i].append(allocator, string);
                                     },
                                     u32, u64 => {
                                         const int_to_add = @intCast(ptr.child, try self.decodeUInt64());
-                                        try list_type[i].append(allocator, int_to_add);
+                                        try list_tuple[i].append(allocator, int_to_add);
                                     },
                                     i32, i64 => {
                                         const int_to_add = @intCast(ptr.child, try self.decodeInt64());
-                                        try list_type[i].append(allocator, int_to_add);
+                                        try list_tuple[i].append(allocator, int_to_add);
                                     },
                                     else => {
                                         const element_info = @typeInfo(ptr.child);
@@ -124,17 +128,17 @@ pub const ProtoReader = struct {
                                             .Struct => {
                                                 const struct_encoding_size = try self.decodeUInt64();
                                                 const struct_to_add = try self.decodeStruct(struct_encoding_size, ptr.child, allocator);
-                                                try list_type[i].append(allocator, struct_to_add);
+                                                try list_tuple[i].append(allocator, struct_to_add);
                                             },
                                             .Enum => {
                                                 const enum_int = try self.decodeUInt64();
-                                                try list_type[i].append(allocator, @intToEnum(ptr.child, enum_int));
+                                                try list_tuple[i].append(allocator, @intToEnum(ptr.child, enum_int));
                                             },
                                             else => unreachable,
                                         }
                                     }
                                 }
-                                obj_field.* = list_type[i].items;
+                                obj_field.* = list_tuple[i].items;
                             }
                         },
                         .Int => |int| {
