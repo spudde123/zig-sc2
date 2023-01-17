@@ -129,6 +129,14 @@ pub const Point3 = struct {
     x: f32,
     y: f32,
     z: f32,
+
+    pub fn fromPoint2(p: Point2, z: f32) Point3 {
+        return .{
+            .x = p.x,
+            .y = p.y,
+            .z = z,
+        };
+    }
 };
 
 pub const Grid = struct {

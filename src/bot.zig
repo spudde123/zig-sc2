@@ -1560,7 +1560,68 @@ pub const Actions = struct {
         self.debug_texts.append(proto) catch return;
     }
 
-    // @TODO: Implement boxes, lines, spheres, debug unit creation
+    pub fn debugLine(self: *Actions, start: Point3, end: Point3, color: Color) void {
+        const line = sc2p.Line{
+            .p0 = .{
+                .x = start.x,
+                .y = start.y,
+                .z = start.z,
+            },
+            .p1 = .{
+                .x = end.x,
+                .y = end.y,
+                .z = end.z,
+            }
+        };
+        const debug_line = sc2p.DebugLine{
+            .line = line,
+            .color = .{
+                .r = color.r,
+                .g = color.g,
+                .b = color.b
+            },
+        };
+        self.debug_lines.append(debug_line) catch return;
+    }
+
+    pub fn debugBox(self: *Actions, min: Point3, max: Point3, color: Color) void {
+        const proto = sc2p.DebugBox{
+            .min = .{
+                .x = min.x,
+                .y = min.y,
+                .z = min.z,
+            },
+            .max = .{
+                .x = max.x,
+                .y = max.y,
+                .z = max.z,
+            },
+            .color = .{
+                .r = color.r,
+                .g = color.g,
+                .b = color.b,
+            },
+        };
+        self.debug_boxes.append(proto) catch return;
+    }
+
+    pub fn debugSphere(self: *Actions, center: Point3, radius: f32, color: Color) void {
+        const proto = sc2p.DebugSphere{
+            .p = .{
+                .x = center.x,
+                .y = center.y,
+                .z = center.z,
+            },
+            .r = radius,
+            .color = .{
+                .r = color.r,
+                .g = color.g,
+                .b = color.b,
+            }
+        };
+        self.debug_spheres.append(proto) catch return;        
+    }
+
     pub fn debugCommandsToProto(self: *Actions) ?sc2p.RequestDebug {
         var command_list = std.ArrayList(sc2p.DebugCommand).init(self.temp_allocator);
 
