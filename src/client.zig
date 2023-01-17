@@ -317,11 +317,12 @@ pub const WebSocketClient = struct {
         return GameJoin{.success = true, .player_id = jg_data.player_id.?};
     }
 
-    pub fn getObservation(self: *WebSocketClient) sc2p.ResponseObservation {
+    pub fn getObservation(self: *WebSocketClient, game_loop: ?u32) sc2p.ResponseObservation {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 
         const obs_req = sc2p.RequestObservation{
             .disable_fog = false,
+            .game_loop = game_loop,
         };
 
         const base_req = sc2p.Request{

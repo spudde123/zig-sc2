@@ -348,7 +348,7 @@ pub fn run(
                 .build = program_args.computer_build,
                 .race = program_args.computer_race,
             },
-            false
+            program_args.real_time,
         );
         
     }
@@ -377,9 +377,10 @@ pub fn run(
     var enemy_units = std.AutoArrayHashMap(u64, bot_data.Unit).init(arena);
     try enemy_units.ensureTotalCapacity(200);
 
+    var game_loop: u32 = 0;
     while (true) {
 
-        const obs = client.getObservation();
+        const obs = if (program_args.real_time) client.getObservation(game_loop) else client.getObservation(null);
 
         if (obs.observation == null) {
             log.err("Got an invalid observation\n", .{});
@@ -476,7 +477,11 @@ pub fn run(
             client.sendDebugRequest(debug_proto);
         }
 
-        _ = client.step(step_count);
+        if (program_args.real_time) {
+            game_loop += step_count;
+        } else {
+            _ = client.step(step_count);
+        }
 
         actions.clear();
         fixed_buffer_instance.reset();
