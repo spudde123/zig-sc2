@@ -323,11 +323,9 @@ pub fn run(
         return;
     }
 
-    defer {
-        if (sc2_process) |_| {
-            _ = client.quit();
-        }
-    }
+    defer if (sc2_process) |_| {
+        _ = client.quit();
+    };
 
     var game_join: ws.GameJoin = .{};
 
@@ -394,6 +392,10 @@ pub fn run(
         }
         
         var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, fixed_buffer);
+        // Not sure if the given game loop may be larger than what was requested
+        // if the bot takes too long to make the step.
+        // Regardless doesn't hurt to sync it
+        game_loop = bot.game_loop;
 
         if (bot.result) |res| {
             user_bot.onResult(bot, game_info, res);
@@ -403,7 +405,6 @@ pub fn run(
                 }
                 _ = client.leave();
             }
-            
             break;
         }
 
