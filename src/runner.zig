@@ -228,7 +228,13 @@ pub fn run(
     base_allocator: mem.Allocator,
     local_run: LocalRunSetup
 ) !void {
-    
+    // Step_count 1 may cause problems from
+    // what i've heard with unit orders
+    // not showing up yet on the next frame
+    // and so on.
+    // Step_count 2 should be good enough
+    // regardless
+    std.debug.assert(step_count > 1);
     var arena_instance = std.heap.ArenaAllocator.init(base_allocator);
     // Arena allocator that is freed at the end of the game
     const arena = arena_instance.allocator();
