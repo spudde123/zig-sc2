@@ -323,9 +323,11 @@ pub fn run(
         return;
     }
 
-    defer if (sc2_process) |_| {
-        _ = client.quit();
-    };
+    defer {
+        if (sc2_process) |_| {
+            _ = client.quit();
+        }
+    }
 
     var game_join: ws.GameJoin = .{};
 
@@ -381,10 +383,10 @@ pub fn run(
     var enemy_units = std.AutoArrayHashMap(u64, bot_data.Unit).init(arena);
     try enemy_units.ensureTotalCapacity(200);
 
-    var game_loop: u32 = 0;
+    var requested_game_loop: u32 = 0;
     while (true) {
 
-        const obs = if (program_args.real_time) client.getObservation(game_loop) else client.getObservation(null);
+        const obs = if (program_args.real_time) client.getObservation(requested_game_loop) else client.getObservation(null);
 
         if (obs.observation == null) {
             log.err("Got an invalid observation\n", .{});
@@ -395,7 +397,7 @@ pub fn run(
         // Not sure if the given game loop may be larger than what was requested
         // if the bot takes too long to make the step.
         // Regardless doesn't hurt to sync it
-        game_loop = bot.game_loop;
+        requested_game_loop = bot.game_loop + step_count;
 
         if (bot.result) |res| {
             user_bot.onResult(bot, game_info, res);
@@ -484,9 +486,7 @@ pub fn run(
             client.sendDebugRequest(debug_proto);
         }
 
-        if (program_args.real_time) {
-            game_loop += step_count;
-        } else {
+        if (!program_args.real_time) {
             _ = client.step(step_count);
         }
 
