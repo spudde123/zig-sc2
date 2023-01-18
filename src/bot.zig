@@ -1445,6 +1445,7 @@ pub const Actions = struct {
         self.chat_messages.append(.{.channel = channel, .message = msg_copy}) catch return;
     }
 
+    /// Used for tagging matches on the sc2ai ladder.
     pub fn tagGame(self: *Actions, tag: []const u8) void {
         const msg = std.fmt.allocPrint(self.temp_allocator, "Tag:{s}", .{tag}) catch return;
         self.chat_messages.append(.{.channel = .broadcast, .message = msg}) catch return;

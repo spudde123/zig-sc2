@@ -64,7 +64,6 @@ pub const WebSocketClient = struct {
     step_allocator: mem.Allocator,
     req_buffer: []u8,
     storage: []u8,
-    storage_cursor: usize,
 
     /// perm_alloc should not be freed from the outside while client is in use
     /// while the client is in use.
@@ -88,7 +87,6 @@ pub const WebSocketClient = struct {
             .step_allocator = step_alloc,
             .req_buffer = req_buffer,
             .storage = storage,
-            .storage_cursor = 0,
         };
     }
 
@@ -530,13 +528,13 @@ pub const WebSocketClient = struct {
             try stream.writeAll(bytes[0..(payload_start + payload.len)]);
         }
 
-        self.storage_cursor = 0;
+        var cursor: usize = 0;
         var read_length = try self.socket.read(self.storage);
-        self.storage_cursor += read_length;
+        cursor += read_length;
         
-        while (!self.messageReceived()) {
-            read_length = try self.socket.read(self.storage[self.storage_cursor..]);
-            self.storage_cursor += read_length;
+        while (!self.messageReceived(cursor)) {
+            read_length = try self.socket.read(self.storage[cursor..]);
+            cursor += read_length;
         }
 
         const payload_desc = self.storage[1];
@@ -563,23 +561,23 @@ pub const WebSocketClient = struct {
         return res;
     }
 
-    fn messageReceived(self: *WebSocketClient) bool {
-        if (self.storage_cursor < 2) return false;
+    fn messageReceived(self: *WebSocketClient, cursor: usize) bool {
+        if (cursor < 2) return false;
         const payload_desc = self.storage[1];
         var payload_start: usize = 2;
         var payload_length = @as(u64, payload_desc);
 
         if (payload_desc == 126) {
-            if (self.storage_cursor < 4) return false;
+            if (cursor < 4) return false;
             payload_length = mem.readIntBig(u16, self.storage[2..4]);
             payload_start += 2;
         } else if (payload_desc == 127) {
-            if (self.storage_cursor < 10) return false;
+            if (cursor < 10) return false;
             payload_length = mem.readIntBig(u64, self.storage[2..10]);
             payload_start += 8;
         }
 
-        return self.storage_cursor >= payload_start + payload_length;
+        return cursor >= payload_start + payload_length;
     }
 
 };
