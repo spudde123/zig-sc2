@@ -441,7 +441,7 @@ pub const WebSocketClient = struct {
         };
 
         const payload = writer.encodeBaseStruct(base_req);
-        _ = self.writeAndWaitForMessage(payload) catch false;
+        _ = self.writeAndWaitForMessage(payload) catch return false;
 
         return true;
     }
@@ -452,7 +452,7 @@ pub const WebSocketClient = struct {
         const request = sc2p.Request{.leave_game = {}};
         const payload = writer.encodeBaseStruct(request);
 
-        _ = self.writeAndWaitForMessage(payload) catch false;
+        _ = self.writeAndWaitForMessage(payload) catch return false;
 
         return true;
     }

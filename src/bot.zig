@@ -33,6 +33,8 @@ pub const RallyTarget = unit_group.RallyTarget;
 pub const Effect = unit_group.Effect;
 pub const SensorTower = unit_group.SensorTower;
 
+pub const InfluenceMap = grids.InfluenceMap;
+pub const PathfindResult = grids.PathfindResult;
 pub const Grid = grids.Grid;
 pub const GridPoint = grids.GridPoint;
 pub const Point2 = grids.Point2;
