@@ -362,6 +362,11 @@ pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: 
             return result;
         }
 
+        pub fn exists(self: *Self) bool {
+            self.index = 0;
+            return self.next() != null;
+        }
+
         pub fn findClosest(self: *Self, pos: Point2) ?UnitDistanceResult {
             self.index = 0;
             var min_dist: f32 = math.f32_max;

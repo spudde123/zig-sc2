@@ -31,6 +31,7 @@ const OpCode = enum(u4) {
 
 pub const ClientError = error {
     BadResponse,
+    ErrorsField
 };
 
 pub const ComputerSetup = struct {
@@ -556,6 +557,7 @@ pub const WebSocketClient = struct {
             for (errors) |error_string| {
                 std.debug.print("Message error: {s}\n", .{error_string});
             }
+            return ClientError.ErrorsField;
         }
 
         return res;

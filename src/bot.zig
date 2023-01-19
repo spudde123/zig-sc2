@@ -79,6 +79,9 @@ pub const GameInfo = struct {
     pathing_grid: Grid,
     placement_grid: Grid,
     terrain_height: Grid,
+    air_grid: Grid,
+    reaper_grid: Grid,
+    climbable_points: []const usize,
 
     map_name: []const u8,
     enemy_name: []const u8,
@@ -109,7 +112,6 @@ pub const GameInfo = struct {
         allocator: mem.Allocator,
         temp_alloc: mem.Allocator,
     ) !GameInfo {
-        
         const received_map_name = proto_data.map_name.?;
         var map_name = try allocator.alloc(u8, received_map_name.len);
         mem.copy(u8, map_name, received_map_name);
@@ -193,6 +195,9 @@ pub const GameInfo = struct {
         }
         const placement_grid = Grid{.data = placement_slice, .w = map_size.w, .h = map_size.h};
 
+        var climbable_points = try grids.findClimbablePoints(allocator, pathing_grid, terrain_height);
+        var air_grid = try grids.createAirGrid(allocator, pathing_grid.w, pathing_grid.h, playable_area);
+        var reaper_grid = try grids.createReaperGrid(allocator, pathing_grid, climbable_points);
         const ramps_and_vbs = try generateRamps(
             pathing_grid,
             placement_grid,
@@ -214,6 +219,9 @@ pub const GameInfo = struct {
             .terrain_height = terrain_height,
             .pathing_grid = pathing_grid,
             .placement_grid = placement_grid,
+            .reaper_grid = reaper_grid,
+            .air_grid = air_grid,
+            .climbable_points = climbable_points,
             .expansion_locations = generateExpansionLocations(minerals, geysers, allocator),
             .vision_blockers = ramps_and_vbs.vbs,
             .ramps = ramps_and_vbs.ramps,
@@ -565,6 +573,13 @@ pub const GameInfo = struct {
         return -16 + 32*terrain_value / 255;
     }
 
+    pub fn getMapCenter(self: GameInfo) Point2 {
+        const x_i32 = self.playable_area.p0.x + @divFloor(self.playable_area.width(),  2);
+        const y_i32 = self.playable_area.p0.y + @divFloor(self.playable_area.height(), 2);
+        const middle_floor = Point2{.x = @intToFloat(f32, x_i32), .y = @intToFloat(f32, y_i32)};
+        return middle_floor.add(.{.x = 0.5, .y = 0.5});
+    }
+
     pub fn getMainBaseRamp(self: GameInfo) Ramp {
         var closest_dist: f32 = math.f32_max;
         var main_base_ramp: Ramp = undefined;
@@ -646,6 +661,10 @@ pub const Bot = struct {
 
     result: ?Result,
 
+    const ParsingError = error {
+        MissingData
+    };
+
     pub fn fromProto(
         prev_units: *std.AutoArrayHashMap(u64, Unit),
         prev_enemy: *std.AutoArrayHashMap(u64, Unit),
@@ -654,6 +673,7 @@ pub const Bot = struct {
         player_id: u32,
         allocator: mem.Allocator
     ) !Bot {
+        if (response.observation == null or response.observation.?.raw == null) return ParsingError.MissingData;
 
         const game_loop: u32 = response.observation.?.game_loop.?;
         

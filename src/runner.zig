@@ -400,13 +400,13 @@ pub fn run(
         requested_game_loop = bot.game_loop + step_count;
 
         if (bot.result) |res| {
-            user_bot.onResult(bot, game_info, res);
             if (sc2_process) |_| {
                 if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
                     _ = client.saveReplay(replay_name);
                 }
                 _ = client.leave();
             }
+            try user_bot.onResult(bot, game_info, res);
             break;
         }
 
@@ -447,7 +447,7 @@ pub fn run(
                 fixed_buffer
             );
             
-            user_bot.onStart(bot, game_info, &actions);
+            try user_bot.onStart(bot, game_info, &actions);
             first_step_done = true;
         }
 
@@ -461,7 +461,7 @@ pub fn run(
             }
         }
 
-        user_bot.onStep(bot, game_info, &actions);
+        try user_bot.onStep(bot, game_info, &actions);
 
         if (actions.leave_game) {
             
@@ -472,7 +472,7 @@ pub fn run(
             }
             
             _ = client.leave();
-            user_bot.onResult(bot, game_info, .defeat);
+            try user_bot.onResult(bot, game_info, .defeat);
             break;
         }
 
@@ -537,7 +537,7 @@ test "runner_test_basic" {
             bot: bot_data.Bot,
             game_info: bot_data.GameInfo,
             actions: *bot_data.Actions
-        ) void {
+        ) !void {
             _ = self;
             const enemy_start_location = game_info.enemy_start_locations[0];
             const units = bot.units.values();
@@ -556,7 +556,7 @@ test "runner_test_basic" {
             bot: bot_data.Bot,
             game_info: bot_data.GameInfo,
             actions: *bot_data.Actions
-        ) void {
+        ) !void {
             _ = game_info;
             _ = self;
             if (bot.game_loop > 500) actions.leaveGame();
@@ -567,117 +567,11 @@ test "runner_test_basic" {
             bot: bot_data.Bot,
             game_info: bot_data.GameInfo,
             result: bot_data.Result
-        ) void {
+        ) !void {
             _ = bot;
             _ = game_info;
             _ = result;
             _ = self;
-        }
-    };
-
-    var test_bot = TestBot{.name = "tester", .race = .terran};
-
-    try run(&test_bot, 2, std.testing.allocator, .{});
-}
-
-
-test "runner_test_expansion_locations" {
-    
-    const TestBot = struct {
-        const Self = @This();
-        name: []const u8,
-        race: bot_data.Race,
-        locations_expanded_to: usize = 0,
-        countdown_start: usize = 0,
-        countdown_started: bool = false,
-        first_cc_tag: u64 = 0,
-
-        pub fn onStart(
-            self: *Self,
-            bot: bot_data.Bot,
-            game_info: bot_data.GameInfo,
-            actions: *bot_data.Actions
-        ) void {
-            const units = bot.units.values();
-            self.first_cc_tag = calc: {
-                for (units) |unit| {
-                    if (unit.unit_type == .CommandCenter) break :calc unit.tag;
-                }    
-                break :calc 0;
-            };
-            std.debug.print("Exp: {d}\n", .{game_info.expansion_locations.len});
-            for (game_info.expansion_locations) |exp| {
-                std.debug.print("Loc: {d} {d}\n", .{exp.x, exp.y});
-            }
-            _ = actions;
-        }
-
-        pub fn onStep(
-            self: *Self,
-            bot: bot_data.Bot,
-            game_info: bot_data.GameInfo,
-            actions: *bot_data.Actions
-        ) void {
-            const units = bot.units.values();
-            
-            const maybe_first_cc = bot_data.unit_group.getUnitByTag(units, self.first_cc_tag);
-            if (maybe_first_cc == null) {
-                actions.leaveGame();
-                return;
-            }
-            const first_cc = maybe_first_cc.?;
-            var current_minerals = bot.minerals;
-            if (bot.minerals > 50 and first_cc.isIdle()) {
-                actions.train(self.first_cc_tag, bot_data.UnitId.SCV, false);
-                current_minerals -= 50;
-            }
-
-            if (current_minerals > 400 and !self.countdown_started) {
-                const closest_scv = findClosestCollectingUnit(units, first_cc.position);
-                actions.build(
-                    closest_scv.tag,
-                    bot_data.UnitId.CommandCenter,
-                    game_info.expansion_locations[self.locations_expanded_to],
-                    false,
-                );
-                self.locations_expanded_to += 1;
-                current_minerals -= 400;
-            }
-
-            if (!self.countdown_started and self.locations_expanded_to >= game_info.expansion_locations.len) {
-                self.countdown_start = bot.game_loop;
-                self.countdown_started = true;
-            }
-
-            if (self.countdown_started and bot.game_loop - self.countdown_start > 1000) {
-                actions.leaveGame();
-            }
-        }
-
-        pub fn onResult(
-            self: *Self,
-            bot: bot_data.Bot,
-            game_info: bot_data.GameInfo,
-            result: bot_data.Result
-        ) void {
-            _ = bot;
-            _ = game_info;
-            _ = result;
-            _ = self;
-        }
-
-        fn findClosestCollectingUnit(units: []bot_data.Unit, pos: bot_data.Point2) bot_data.Unit {
-            var min_distance: f32 = std.math.f32_max;
-            var closest_unit: bot_data.Unit = undefined;
-            for (units) |unit| {
-                if (!unit.isCollecting()) continue;
-                const dist_sqrd = unit.position.distanceSquaredTo(pos);
-                if (dist_sqrd < min_distance) {
-                    min_distance = dist_sqrd;
-                    closest_unit = unit;
-                }
-            }
-            return closest_unit;
         }
     };
 

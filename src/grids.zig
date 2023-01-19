@@ -196,8 +196,111 @@ pub const Grid = struct {
             .y = y,
         };
     }
-
 };
+
+/// Tries to find the cliff edges reapers can path through.
+/// Not tested on all ladder maps but looks to be working..
+pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid, terrain: Grid) ![]usize {
+    var list = std.ArrayList(usize).init(allocator);
+    const w = pathing.w;
+    const h = pathing.h;
+    const level_diff = 16;
+
+    for (pathing.data) |val, i| {
+        const x = @mod(i, w);
+        const y = i / w;
+        // Edges of the map are pointless regardless
+        // and we avoid the need for checking index validity later
+        if (x < 2 or y < 2 or x > w - 3 or y > h - 3 or val > 0) continue;
+
+        const cur_terrain = terrain.data[x + y*w];
+
+        // First looking at vertical or horizontal jumps
+        const up_val = pathing.data[x + (y - 1)*w];
+        const up_terrain = terrain.data[x + (y - 1)*w];
+        
+        const down_val = pathing.data[x + (y + 1)*w];
+        const down_terrain = terrain.data[x + (y + 1)*w];
+        const vert_diff = if (up_terrain > down_terrain) up_terrain - down_terrain else down_terrain - up_terrain;
+
+        const left_val = pathing.data[x - 1 + y*w];
+        const left_terrain = terrain.data[x - 1 + y*w];
+
+        const right_val = pathing.data[x + 1 + y*w];
+        const right_terrain = terrain.data[x + 1 + y*w];
+        const horiz_diff = if (left_terrain > right_terrain) left_terrain - right_terrain else right_terrain - left_terrain;
+
+        if (up_val == 1 and down_val == 1 and vert_diff == level_diff) try list.append(i);
+        if (left_val == 1 and right_val == 1 and horiz_diff == level_diff) try list.append(i);
+
+        // And then diagonal jumps
+        const diag_moves = [_]usize{w + 1, w - 1};
+        for (diag_moves) |diag_move| {
+            const val1 = pathing.data[i - 2*diag_move];
+            const val2 = pathing.data[i - diag_move];
+            const val3 = pathing.data[i + diag_move];
+            const val4 = pathing.data[i + 2*diag_move];
+
+            const terrain2 = terrain.data[i - diag_move];
+            const terrain3 = terrain.data[i + diag_move];
+            const total_diff = if (terrain2 > terrain3) terrain2 - terrain3 else terrain3 - terrain2;
+            const diff2 = if (cur_terrain > terrain2) cur_terrain - terrain2 else terrain2 - cur_terrain;
+            const diff3 = if (cur_terrain > terrain3) cur_terrain - terrain3 else terrain3 - cur_terrain;
+            
+            const terrain_valid_double = total_diff == 2*level_diff and diff2 == level_diff and diff3 == level_diff;
+            const pathing_valid_double = (val2 > 0 and val4 > 0) or (val1 > 0 and val3 > 0);
+            
+            if (terrain_valid_double and pathing_valid_double) {
+                try list.append(i - diag_move);
+                try list.append(i);
+                try list.append(i + diag_move);
+            }
+
+            if (total_diff == level_diff and val2 == 1 and val3 == 1) {
+                try list.append(i);
+            }
+        }
+    }
+
+    return list.toOwnedSlice();
+}
+
+pub fn createReaperGrid(allocator: mem.Allocator, pathing_grid: Grid, climbable_points: []const usize) !Grid {
+    var data = try allocator.dupe(u8, pathing_grid.data);
+
+    for (climbable_points) |index| {
+        data[index] = 1;
+    }
+    return .{
+        .data = data,
+        .w = pathing_grid.w,
+        .h = pathing_grid.h,
+    };
+}
+
+pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usize, playable_area: Rectangle) !Grid {
+    const start_x = @intCast(usize, playable_area.p0.x);
+    const end_x = @intCast(usize, playable_area.p1.x);
+    const start_y = @intCast(usize, playable_area.p0.y);
+    const end_y = @intCast(usize, playable_area.p1.y);
+
+    var data = try allocator.alloc(u8, map_width*map_height);
+
+    var y: usize = 0;
+    while (y < map_height) : (y += 1) {
+        var x: usize = 0;
+        while (x < map_width) : (x += 1) {
+            const index = x + map_width*y;
+            const playable = x >= start_x and x <= end_x and y >= start_y and y <= end_y;
+            data[index] = if (playable) 1 else 0;
+        }
+    }
+    return .{
+        .data = data,
+        .w = map_width,
+        .h = map_height
+    };
+}
 
 pub const PathfindResult = struct {
     path_len: usize,
@@ -207,6 +310,7 @@ pub const PathfindResult = struct {
 pub const InfluenceMap = struct {
 
     grid: []f32,
+    terrain_height: []const u8,
     w: usize,
     h: usize,
 
@@ -223,13 +327,14 @@ pub const InfluenceMap = struct {
         linear: f32,
     } ;
 
-    pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid) !InfluenceMap {
+    pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid, terrain_height: Grid) !InfluenceMap {
         var grid = try allocator.alloc(f32, base_grid.data.len);
         for (base_grid.data) |val, i| {
             grid[i] = if (val > 0) 1 else math.f32_max;
         }
         return .{
             .grid = grid,
+            .terrain_height = terrain_height.data,
             .w = base_grid.w,
             .h = base_grid.h,
         };
@@ -254,10 +359,10 @@ pub const InfluenceMap = struct {
         const bounding_rect_max_y = @floatToInt(usize, math.min(center.y + radius, f32_h));
         const r_sqrd = radius*radius;
 
-        var x = bounding_rect_min_x;
-        while (x <= bounding_rect_max_x) : (x += 1) {
-            var y = bounding_rect_min_y;
-            while (y <= bounding_rect_max_y) : (y += 1) {
+        var y = bounding_rect_min_y;
+        while (y <= bounding_rect_max_y) : (y += 1) {
+            var x = bounding_rect_min_x;
+            while (x <= bounding_rect_max_x) : (x += 1) {
                 const index = x + self.w*y;
                 const point = self.indexToPoint(index).add(.{.x = 0.5, .y = 0.5});
                 const dist_sqrd = point.distanceSquaredTo(center);
@@ -294,10 +399,10 @@ pub const InfluenceMap = struct {
         var best_dist: f32 = math.f32_max;
         var best_point: ?Point2 = null;
 
-        var x = bounding_rect_min_x;
-        while (x <= bounding_rect_max_x) : (x += 1) {
-            var y = bounding_rect_min_y;
-            while (y <= bounding_rect_max_y) : (y += 1) {
+        var y = bounding_rect_min_y;
+        while (y <= bounding_rect_max_y) : (y += 1) {
+            var x = bounding_rect_min_x;
+            while (x <= bounding_rect_max_x) : (x += 1) {
                 const index = x + self.w*y;
                 const point = self.indexToPoint(index).add(.{.x = 0.5, .y = 0.5});
                 const dist_sqrd = point.distanceSquaredTo(pos);
@@ -333,14 +438,75 @@ pub const InfluenceMap = struct {
         _ = context;
         return math.order(a.heuristic, b.heuristic);
     }
+    
+    /// First tries to find a pathable point on the same height
+    /// as the asked point. After that accepts any spot
+    /// that is pathable
+    fn findClosestValidPoint(self: InfluenceMap, pos: Point2) ?Point2 {
+        const radius = 6;
+        const f32_w = @intToFloat(f32, self.w - 1);
+        const f32_h = @intToFloat(f32, self.h - 1);
+        const bounding_rect_min_x = @floatToInt(usize, math.max(pos.x - radius, 0));
+        const bounding_rect_max_x = @floatToInt(usize, math.min(pos.x + radius, f32_w));
+        const bounding_rect_min_y = @floatToInt(usize, math.max(pos.y - radius, 0));
+        const bounding_rect_max_y = @floatToInt(usize, math.min(pos.y + radius, f32_h));
+        const r_sqrd = radius*radius;
+
+        var best_dist: f32 = math.f32_max;
+        var best_point: ?Point2 = null;
+        const height_at_start = self.terrain_height[self.pointToIndex(pos)];
+
+        var y = bounding_rect_min_y;
+        while (y <= bounding_rect_max_y) : (y += 1) {
+            var x = bounding_rect_min_x;
+            while (x <= bounding_rect_max_x) : (x += 1) {
+                const index = x + self.w*y;
+                const point = self.indexToPoint(index);
+                
+                const height = self.terrain_height[index];
+                const dist_sqrd = point.distanceSquaredTo(pos);
+                if (dist_sqrd < r_sqrd and height == height_at_start and self.grid[index] < math.f32_max and dist_sqrd < best_dist) {
+                    best_dist = dist_sqrd;
+                    best_point = point;
+                }
+            }
+        }
+
+        if (best_point) |p| return p;
+
+        y = bounding_rect_min_y;
+        while (y <= bounding_rect_max_y) : (y += 1) {
+            var x = bounding_rect_min_x;
+            while (x <= bounding_rect_max_x) : (x += 1) {
+                const index = x + self.w*y;
+                const point = self.indexToPoint(index);
+                const dist_sqrd = point.distanceSquaredTo(pos);
+                if (dist_sqrd < r_sqrd and self.grid[index] < math.f32_max and dist_sqrd < best_dist) {
+                    best_dist = dist_sqrd;
+                    best_point = point;
+                }
+            }
+        }
+        return best_point;
+    }
+
+    pub fn validateEndPoint(self: InfluenceMap, pos: Point2) ?Point2 {
+        const index = self.pointToIndex(pos);
+        if (self.grid[index] < math.f32_max) return pos;
+
+        return self.findClosestValidPoint(pos);
+    }
 
     /// Returns just the path length and the direction, which is probably in practice what we mostly need
     /// during a game before we do another call the next step
     pub fn pathfindDirection(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) ?PathfindResult {
-        var came_from = self.runPathfind(allocator, start, goal, large_unit) catch return null;
+        const validated_start = self.validateEndPoint(start) orelse return null;
+        const validated_goal = self.validateEndPoint(goal) orelse return null;
+        
+        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
         defer came_from.deinit();
-        const goal_index = self.pointToIndex(goal);
 
+        const goal_index = self.pointToIndex(validated_goal);
         var cur = came_from.get(goal_index);
         if (cur == null) return null;
 
@@ -366,10 +532,13 @@ pub const InfluenceMap = struct {
     /// Returns the entire path we took from start to goal. Caller needs to free the slice, or just
     /// use an arena or a fixed buffer for the step
     pub fn pathfindPath(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) ?[]Point2 {
-        var came_from = self.runPathfind(allocator, start, goal, large_unit) catch return null;
+        const validated_start = self.validateEndPoint(start) orelse return null;
+        const validated_goal = self.validateEndPoint(goal) orelse return null;
+
+        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
         defer came_from.deinit();
 
-        const goal_index = self.pointToIndex(goal);
+        const goal_index = self.pointToIndex(validated_goal);
         var cur = came_from.get(goal_index);
         // No path
         if (cur == null) return null;
@@ -498,7 +667,13 @@ test "test_pf_basic" {
     mem.set(u8, data, 1);
     var grid = Grid{.data = data, .w = 10, .h = 10};
 
-    var map = try InfluenceMap.fromGrid(allocator, grid);
+    var terrain_data = try allocator.alloc(u8, 10*10);
+    defer allocator.free(terrain_data);
+
+    mem.set(u8, terrain_data, 10);
+    var terrain_grid = Grid{.data = terrain_data, .w = 10, .h = 10};
+
+    var map = try InfluenceMap.fromGrid(allocator, grid, terrain_grid);
     defer map.deinit(allocator);
 
     const start: Point2 = .{.x = 0.5, .y = 0.5};
@@ -515,7 +690,7 @@ test "test_pf_basic" {
     const wall_indices = [_]usize{11, 21, 31, 41, 51, 61, 71, 12, 13, 14, 15};
     grid.setValues(&wall_indices, 0);
 
-    var map2 = try InfluenceMap.fromGrid(allocator, grid);
+    var map2 = try InfluenceMap.fromGrid(allocator, grid, terrain_grid);
     defer map2.deinit(allocator);
     const dir2 = map2.pathfindDirection(allocator, start, goal, false).?;
     try std.testing.expectEqual(dir2.path_len, 15);
