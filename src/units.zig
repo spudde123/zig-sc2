@@ -18,6 +18,12 @@ const Attribute = sc2p.Attribute;
 
 const Point2 = @import("grids.zig").Point2;
 
+pub const PowerSource = struct {
+    position: Point2,
+    radius: f32,
+    tag: u64,
+};
+
 pub const Effect = struct {
     id: EffectId,
     alliance: Alliance,
@@ -145,6 +151,13 @@ pub const Unit = struct {
         const order = self.orders[0];
         
         return order.ability_id == ability;
+    }
+
+    pub fn hasBuff(self: Unit, buff: BuffId) bool {
+        for (self.buff_ids) |b| {
+            if (b == buff) return true;
+        }
+        return false;
     }
 
     pub fn hasAbilityAvailable(self: Unit, ability: AbilityId) bool {

@@ -32,6 +32,7 @@ pub const UnitOrder = unit_group.UnitOrder;
 pub const RallyTarget = unit_group.RallyTarget;
 pub const Effect = unit_group.Effect;
 pub const SensorTower = unit_group.SensorTower;
+pub const PowerSource = unit_group.PowerSource;
 
 pub const InfluenceMap = grids.InfluenceMap;
 pub const PathfindResult = grids.PathfindResult;
@@ -658,6 +659,7 @@ pub const Bot = struct {
 
     effects: []Effect,
     sensor_towers: []SensorTower,
+    power_sources: []PowerSource,
 
     result: ?Result,
 
@@ -967,6 +969,18 @@ pub const Bot = struct {
             }
         }
 
+        var power_sources: []PowerSource = &[_]PowerSource{};
+        if (obs.player.?.power_sources) |power_slice| {
+            power_sources = try allocator.alloc(PowerSource, power_slice.len);
+            for (power_slice) |item, i| {
+                power_sources[i] = .{
+                    .position = .{.x = item.pos.?.x.?, .y = item.pos.?.y.?},
+                    .radius = item.radius orelse 0,
+                    .tag = item.tag orelse 0,
+                };
+            }
+        }
+
         const visibility_proto = obs.map_state.?.visibility.?;
         assert(visibility_proto.bits_per_pixel.? == 8);
 
@@ -1085,6 +1099,7 @@ pub const Bot = struct {
             .enemies_left_vision = enemies_left_vision.toOwnedSlice(),
             .effects = effects,
             .sensor_towers = sensor_towers,
+            .power_sources = power_sources,
         };
     }
 
