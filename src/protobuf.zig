@@ -1,5 +1,5 @@
 /// Implements the necessary things to
-/// use read and write sc2 protobuf
+/// read and write sc2 protobuf
 /// messages.
 const std = @import("std");
 const mem = std.mem;
