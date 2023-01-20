@@ -311,10 +311,10 @@ pub const PathfindResult = struct {
 
 pub const InfluenceMap = struct {
 
-    grid: []f32,
-    terrain_height: []const u8,
-    w: usize,
-    h: usize,
+    grid: []f32 = &[_]f32{},
+    terrain_height: []const u8 = &[_]u8{},
+    w: usize = 0,
+    h: usize = 0,
 
     const sqrt2 = math.sqrt2;
 
@@ -349,7 +349,11 @@ pub const InfluenceMap = struct {
     }
 
     pub fn deinit(self: *InfluenceMap, allocator: mem.Allocator) void {
-        allocator.free(self.grid);
+        // Checking this because in bot code the influence map
+        // struct may be around as a field for example
+        // but it can only really be initialized on game start
+        // with proper data
+        if (self.grid.len > 0) allocator.free(self.grid);
     }
 
     pub fn addInfluence(self: *InfluenceMap, center: Point2, radius: f32, amount: f32, decay: Decay) void {
@@ -505,7 +509,7 @@ pub const InfluenceMap = struct {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
         
-        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
+        var came_from = self.runPathfindVec(allocator, validated_start, validated_goal, large_unit) catch return null;
         defer came_from.deinit();
 
         const goal_index = self.pointToIndex(validated_goal);
@@ -537,7 +541,7 @@ pub const InfluenceMap = struct {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
+        var came_from = self.runPathfindVec(allocator, validated_start, validated_goal, large_unit) catch return null;
         defer came_from.deinit();
 
         const goal_index = self.pointToIndex(validated_goal);
@@ -558,6 +562,90 @@ pub const InfluenceMap = struct {
         return res;
     }
 
+    fn runPathfindVec(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) !std.AutoHashMap(usize, CameFrom) {
+        var queue = std.PriorityQueue(Node, void, lessThan).init(allocator, {});
+        defer queue.deinit();
+
+        const start_floor = start.floor();
+        const start_index = self.pointToIndex(start);
+        const goal_floor = goal.floor();
+        const goal_index = self.pointToIndex(goal);
+
+        try queue.add(.{
+            .index = start_index,
+            .path_len = 0,
+            .cost = 0,
+            .heuristic = start_floor.octileDistance(goal_floor),
+        });
+
+        const grid = self.grid;
+        const w = self.w;
+
+        var neighbors = try std.ArrayList(Neighbor).initCapacity(allocator, 8);
+        defer neighbors.deinit();
+
+        var came_from = std.AutoHashMap(usize, CameFrom).init(allocator);
+
+        const large_unit_f32: f32 = if (large_unit) 1 else 0;
+        const Vector = @Vector(3, f32);
+        const no_large: Vector = @splat(3, @as(f32, math.f32_max));
+        const with_large = Vector{1, math.f32_max, math.f32_max};
+
+        while (queue.count() > 0) {
+            const node = queue.remove();
+            if (node.index == goal_index) break;
+
+            const index = node.index;
+
+            // We are assuming that we won't go out of bounds because in ingame grids the playable area is always only a portion
+            // in the middle and it's surrounded by a lot of unpathable cells
+
+            const v1 = Vector{grid[index - w - 1], grid[index - 1], grid[index - w]};
+            if (@reduce(.And, v1 < no_large)) neighbors.appendAssumeCapacity(.{.index = index - w - 1, .movement_cost = sqrt2});
+            
+            const v2 = Vector{large_unit_f32, grid[index - w - 1], grid[index - w + 1]};
+            if (grid[index - w] < math.f32_max and @reduce(.Or, v2 < with_large)) neighbors.appendAssumeCapacity(.{.index = index - w, .movement_cost = 1});
+            
+            const v3 = Vector{grid[index - w + 1], grid[index + 1], grid[index - w]};
+            if (@reduce(.And, v3 < no_large)) neighbors.appendAssumeCapacity(.{.index = index - w + 1, .movement_cost = sqrt2});
+            
+            const v4 = Vector{large_unit_f32, grid[index - w - 1], grid[index + w - 1]};
+            if (grid[index - 1] < math.f32_max and @reduce(.Or, v4 < with_large)) neighbors.appendAssumeCapacity(.{.index = index - 1, .movement_cost = 1});
+
+            const v5 = Vector{large_unit_f32, grid[index - w + 1], grid[index + w + 1]};
+            if (grid[index + 1] < math.f32_max and @reduce(.Or, v5 < with_large)) neighbors.appendAssumeCapacity(.{.index = index + 1, .movement_cost = 1});
+
+            const v6 = Vector{grid[index + w - 1], grid[index - 1], grid[index + w]};
+            if (@reduce(.And, v6 < no_large)) neighbors.appendAssumeCapacity(.{.index = index + w - 1, .movement_cost = sqrt2});
+            
+            const v7 = Vector{large_unit_f32, grid[index + w - 1], grid[index + w + 1]};
+            if (grid[index + w] < math.f32_max and @reduce(.Or, v7 < with_large)) neighbors.appendAssumeCapacity(.{.index = index + w, .movement_cost = 1});
+
+            const v8 = Vector{grid[index + w + 1], grid[index + 1], grid[index + w]};
+            if (@reduce(.And, v8 < no_large)) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
+
+            for (neighbors.items) |nbr| {
+                if (nbr.index == start_index or came_from.contains(nbr.index)) continue;
+
+                const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
+                const nbr_point = self.indexToPoint(nbr.index);
+                const estimated_cost = nbr_cost + nbr_point.octileDistance(goal_floor);
+
+                try queue.add(.{
+                    .index = nbr.index,
+                    .path_len = node.path_len + 1,
+                    .cost = nbr_cost,
+                    .heuristic = estimated_cost,
+                });
+                try came_from.put(nbr.index, .{.prev = index, .path_len = node.path_len + 1});
+            }
+
+            neighbors.clearRetainingCapacity();
+        }
+
+        return came_from;
+    }
+
     fn runPathfind(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) !std.AutoHashMap(usize, CameFrom) {
         var queue = std.PriorityQueue(Node, void, lessThan).init(allocator, {});
         defer queue.deinit();
@@ -576,7 +664,6 @@ pub const InfluenceMap = struct {
 
         const grid = self.grid;
         const w = self.w;
-        const h = self.h;
 
         var neighbors = try std.ArrayList(Neighbor).initCapacity(allocator, 8);
         defer neighbors.deinit();
@@ -588,40 +675,32 @@ pub const InfluenceMap = struct {
             if (node.index == goal_index) break;
 
             const index = node.index;
-            const x = @mod(index, w);
-            const y = index / w;
 
-            const x_low = x > 0;
-            const x_large = x < w - 1;
-            const y_low = y > 0;
-            const y_large = y < h - 1;
+            // We are assuming that we won't go out of bounds because in ingame grids the playable area is always only a portion
+            // in the middle and it's surrounded by a lot of unpathable cells
 
-            if (x_low and y_low and grid[index - w - 1] < math.f32_max
-                and grid[index - 1] < math.f32_max and grid[index - w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - w - 1, .movement_cost = sqrt2});
+            if (grid[index - w - 1] < math.f32_max and grid[index - 1] < math.f32_max and grid[index - w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - w - 1, .movement_cost = sqrt2});
             
-            if (y_low and grid[index - w] < math.f32_max) {
+            if (grid[index - w] < math.f32_max) {
                 if (!large_unit or grid[index - w - 1] < math.f32_max or grid[index - w + 1] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - w, .movement_cost = 1});
             }
-            if (x_large and y_low and grid[index - w + 1] < math.f32_max
-                and grid[index + 1] < math.f32_max and grid[index - w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - w + 1, .movement_cost = sqrt2});
+            if (grid[index - w + 1] < math.f32_max and grid[index + 1] < math.f32_max and grid[index - w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - w + 1, .movement_cost = sqrt2});
             
-            if (x_low and grid[index - 1] < math.f32_max) {
+            if (grid[index - 1] < math.f32_max) {
                 if (!large_unit or grid[index - w - 1] < math.f32_max or grid[index + w - 1] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - 1, .movement_cost = 1});
             }
 
-            if (x_large and grid[index + 1] < math.f32_max) {
+            if (grid[index + 1] < math.f32_max) {
                 if (!large_unit or grid[index - w + 1] < math.f32_max or grid[index + w + 1] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + 1, .movement_cost = 1});
             }
 
-            if (x_low and y_large and grid[index + w - 1] < math.f32_max
-                and grid[index - 1] < math.f32_max and grid[index + w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w - 1, .movement_cost = sqrt2});
+            if (grid[index + w - 1] < math.f32_max and grid[index - 1] < math.f32_max and grid[index + w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w - 1, .movement_cost = sqrt2});
             
-            if (y_large and grid[index + w] < math.f32_max) {
+            if (grid[index + w] < math.f32_max) {
                 if (!large_unit or grid[index + w - 1] < math.f32_max or grid[index + w + 1] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w, .movement_cost = 1});
             }
 
-            if (x_large and y_large and grid[index + w + 1] < math.f32_max
-                and grid[index + 1] < math.f32_max and grid[index + w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
+            if (grid[index + w + 1] < math.f32_max and grid[index + 1] < math.f32_max and grid[index + w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
 
             for (neighbors.items) |nbr| {
                 if (nbr.index == start_index or came_from.contains(nbr.index)) continue;
@@ -662,24 +741,32 @@ pub const InfluenceMap = struct {
 };
 
 test "test_pf_basic" {
+    // Let's make a grid with unpathable cells on the edge because
+    // that's how the grids ingame look.
+    const size = 12;
+
     var allocator = std.testing.allocator;
-    var data = try allocator.alloc(u8, 10*10);
+    var data = try allocator.alloc(u8, size*size);
     defer allocator.free(data);
 
-    mem.set(u8, data, 1);
-    var grid = Grid{.data = data, .w = 10, .h = 10};
+    mem.set(u8, data, 0);
+    var row: usize = 1;
+    while (row < size - 1) : (row += 1) {
+        mem.set(u8, data[1 + row*size .. (row + 1)*size - 1], 1);
+    }
+    var grid = Grid{.data = data, .w = size, .h = size};
 
-    var terrain_data = try allocator.alloc(u8, 10*10);
+    var terrain_data = try allocator.alloc(u8, size*size);
     defer allocator.free(terrain_data);
 
     mem.set(u8, terrain_data, 10);
-    var terrain_grid = Grid{.data = terrain_data, .w = 10, .h = 10};
+    var terrain_grid = Grid{.data = terrain_data, .w = size, .h = size};
 
     var map = try InfluenceMap.fromGrid(allocator, grid, terrain_grid);
     defer map.deinit(allocator);
 
-    const start: Point2 = .{.x = 0.5, .y = 0.5};
-    const goal: Point2 = .{.x = 9.5, .y = 9.5};
+    const start: Point2 = .{.x = 1.5, .y = 1.5};
+    const goal: Point2 = .{.x = 10.5, .y = 10.5};
 
     const path = map.pathfindPath(allocator, start, goal, false);
     defer allocator.free(path.?);
@@ -689,7 +776,10 @@ test "test_pf_basic" {
     try std.testing.expectEqual(dir.?.path_len, path.?.len);
     try std.testing.expectEqual(dir.?.next_point, path.?[4]);
     
-    const wall_indices = [_]usize{11, 21, 31, 41, 51, 61, 71, 12, 13, 14, 15};
+    const wall_indices = [_]usize{
+        2*size + 2, 3*size + 2, 4*size + 2, 5*size + 2, 6*size + 2, 7*size + 2, 8*size + 2,
+        2*size + 3, 2*size + 4, 2*size + 5, 2*size + 6
+    };
     grid.setValues(&wall_indices, 0);
 
     var map2 = try InfluenceMap.fromGrid(allocator, grid, terrain_grid);
@@ -697,10 +787,10 @@ test "test_pf_basic" {
     const dir2 = map2.pathfindDirection(allocator, start, goal, false).?;
     try std.testing.expectEqual(dir2.path_len, 15);
     
-    map2.addInfluence(.{.x = 7, .y = 3}, 4, 10, .none);
+    map2.addInfluence(.{.x = 8, .y = 4}, 4, 10, .none);
     const dir3 = map2.pathfindDirection(allocator, start, goal, false).?;
     try std.testing.expectEqual(dir3.path_len, 17);
 
-    const safe = map2.findClosestSafeSpot(.{.x = 7, .y = 3}, 6);
-    try std.testing.expectEqual(safe.?, .{.x = 3.5, .y = 0.5});
+    const safe = map2.findClosestSafeSpot(.{.x = 8, .y = 4}, 6);
+    try std.testing.expectEqual(safe.?, .{.x = 4.5, .y = 1.5});
 }
