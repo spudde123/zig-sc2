@@ -446,6 +446,7 @@ pub fn run(
                 arena,
                 fixed_buffer
             );
+            bot_data.grids.InfluenceMap.MapInfo.terrain_height = game_info.terrain_height.data;
             
             try user_bot.onStart(bot, game_info, &actions);
             first_step_done = true;
