@@ -598,8 +598,7 @@ pub const InfluenceMap = struct {
         const no_large: Vector = @splat(3, @as(f32, math.f32_max));
         const with_large = Vector{1, math.f32_max, math.f32_max};
 
-        while (queue.count() > 0) {
-            const node = queue.remove();
+        while (queue.removeOrNull()) |node| {
             if (node.index == goal_index) break;
 
             const index = node.index;
@@ -677,8 +676,7 @@ pub const InfluenceMap = struct {
 
         var came_from = std.AutoHashMap(usize, CameFrom).init(allocator);
 
-        while (queue.count() > 0) {
-            const node = queue.remove();
+        while (queue.removeOrNull()) |node| {
             if (node.index == goal_index) break;
 
             const index = node.index;
