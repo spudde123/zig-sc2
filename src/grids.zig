@@ -200,6 +200,8 @@ pub const Grid = struct {
 
 /// Tries to find the cliff edges reapers can path through.
 /// Not tested on all ladder maps but looks to be working..
+/// Berlingrad for example has a platform with a unusual shape
+/// in the pathing and terrain height arrays
 pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid, terrain: Grid) ![]usize {
     var list = std.ArrayList(usize).init(allocator);
     const w = pathing.w;
