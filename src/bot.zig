@@ -1718,6 +1718,11 @@ pub const Actions = struct {
         }
 
         const ability = structure_data.?.train_ability_id;
+        return self.findPlacementForAbility(ability, near, max_distance);
+    }
+
+    pub fn findPlacementForAbility(self: *Actions, ability: AbilityId, near: Point2, max_distance: f32) ?Point2 {
+        assert(max_distance >= 1 and max_distance <= 30);
         const ability_int = @intCast(i32, @enumToInt(ability));
         
         var options: [256]sc2p.RequestQueryBuildingPlacement = undefined;
@@ -1766,30 +1771,33 @@ pub const Actions = struct {
                 };
             }
         }
-
         return null;
     }
 
     pub fn queryPlacement(self: *Actions, structure_to_build: UnitId, spot: Point2) bool {
         if (self.game_data.units.get(structure_to_build)) |structure_data| {
             const ability = structure_data.train_ability_id;
-            var placements = [_]sc2p.RequestQueryBuildingPlacement{.{
-                .ability_id = @intCast(i32, @enumToInt(ability)),
-                .target_pos = .{.x = spot.x, .y = spot.y},
-            }};
-            const query = sc2p.RequestQuery{
-                .placements = placements[0..],    
-                .ignore_resource_requirements = true,
-            };
-            const result = self.client.sendPlacementQuery(query);
-            if (result) |query_res| {
-                return query_res[0].result.? == .success;
-            }
-            return false;
+            return self.queryPlacementForAbility(ability, spot);
         } else {
             log.debug("Did not find {d} in game data\n", .{structure_to_build});
             return false;
         }
+    }
+
+    pub fn queryPlacementForAbility(self: *Actions, ability: AbilityId, spot: Point2) bool {
+        var placements = [_]sc2p.RequestQueryBuildingPlacement{.{
+            .ability_id = @intCast(i32, @enumToInt(ability)),
+            .target_pos = .{.x = spot.x, .y = spot.y},
+        }};
+        const query = sc2p.RequestQuery{
+            .placements = placements[0..],    
+            .ignore_resource_requirements = true,
+        };
+        const result = self.client.sendPlacementQuery(query);
+        if (result) |query_res| {
+            return query_res[0].result.? == .success;
+        }
+        return false;
     }
 
     /// owner should be 1 if creating a unit for yourself
