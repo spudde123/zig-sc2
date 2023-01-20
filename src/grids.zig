@@ -396,6 +396,12 @@ pub const InfluenceMap = struct {
         self.addInfluence(center, hollow_radius, -amount, .none);
     }
 
+    pub fn addInfluenceCreep(self: *InfluenceMap, creep: Grid, amount: f32) void {
+        for (creep.data) |val, i| {
+            if (val > 0) self.grid[i] += amount;
+        }
+    }
+
     pub fn findClosestSafeSpot(self: *InfluenceMap, pos: Point2, radius: f32) ?Point2 {
         const f32_w = @intToFloat(f32, self.w - 1);
         const f32_h = @intToFloat(f32, self.h - 1);
