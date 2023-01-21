@@ -164,7 +164,7 @@ const destructible_ulbr = [_]UnitId{
 /// on a placement grid
 pub fn getBuildableSize(unit_type: UnitId) GridSize {
     // These are normally of 2x2 size, but when you try to place them
-    // it means you are placing both both the main building
+    // it means you are placing both the main building
     // and the addon. Let's make it so that we also leave 2 space
     // on the left side of the main building so units have space
     // to move around in the base (and it allows us to also
