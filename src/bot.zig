@@ -377,8 +377,6 @@ pub const GameInfo = struct {
         perm_alloc: mem.Allocator,
         temp_alloc: mem.Allocator,
     ) !RampsAndVisionBlockers {
-        //@TODO: Need to remove rocks and minerals from ramps
-        //in the pathing grid
         var groups = try temp_alloc.alloc(u8, pathing.data.len);
         mem.set(u8, groups, 0);
 

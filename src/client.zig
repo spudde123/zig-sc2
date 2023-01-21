@@ -249,6 +249,7 @@ pub const WebSocketClient = struct {
 
     }
 
+    // @TODO: Implement this.
     pub fn createGameVsHuman(self: *WebSocketClient) bool {
         _ = self;
         return false;
