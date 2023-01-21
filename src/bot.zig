@@ -598,7 +598,6 @@ pub const GameInfo = struct {
         // build so doesn't seem that critical, but
         // we could move to updating minerals and destructibles
         // only when something changes
-        var timer = std.time.Timer.start() catch return;
         mem.copy(u8, self.pathing_grid.data, self.clean_map);
 
         const own_units = bot.units.values();
@@ -623,8 +622,6 @@ pub const GameInfo = struct {
         }
 
         grids.updateReaperGrid(self.reaper_grid, self.pathing_grid, self.climbable_points);
-        const time = timer.lap();
-        std.debug.print("Map time: {d}\n", .{time / 1000});
     }
 
     pub fn getTerrainZ(self: GameInfo, pos: Point2) f32 {
