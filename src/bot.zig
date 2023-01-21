@@ -447,6 +447,11 @@ pub const GameInfo = struct {
                 const grid_width = terrain_height.w;
 
                 if (same_height) {
+                    // We may miss some small vision blockers like this
+                    // but we want to avoid false positives that come
+                    // from trying to fix the map data so rocks
+                    // don't ruin these calculations
+                    if (current_group.len < 3) continue;
                     var points = try perm_alloc.alloc(GridPoint, current_group.len);
                     for (current_group_slice) |point, j| {
                         const x = @intCast(i32, @mod(point, grid_width));
@@ -995,7 +1000,7 @@ pub const Bot = struct {
                 // to a map so we can see how many we are producing
                 switch (u.alliance) {
                     .self, .ally => {
-                        const prev = try prev_units.getOrPut(u.tag);
+                        var prev = try prev_units.getOrPut(u.tag);
                         if (!prev.found_existing) {
                             try units_created.append(u.tag);
                         } else {
@@ -1054,7 +1059,7 @@ pub const Bot = struct {
                         }
                     },
                     .enemy => {
-                        const prev = try prev_enemy.getOrPut(u.tag);
+                        var prev = try prev_enemy.getOrPut(u.tag);
                         prev.value_ptr.* = u;
                         if (!prev.found_existing) {
                             try enemies_entered_vision.append(u.tag);
@@ -1095,6 +1100,12 @@ pub const Bot = struct {
                         } else if (mem.indexOfScalar(UnitId, geyser_ids[0..], u.unit_type)) |_| {
                             try vespene_geysers.append(u);
                         } else {
+                            // Somehow some duplicates of enemy units with
+                            // alliance neutral but owner enemy ended up
+                            // here in local testing. Shouldn't harm to filter
+                            // them out.
+                            if (u.owner <= 2) continue;
+                            
                             try destructibles.append(u);
                         }
                     }
