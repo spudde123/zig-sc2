@@ -88,11 +88,13 @@ pub const RequestCreateGame = struct {
         .{"map", 1},
         .{"player_setup", 3},
         .{"disable_fog", 4},
+        .{"random_seed", 5},
         .{"realtime", 6},
     };
     map: ?LocalMap = null,
     player_setup: ?[]PlayerSetup = null,
     disable_fog: ?bool = null,
+    random_seed: ?u32 = null,
     realtime: ?bool = null,
 };
 

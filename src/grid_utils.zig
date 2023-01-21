@@ -6,6 +6,7 @@ const Unit = @import("units.zig").Unit;
 const grids = @import("grids.zig");
 const Grid = grids.Grid;
 const Point2 = grids.Point2;
+const GridSize = grids.GridSize;
 
 const buildings_2x2 = [_]UnitId{
     .SupplyDepot,
@@ -13,6 +14,7 @@ const buildings_2x2 = [_]UnitId{
     .DarkShrine,
     .PhotonCannon,
     .ShieldBattery,
+    .MissileTurret,
     .TechLab,
     .StarportTechLab,
     .FactoryTechLab,
@@ -21,7 +23,6 @@ const buildings_2x2 = [_]UnitId{
     .StarportReactor,
     .FactoryReactor,
     .BarracksReactor,
-    .MissileTurret,
     .SporeCrawler,
     .Spire,
     .GreaterSpire,
@@ -61,7 +62,7 @@ const buildings_3x3 = [_]UnitId{
     .Bunker,
     .Armory,
     .Refinery,
-    .RefineryRich
+    .RefineryRich,
 };
 
 const buildings_5x5 = [_]UnitId{
@@ -159,15 +160,116 @@ const destructible_ulbr = [_]UnitId{
     .DestructibleRampDiagonalHugeULBR
 };
 
+/// Used for getting the building footprint when we are trying to place it
+/// on a placement grid
+pub fn getBuildableSize(unit_type: UnitId) GridSize {
+    // These are normally of 2x2 size, but when you try to place them
+    // it means you are placing both both the main building
+    // and the addon. Let's make it so that we also leave 2 space
+    // on the left side of the main building so units have space
+    // to move around in the base (and it allows us to also
+    // test the footprint the same way as symmetrical sizes)
+    const exceptions = [_]UnitId{
+        .BarracksTechLab,
+        .BarracksReactor,
+        .FactoryTechLab,
+        .FactoryReactor,
+        .StarportTechLab,
+        .StarportReactor,
+    };
+    if (mem.indexOfScalar(UnitId, &exceptions, unit_type)) |_| return .{.w = 7, .h = 3};
+    if (mem.indexOfScalar(UnitId, &buildings_2x2, unit_type)) |_| return .{.w = 2, .h = 2};
+    if (mem.indexOfScalar(UnitId, &buildings_3x3, unit_type)) |_| return .{.w = 3, .h = 3};
+    if (mem.indexOfScalar(UnitId, &buildings_5x5, unit_type)) |_| return .{.w = 5, .h = 5};
+    return .{.w = 1, .h = 1};
+}
+
+pub fn findPlacement(placement_grid: Grid, unit: UnitId, near: Point2, max_distance: f32) ?Point2 {
+    std.debug.assert(max_distance >= 1 and max_distance <= 30);
+    const size = getBuildableSize(unit);
+    var pos = near.floor();
+    if (@mod(size.w, 2) == 1) pos.x += 0.5;
+    if (@mod(size.h, 2) == 1) pos.y += 0.5;
+    
+    var options: [256]Point2 = undefined;
+    var outer_dist: f32 = 1;
+    while (outer_dist <= max_distance) : (outer_dist += 1) {
+        var option_count: usize = 0;
+        var inner_dist: f32 = -outer_dist;
+        while (inner_dist <= outer_dist) : (inner_dist += 1) {
+            const pos1 = .{.x = pos.x + inner_dist, .y = pos.y + outer_dist};
+            if (queryPlacementSize(placement_grid, size, pos1)) {
+                options[option_count] = pos1;
+                option_count += 1;
+            }
+            const pos2 = .{.x = pos.x + inner_dist, .y = pos.y - outer_dist};
+            if (queryPlacementSize(placement_grid, size, pos2)) {
+                options[option_count] = pos2;
+                option_count += 1;
+            }
+            const pos3 = .{.x = pos.x + outer_dist, .y = pos.y + inner_dist};
+            if (queryPlacementSize(placement_grid, size, pos3)) {
+                options[option_count] = pos3;
+                option_count += 1;
+            }
+            const pos4 = .{.x = pos.x - outer_dist, .y = pos.y + inner_dist};
+            if (queryPlacementSize(placement_grid, size, pos4)) {
+                options[option_count] = pos4;
+                option_count += 1;
+            }
+        }
+        var min_dist: f32 = std.math.f32_max;
+        var min_index: usize = options.len;
+        for (options[0..option_count]) |point, i| {
+            const dist = pos.distanceSquaredTo(point);
+            if (dist < min_dist) {
+                min_dist = dist;
+                min_index = i;
+            }
+        }
+        if (min_index < options.len) return options[min_index];
+    }
+    return null;
+}
+
+fn queryPlacementSize(placement_grid: Grid, size: GridSize, pos: Point2) bool {
+    const pos_x = @floatToInt(usize, pos.x);
+    const start_x = pos_x - @divFloor(size.w, 2);
+
+    const pos_y = @floatToInt(usize, pos.y);
+    var y = pos_y - @divFloor(size.h, 2);
+    const end_y = y + size.h;
+
+    while (y < end_y) : (y += 1) {
+        const start = start_x + y*placement_grid.w;
+        const end = start + size.w;
+        if(!mem.allEqual(u8, placement_grid.data[start..end], 1)) return false;
+    }
+    return true;
+}
+
+pub fn queryPlacement(placement_grid: Grid, unit: UnitId, pos: Point2) ?Point2 {
+    const size = getBuildableSize(unit);
+    // Doing this adjustment because when we build according to the grid we are
+    // keeping we seem to have problems if we start placing buildings not exactly
+    // at a grid cell intersection or exactly in the middle. Not sure
+    // what the reason is exactly
+    var adjusted_pos = pos.floor();
+    if (@mod(size.w, 2) == 1) adjusted_pos.x += 0.5;
+    if (@mod(size.h, 2) == 1) adjusted_pos.y += 0.5;
+    if (queryPlacementSize(placement_grid, size, adjusted_pos)) return adjusted_pos else return null;
+}
+
 pub fn setBuildingToValue(grid: Grid, unit: Unit, value: u8) void {
     const index = grid.pointToIndex(unit.position);
     if (mem.indexOfScalar(UnitId, &buildings_2x2, unit.unit_type)) |_| {
         grid.data[index - 1] = value;
         grid.data[index] = value;
-        grid.data[index - 1 + grid.w] = value;
-        grid.data[index + grid.w] = value;
+        grid.data[index - 1 - grid.w] = value;
+        grid.data[index - grid.w] = value;
         return;
     }
+
     if (mem.indexOfScalar(UnitId, &buildings_3x3, unit.unit_type)) |_| {
         const unit_x = @floatToInt(usize, unit.position.x);
         const unit_y = @floatToInt(usize, unit.position.y);
@@ -179,22 +281,18 @@ pub fn setBuildingToValue(grid: Grid, unit: Unit, value: u8) void {
         }
         return;
     }
+
     if (mem.indexOfScalar(UnitId, &buildings_5x5, unit.unit_type)) |_| {
         const unit_x = @floatToInt(usize, unit.position.x);
         const unit_y = @floatToInt(usize, unit.position.y);
         // These have the corners cut off
-        // We do two loops of smaller rectangles
-        // to get the right shape
-        var y: usize = unit_y - 1;
-        while (y < unit_y + 2) : (y += 1) {
+        // in the pathing grid but let's just keep it a
+        // square so the placement grid is also
+        // guaranteed to handle it properly
+        var y: usize = unit_y - 2;
+        while (y < unit_y + 3) : (y += 1) {
             const start = unit_x - 2 + grid.w*y;
             const end = unit_x + 3 + grid.w*y;
-            mem.set(u8, grid.data[start..end], value);
-        }
-        y = unit_y - 2;
-        while (y < unit_y + 3) : (y += 1) {
-            const start = unit_x - 1 + grid.w*y;
-            const end = unit_x + 2 + grid.w*y;
             mem.set(u8, grid.data[start..end], value);
         }
         return;
@@ -223,8 +321,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         const index = grid.pointToIndex(unit.position);
         grid.data[index - 1] = value;
         grid.data[index] = value;
-        grid.data[index - 1 + grid.w] = value;
-        grid.data[index + grid.w] = value;
+        grid.data[index - 1 - grid.w] = value;
+        grid.data[index - grid.w] = value;
         return;
     }
 
