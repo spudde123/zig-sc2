@@ -89,6 +89,7 @@ pub const GameInfo = struct {
     map_name: []const u8,
     enemy_name: []const u8,
     opponent_id: ?[]const u8,
+    own_race: Race,
     // These can be different for a random opponent
     enemy_requested_race: Race,
     enemy_race: Race,
@@ -128,6 +129,7 @@ pub const GameInfo = struct {
 
         var enemy_requested_race: Race = Race.none;
         var enemy_name: ?[]u8 = null;
+        var my_race = Race.none;
 
         for (proto_data.player_info.?) |player_info| {
             if (player_info.player_id.? != player_id) {
@@ -137,8 +139,8 @@ pub const GameInfo = struct {
                     enemy_name = try allocator.alloc(u8, received_enemy_name.len);
                     mem.copy(u8, enemy_name.?, received_enemy_name);
                 }
-
-                break;
+            } else {
+                my_race = player_info.race_actual.?;
             }
         }
 
@@ -244,6 +246,7 @@ pub const GameInfo = struct {
         return GameInfo{
             .map_name = map_name,
             .opponent_id = copied_opponent_id,
+            .own_race = my_race,
             .enemy_name = enemy_name orelse "Unknown",
             .enemy_requested_race = enemy_requested_race,
             .enemy_race = enemy_requested_race,
