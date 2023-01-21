@@ -209,7 +209,6 @@ pub const GameInfo = struct {
             placement_slice[index] = PackedIntType.get(placement_proto_slice, index, 0);
         }
         const placement_grid = Grid{.data = placement_slice, .w = map_size.w, .h = map_size.h};
-
         // Set up a clean pathing grid that we then use as a base
         // for updates later in the game
         var clean_slice = try allocator.alloc(u8, map_size.w * map_size.h);
@@ -601,7 +600,7 @@ pub const GameInfo = struct {
         mem.copy(u8, self.pathing_grid.data, self.clean_map);
 
         const own_units = bot.units.values();
-        const enemy_units = bot.units.values();
+        const enemy_units = bot.enemy_units.values();
 
         for (own_units) |unit| {
             if (!unit.is_structure) continue;
@@ -619,6 +618,42 @@ pub const GameInfo = struct {
 
         for (bot.destructibles) |unit| {
             grid_utils.setDestructibleToValue(self.pathing_grid, unit, 0);
+        }
+
+        // Placement grid is the ssame minus ramps, vision blockers
+        // and lowered supply depots
+        mem.copy(u8, self.placement_grid.data, self.pathing_grid.data);
+
+        for (self.ramps) |ramp| {
+            for (ramp.points) |point| {
+                const index = @intCast(usize, point.x) + @intCast(usize, point.y)*self.placement_grid.w;
+                self.placement_grid.data[index] = 0;
+            }
+        }
+
+        for (self.vision_blockers) |vb| {
+            for (vb.points) |point| {
+                const index = @intCast(usize, point.x) + @intCast(usize, point.y)*self.placement_grid.w;
+                self.placement_grid.data[index] = 0;
+            }
+        }
+
+        for (own_units) |unit| {
+            if (unit.unit_type != .SupplyDepotLowered) continue;
+            const index = self.placement_grid.pointToIndex(unit.position);
+            self.placement_grid.data[index - 1] = 0;
+            self.placement_grid.data[index] = 0;
+            self.placement_grid.data[index - 1 + self.placement_grid.w] = 0;
+            self.placement_grid.data[index + self.placement_grid.w] = 0;
+        }
+
+        for (enemy_units) |unit| {
+            if (unit.unit_type != .SupplyDepotLowered) continue;
+            const index = self.placement_grid.pointToIndex(unit.position);
+            self.placement_grid.data[index - 1] = 0;
+            self.placement_grid.data[index] = 0;
+            self.placement_grid.data[index - 1 + self.placement_grid.w] = 0;
+            self.placement_grid.data[index + self.placement_grid.w] = 0;
         }
 
         grids.updateReaperGrid(self.reaper_grid, self.pathing_grid, self.climbable_points);
