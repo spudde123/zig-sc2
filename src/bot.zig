@@ -8,6 +8,7 @@ const PackedIntIo = std.packed_int_array.PackedIntIo;
 
 const ws = @import("client.zig");
 const sc2p = @import("sc2proto.zig");
+const grid_utils = @import("grid_utils.zig");
 pub const unit_group = @import("units.zig");
 pub const grids = @import("grids.zig");
 
@@ -79,6 +80,7 @@ pub const GameInfo = struct {
 
     pathing_grid: Grid,
     placement_grid: Grid,
+    clean_map: []u8,
     terrain_height: Grid,
     air_grid: Grid,
     reaper_grid: Grid,
@@ -110,6 +112,7 @@ pub const GameInfo = struct {
         start_location: Point2,
         minerals: []Unit,
         geysers: []Unit,
+        destructibles: []Unit,
         allocator: mem.Allocator,
         temp_alloc: mem.Allocator,
     ) !GameInfo {
@@ -184,17 +187,49 @@ pub const GameInfo = struct {
             pathing_slice[index] = PackedIntType.get(pathing_proto_slice, index, 0);
         }
         const pathing_grid = Grid{.data = pathing_slice, .w = map_size.w, .h = map_size.h};
+        // This needs to be done because the pathing grid coming from the game
+        // includes rocks and minerals on top of ramps and we need a clear
+        // pathing grid for our ramp generation by comparing pathing and placement
+        // grids to work
+        for (destructibles) |unit| {
+            grid_utils.setDestructibleToValue(pathing_grid, unit, 1);
+        }
+        for (minerals) |unit| {
+            grid_utils.setMineralToValue(pathing_grid, unit, 1);
+        }
+
         const placement_proto = raw_proto.placement_grid.?;
         assert(placement_proto.bits_per_pixel.? == 1);
         assert(placement_proto.size.?.x.? == map_size.w);
         assert(placement_proto.size.?.y.? == map_size.h);
         const placement_proto_slice = placement_proto.image.?;
-        var placement_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
+        var placement_slice = try allocator.alloc(u8, map_size.w * map_size.h);
         index = 0;
         while (index < map_size.w * map_size.h) : (index += 1) {
             placement_slice[index] = PackedIntType.get(placement_proto_slice, index, 0);
         }
         const placement_grid = Grid{.data = placement_slice, .w = map_size.w, .h = map_size.h};
+
+        // Set up a clean pathing grid that we then use as a base
+        // for updates later in the game
+        var clean_slice = try allocator.alloc(u8, map_size.w * map_size.h);
+        
+        index = 0;
+        while (index < map_size.w * map_size.h) : (index += 1) {
+            clean_slice[index] = math.max(placement_slice[index], pathing_slice[index]);
+        }
+
+        for (geysers) |geyser| {
+            const geyser_x = @floatToInt(usize, geyser.position.x);
+            const geyser_y = @floatToInt(usize, geyser.position.y);
+            var y: usize = geyser_y - 1;
+            while (y < geyser_y + 2) : (y += 1) {
+                var x: usize = geyser_x - 1;
+                while (x < geyser_x + 2) : (x += 1) {
+                    clean_slice[x + map_size.w*y] = 0;
+                }
+            }
+        }
 
         var climbable_points = try grids.findClimbablePoints(allocator, pathing_grid, terrain_height);
         var air_grid = try grids.createAirGrid(allocator, pathing_grid.w, pathing_grid.h, playable_area);
@@ -220,6 +255,7 @@ pub const GameInfo = struct {
             .terrain_height = terrain_height,
             .pathing_grid = pathing_grid,
             .placement_grid = placement_grid,
+            .clean_map = clean_slice,
             .reaper_grid = reaper_grid,
             .air_grid = air_grid,
             .climbable_points = climbable_points,
@@ -557,8 +593,38 @@ pub const GameInfo = struct {
         return res;
     }
 
-    pub fn update(bot: Bot) void {
-        _ = bot;
+    pub fn updateGrids(self: *GameInfo, bot: Bot) void {
+        // This takes around 10-20 microseconds in a release
+        // build so doesn't seem that critical, but
+        // we could move to updating minerals and destructibles
+        // only when something changes
+        var timer = std.time.Timer.start() catch return;
+        mem.copy(u8, self.pathing_grid.data, self.clean_map);
+
+        const own_units = bot.units.values();
+        const enemy_units = bot.units.values();
+
+        for (own_units) |unit| {
+            if (!unit.is_structure) continue;
+            grid_utils.setBuildingToValue(self.pathing_grid, unit, 0);
+        }
+
+        for (enemy_units) |unit| {
+            if (!unit.is_structure) continue;
+            grid_utils.setBuildingToValue(self.pathing_grid, unit, 0);
+        }
+
+        for (bot.mineral_patches) |unit| {
+            grid_utils.setMineralToValue(self.pathing_grid, unit, 0);
+        }
+
+        for (bot.destructibles) |unit| {
+            grid_utils.setDestructibleToValue(self.pathing_grid, unit, 0);
+        }
+
+        grids.updateReaperGrid(self.reaper_grid, self.pathing_grid, self.climbable_points);
+        const time = timer.lap();
+        std.debug.print("Map time: {d}\n", .{time / 1000});
     }
 
     pub fn getTerrainZ(self: GameInfo, pos: Point2) f32 {
@@ -619,7 +685,7 @@ pub const Bot = struct {
     units: std.AutoArrayHashMap(u64, Unit),
     enemy_units: std.AutoArrayHashMap(u64, Unit),
     placeholders: []Unit,
-    destructables: []Unit,
+    destructibles: []Unit,
     mineral_patches: []Unit,
     vespene_geysers: []Unit,
     watch_towers: []Unit,
@@ -684,7 +750,7 @@ pub const Bot = struct {
         const obs: sc2p.ObservationRaw = response.observation.?.raw.?;
         
         var placeholders = std.ArrayList(Unit).init(allocator);
-        var destructables = std.ArrayList(Unit).init(allocator);
+        var destructibles = std.ArrayList(Unit).init(allocator);
         var mineral_patches = std.ArrayList(Unit).init(allocator);
         var vespene_geysers = std.ArrayList(Unit).init(allocator);
         var watch_towers = std.ArrayList(Unit).init(allocator);
@@ -944,7 +1010,7 @@ pub const Bot = struct {
                         } else if (mem.indexOfScalar(UnitId, geyser_ids[0..], u.unit_type)) |_| {
                             try vespene_geysers.append(u);
                         } else {
-                            try destructables.append(u);
+                            try destructibles.append(u);
                         }
                     }
                 }
@@ -1070,7 +1136,7 @@ pub const Bot = struct {
             .units = prev_units.*,
             .enemy_units = prev_enemy.*,
             .placeholders = placeholders.toOwnedSlice(),
-            .destructables = destructables.toOwnedSlice(),
+            .destructibles = destructibles.toOwnedSlice(),
             .vespene_geysers = vespene_geysers.toOwnedSlice(),
             .mineral_patches = mineral_patches.toOwnedSlice(),
             .watch_towers = watch_towers.toOwnedSlice(),
@@ -1850,7 +1916,7 @@ pub const GameData = struct {
     upgrade_map: std.AutoHashMap(AbilityId, UpgradeId),
 
     pub fn fromProto(
-        proto:sc2p.ResponseData,
+        proto: sc2p.ResponseData,
         allocator: mem.Allocator
     ) !GameData {
 

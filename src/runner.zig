@@ -443,14 +443,17 @@ pub fn run(
                 start_location,
                 bot.mineral_patches,
                 bot.vespene_geysers,
+                bot.destructibles,
                 arena,
                 fixed_buffer
             );
             bot_data.grids.InfluenceMap.MapInfo.terrain_height = game_info.terrain_height.data;
-            
+            game_info.updateGrids(bot);
             try user_bot.onStart(bot, game_info, &actions);
             first_step_done = true;
         }
+        // We do this twice on the first step but it's not a problem
+        game_info.updateGrids(bot);
 
         // Set enemy race to the observed race when we can
         if (game_info.enemy_race == .random and bot.enemy_units.count() > 0) {

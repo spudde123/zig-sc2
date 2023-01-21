@@ -280,6 +280,13 @@ pub fn createReaperGrid(allocator: mem.Allocator, pathing_grid: Grid, climbable_
     };
 }
 
+pub fn updateReaperGrid(reaper_grid: Grid, pathing_grid: Grid, climbable_points: []const usize) void {
+    mem.copy(u8, reaper_grid.data, pathing_grid.data);
+    for (climbable_points) |index| {
+        reaper_grid.data[index] = 1;
+    }
+}
+
 pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usize, playable_area: Rectangle) !Grid {
     const start_x = @intCast(usize, playable_area.p0.x);
     const end_x = @intCast(usize, playable_area.p1.x);
