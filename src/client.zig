@@ -208,7 +208,7 @@ pub const WebSocketClient = struct {
 
         const interface = sc2p.InterfaceOptions{
             .raw = true,
-            .score = true,
+            .score = false,
             .show_cloaked = true,
             .raw_affects_selection = false,
             .raw_crop_to_playable_area = false,
@@ -263,7 +263,7 @@ pub const WebSocketClient = struct {
 
         const interface = sc2p.InterfaceOptions{
             .raw = true,
-            .score = true,
+            .score = false,
             .show_cloaked = true,
             .raw_affects_selection = false,
             .raw_crop_to_playable_area = false,
