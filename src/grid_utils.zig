@@ -173,10 +173,9 @@ pub fn setBuildingToValue(grid: Grid, unit: Unit, value: u8) void {
         const unit_y = @floatToInt(usize, unit.position.y);
         var y: usize = unit_y - 1;
         while (y < unit_y + 2) : (y += 1) {
-            var x: usize = unit_x - 1;
-            while (x < unit_x + 2) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 1 + grid.w*y;
+            const end = unit_x + 2 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -188,17 +187,15 @@ pub fn setBuildingToValue(grid: Grid, unit: Unit, value: u8) void {
         // to get the right shape
         var y: usize = unit_y - 1;
         while (y < unit_y + 2) : (y += 1) {
-            var x: usize = unit_x - 2;
-            while (x < unit_x + 3) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 2 + grid.w*y;
+            const end = unit_x + 3 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         y = unit_y - 2;
         while (y < unit_y + 3) : (y += 1) {
-            var x: usize = unit_x - 1;
-            while (x < unit_x + 2) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 1 + grid.w*y;
+            const end = unit_x + 2 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -236,10 +233,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         const unit_y = @floatToInt(usize, unit.position.y);
         var y: usize = unit_y - 2;
         while (y < unit_y + 2) : (y += 1) {
-            var x: usize = unit_x - 2;
-            while (x < unit_x + 2) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 2 + grid.w*y;
+            const end = unit_x + 2 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -249,10 +245,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         const unit_y = @floatToInt(usize, unit.position.y);
         var y: usize = unit_y - 2;
         while (y < unit_y + 2) : (y += 1) {
-            var x: usize = unit_x - 1;
-            while (x < unit_x + 1) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 1 + grid.w*y;
+            const end = unit_x + 1 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -262,10 +257,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         const unit_y = @floatToInt(usize, unit.position.y);
         var y: usize = unit_y - 1;
         while (y < unit_y + 1) : (y += 1) {
-            var x: usize = unit_x - 2;
-            while (x < unit_x + 2) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 2 + grid.w*y;
+            const end = unit_x + 2 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -275,10 +269,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         const unit_y = @floatToInt(usize, unit.position.y);
         var y: usize = unit_y - 3;
         while (y < unit_y + 3) : (y += 1) {
-            var x: usize = unit_x - 1;
-            while (x < unit_x + 1) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 1 + grid.w*y;
+            const end = unit_x + 1 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -288,10 +281,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         const unit_y = @floatToInt(usize, unit.position.y);
         var y: usize = unit_y - 1;
         while (y < unit_y + 1) : (y += 1) {
-            var x: usize = unit_x - 3;
-            while (x < unit_x + 3) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 3 + grid.w*y;
+            const end = unit_x + 3 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -301,10 +293,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         const unit_y = @floatToInt(usize, unit.position.y);
         var y: usize = unit_y - 6;
         while (y < unit_y + 6) : (y += 1) {
-            var x: usize = unit_x - 2;
-            while (x < unit_x + 2) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 2 + grid.w*y;
+            const end = unit_x + 2 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -314,10 +305,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         const unit_y = @floatToInt(usize, unit.position.y);
         var y: usize = unit_y - 2;
         while (y < unit_y + 2) : (y += 1) {
-            var x: usize = unit_x - 6;
-            while (x < unit_x + 6) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 6 + grid.w*y;
+            const end = unit_x + 6 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -330,17 +320,15 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         // to get the right shape
         var y: usize = unit_y - 2;
         while (y < unit_y + 2) : (y += 1) {
-            var x: usize = unit_x - 3;
-            while (x < unit_x + 3) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 3 + grid.w*y;
+            const end = unit_x + 3 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         y = unit_y - 3;
         while (y < unit_y + 3) : (y += 1) {
-            var x: usize = unit_x - 2;
-            while (x < unit_x + 2) : (x += 1) {
-                grid.data[x + grid.w*y] = value;
-            }
+            const start = unit_x - 2 + grid.w*y;
+            const end = unit_x + 2 + grid.w*y;
+            mem.set(u8, grid.data[start..end], value);
         }
         return;
     }
@@ -352,83 +340,73 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
 
         var y: usize = unit_y + 4;
         var start_x: usize = unit_x + 1;
-        var x: usize = start_x;
         var row_len: usize = 3;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        var start: usize = start_x + grid.w*y;
+        var end: usize = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y + 3;
         start_x = unit_x;
-        x = start_x;
         row_len = 4;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y + 2;
         start_x = unit_x - 1;
-        x = start_x;
         row_len = 6;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y + 1;
         start_x = unit_x - 2;
-        x = start_x;
         row_len = 7;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y;
         start_x = unit_x - 3;
-        x = start_x;
         row_len = 7;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y - 1;
         start_x = unit_x - 4;
-        x = start_x;
         row_len = 7;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y - 2;
         start_x = unit_x - 5;
-        x = start_x;
         row_len = 7;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y - 3;
         start_x = unit_x - 5;
-        x = start_x;
         row_len = 6;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y - 4;
         start_x = unit_x - 4;
-        x = start_x;
         row_len = 4;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y - 5;
         start_x = unit_x - 3;
-        x = start_x;
         row_len = 2;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
         return;
     }
 
@@ -438,83 +416,73 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
 
         var y: usize = unit_y - 5;
         var start_x: usize = unit_x + 1;
-        var x: usize = start_x;
         var row_len: usize = 3;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        var start: usize = start_x + grid.w*y;
+        var end: usize = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y - 4;
         start_x = unit_x;
-        x = start_x;
         row_len = 4;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y - 3;
         start_x = unit_x - 1;
-        x = start_x;
         row_len = 6;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y - 2;
         start_x = unit_x - 2;
-        x = start_x;
         row_len = 7;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y - 1;
         start_x = unit_x - 3;
-        x = start_x;
         row_len = 7;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y;
         start_x = unit_x - 4;
-        x = start_x;
         row_len = 7;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y + 1;
         start_x = unit_x - 5;
-        x = start_x;
         row_len = 7;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y + 2;
         start_x = unit_x - 5;
-        x = start_x;
         row_len = 6;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y + 3;
         start_x = unit_x - 4;
-        x = start_x;
         row_len = 4;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
 
         y = unit_y + 4;
         start_x = unit_x - 3;
-        x = start_x;
         row_len = 2;
-        while (x < start_x + row_len) : (x += 1) {
-            grid.data[x + grid.w*y] = value;
-        }
+        start = start_x + grid.w*y;
+        end = start + row_len;
+        mem.set(u8, grid.data[start..end], value);
         return;
     }
 
