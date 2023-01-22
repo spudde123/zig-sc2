@@ -536,22 +536,23 @@ pub const InfluenceMap = struct {
         var cur = came_from.get(goal_index);
         if (cur == null) return null;
 
-        // Let's keep track of a certain number of recent steps so we can return for example the 3rd step
-        // as the desired direction to go to
-        var last_nodes = [_]usize{goal_index} ** 5;
         const path_len = cur.?.path_len;
-        while (cur) |node| {
-            var j: usize = last_nodes.len - 1;
-            while (j > 0) : (j -= 1) {
-                last_nodes[j] = last_nodes[j - 1]; 
-            }
-            last_nodes[0] = node.prev;
-            cur = came_from.get(node.prev);
+        
+        if (path_len <= 5) {
+            return .{
+                .path_len = path_len,
+                .next_point = validated_goal.add(.{.x = 0.5, .y = 0.5}),
+            };
+        }
+        // Give the 5th point from the beginning as direction
+        var i: usize = path_len;
+        while (i > 5) : (i -= 1) {
+            cur = came_from.get(cur.?.prev);
         }
 
         return .{
             .path_len = path_len,
-            .next_point = self.indexToPoint(last_nodes[last_nodes.len - 1]).add(.{.x = 0.5, .y = 0.5}),
+            .next_point = self.indexToPoint(cur.?.prev).add(.{.x = 0.5, .y = 0.5}),
         };
     }
 
@@ -585,6 +586,7 @@ pub const InfluenceMap = struct {
     fn runPathfindVec(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) !std.AutoHashMap(usize, CameFrom) {
         var queue = std.PriorityQueue(Node, void, lessThan).init(allocator, {});
         defer queue.deinit();
+        try queue.ensureTotalCapacity(250);
 
         const start_floor = start.floor();
         const start_index = self.pointToIndex(start);
@@ -604,12 +606,16 @@ pub const InfluenceMap = struct {
         var neighbors = try std.ArrayList(Neighbor).initCapacity(allocator, 8);
         defer neighbors.deinit();
 
-        var came_from = std.AutoHashMap(usize, CameFrom).init(allocator);
-
         const large_unit_f32: f32 = if (large_unit) 1 else 0;
         const Vector = @Vector(3, f32);
         const no_large: Vector = @splat(3, @as(f32, math.f32_max));
         const with_large = Vector{1, math.f32_max, math.f32_max};
+
+        var closed = try std.DynamicBitSet.initEmpty(allocator, self.w*self.h);
+        defer closed.deinit();
+        closed.set(start_index);
+
+        var came_from = std.AutoHashMap(usize, CameFrom).init(allocator);
 
         while (queue.removeOrNull()) |node| {
             if (node.index == goal_index) break;
@@ -644,7 +650,7 @@ pub const InfluenceMap = struct {
             if (@reduce(.And, v8 < no_large)) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
 
             for (neighbors.items) |nbr| {
-                if (nbr.index == start_index or came_from.contains(nbr.index)) continue;
+                if (closed.isSet(nbr.index)) continue;
 
                 const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
                 const nbr_point = self.indexToPoint(nbr.index);
@@ -657,6 +663,7 @@ pub const InfluenceMap = struct {
                     .heuristic = estimated_cost,
                 });
                 try came_from.put(nbr.index, .{.prev = index, .path_len = node.path_len + 1});
+                closed.set(nbr.index);
             }
 
             neighbors.clearRetainingCapacity();
@@ -668,6 +675,7 @@ pub const InfluenceMap = struct {
     fn runPathfind(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) !std.AutoHashMap(usize, CameFrom) {
         var queue = std.PriorityQueue(Node, void, lessThan).init(allocator, {});
         defer queue.deinit();
+        try queue.ensureTotalCapacity(250);
 
         const start_floor = start.floor();
         const start_index = self.pointToIndex(start);
@@ -686,6 +694,10 @@ pub const InfluenceMap = struct {
 
         var neighbors = try std.ArrayList(Neighbor).initCapacity(allocator, 8);
         defer neighbors.deinit();
+        
+        var closed = try std.DynamicBitSet.initEmpty(allocator, self.w*self.h);
+        defer closed.deinit();
+        closed.set(start_index);
 
         var came_from = std.AutoHashMap(usize, CameFrom).init(allocator);
 
@@ -721,7 +733,7 @@ pub const InfluenceMap = struct {
             if (grid[index + w + 1] < math.f32_max and grid[index + 1] < math.f32_max and grid[index + w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
 
             for (neighbors.items) |nbr| {
-                if (nbr.index == start_index or came_from.contains(nbr.index)) continue;
+                if (closed.isSet(nbr.index)) continue;
 
                 const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
                 const nbr_point = self.indexToPoint(nbr.index);
@@ -734,6 +746,7 @@ pub const InfluenceMap = struct {
                     .heuristic = estimated_cost,
                 });
                 try came_from.put(nbr.index, .{.prev = index, .path_len = node.path_len + 1});
+                closed.set(nbr.index);
             }
 
             neighbors.clearRetainingCapacity();
