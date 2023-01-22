@@ -604,8 +604,7 @@ pub const InfluenceMap = struct {
         const grid = self.grid;
         const w = self.w;
 
-        var neighbors = try std.ArrayList(Neighbor).initCapacity(allocator, 8);
-        defer neighbors.deinit();
+        var neighbors = std.BoundedArray(Neighbor, 8){};
 
         const large_unit_f32: f32 = if (large_unit) 1 else 0;
         const Vector = @Vector(3, f32);
@@ -649,8 +648,8 @@ pub const InfluenceMap = struct {
 
             const v8 = Vector{grid[index + w + 1], grid[index + 1], grid[index + w]};
             if (@reduce(.And, v8 < no_large)) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
-
-            for (neighbors.items) |nbr| {
+            
+            for (neighbors.constSlice()) |nbr| {
                 if (closed.isSet(nbr.index)) continue;
 
                 const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
@@ -667,7 +666,7 @@ pub const InfluenceMap = struct {
                 closed.set(nbr.index);
             }
 
-            neighbors.clearRetainingCapacity();
+            neighbors.resize(0) catch unreachable;
         }
 
         return came_from;
@@ -693,8 +692,7 @@ pub const InfluenceMap = struct {
         const grid = self.grid;
         const w = self.w;
 
-        var neighbors = try std.ArrayList(Neighbor).initCapacity(allocator, 8);
-        defer neighbors.deinit();
+        var neighbors = std.BoundedArray(Neighbor, 8){};
         
         var closed = try std.DynamicBitSet.initEmpty(allocator, self.w*self.h);
         defer closed.deinit();
@@ -733,7 +731,7 @@ pub const InfluenceMap = struct {
 
             if (grid[index + w + 1] < math.f32_max and grid[index + 1] < math.f32_max and grid[index + w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
 
-            for (neighbors.items) |nbr| {
+            for (neighbors.constSlice()) |nbr| {
                 if (closed.isSet(nbr.index)) continue;
 
                 const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
@@ -750,7 +748,7 @@ pub const InfluenceMap = struct {
                 closed.set(nbr.index);
             }
 
-            neighbors.clearRetainingCapacity();
+            neighbors.resize(0) catch unreachable;
         }
 
         return came_from;
