@@ -413,16 +413,16 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     if (mem.indexOfScalar(UnitId, &destructible_6x6, unit.unit_type)) |_| {
         const unit_x = @floatToInt(usize, unit.position.x);
         const unit_y = @floatToInt(usize, unit.position.y);
-        // These should be 3x3 with their corners cut off but
+        // These should be 6x6 (with their corners cut off?) but
         // depending on the map and map position it seems it's either
         // exactly that or one cell too high or too low.
-        // Taking only 4x4 away from the middle so hopefully
+        // Taking only 4x6 away from the middle so hopefully
         // we don't mark stuff pathable that isn't, and this
         // should allow units to pass through these rocks anyway
         var y: usize = unit_y - 2;
         while (y < unit_y + 2) : (y += 1) {
-            const start = unit_x - 2 + grid.w*y;
-            const end = unit_x + 2 + grid.w*y;
+            const start = unit_x - 3 + grid.w*y;
+            const end = unit_x + 3 + grid.w*y;
             mem.set(u8, grid.data[start..end], value);
         }
         return;
