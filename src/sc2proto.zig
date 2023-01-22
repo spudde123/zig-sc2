@@ -1,6 +1,3 @@
-const std = @import("std");
-const proto = @import("protobuf.zig");
-
 pub const Status = enum(u8) {
     default = 0,
     launched = 1,
