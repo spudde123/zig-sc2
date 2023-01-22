@@ -34,7 +34,7 @@ const ProgramArguments = struct {
     computer_race: sc2p.Race = .random,
     computer_difficulty: sc2p.AiDifficulty = .very_hard,
     computer_build: sc2p.AiBuild = .random,
-    map_file_name: []const u8 = "LightshadeAIE"
+    map_file_name: []const u8 = "InsideAndOutAIE"
 };
 
 const race_map = std.ComptimeStringMap(sc2p.Race, .{
