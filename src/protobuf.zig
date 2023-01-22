@@ -52,6 +52,7 @@ pub const ProtoReader = struct {
         // where we need to generate slices of unknown length.
         // Using a zero bit type for the other tuple members
         // seemed to cause a crash during compilation?
+        // Seems fixed in 10.1
         const TupleType = comptime t: {
             var tuple_types: [field_nums_tuple.len]type = undefined;
             inline for (field_nums_tuple) |field_info, i| {

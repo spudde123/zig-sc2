@@ -747,6 +747,7 @@ pub const GameInfo = struct {
                 main_base_ramp = ramp;
             }
         }
+        assert(closest_dist < math.f32_max);
         return main_base_ramp;
     }
 
@@ -760,6 +761,7 @@ pub const GameInfo = struct {
                 main_base_ramp = ramp;
             }
         }
+        assert(closest_dist < math.f32_max);
         return main_base_ramp;
     }
 
