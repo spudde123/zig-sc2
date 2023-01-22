@@ -537,8 +537,9 @@ pub const InfluenceMap = struct {
         if (cur == null) return null;
 
         const path_len = cur.?.path_len;
-        
-        if (path_len <= 5) {
+        const point_to_take = 5;
+
+        if (path_len <= point_to_take) {
             return .{
                 .path_len = path_len,
                 .next_point = validated_goal.add(.{.x = 0.5, .y = 0.5}),
@@ -546,7 +547,7 @@ pub const InfluenceMap = struct {
         }
         // Give the 5th point from the beginning as direction
         var i: usize = path_len;
-        while (i > 5) : (i -= 1) {
+        while (i > point_to_take) : (i -= 1) {
             cur = came_from.get(cur.?.prev);
         }
 
