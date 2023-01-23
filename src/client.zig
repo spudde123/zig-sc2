@@ -505,29 +505,27 @@ pub const WebSocketClient = struct {
 
     pub fn writeAndWaitForMessage(self: *WebSocketClient, payload: []u8) !sc2p.Response {
         {
-            const max_len = 2 + payload.len + 8;
-            var bytes = try self.step_allocator.alloc(u8, max_len);
-            bytes[0] = @enumToInt(OpCode.binary);
-            bytes[0] |= 0x80;
+            self.storage[0] = @enumToInt(OpCode.binary);
+            self.storage[0] |= 0x80;
 
             var payload_start: usize = 2;
 
             if (payload.len <= 125) {
-                bytes[1] = @truncate(u8, payload.len);
+                self.storage[1] = @truncate(u8, payload.len);
             } else if (payload.len <= 65535) {
-                bytes[1] = 126;
-                mem.writeIntBig(u16, bytes[2..4], @truncate(u16, payload.len));
+                self.storage[1] = 126;
+                mem.writeIntBig(u16, self.storage[2..4], @truncate(u16, payload.len));
                 payload_start += 2;
             } else {
-                bytes[1] = 127;
-                mem.writeIntBig(u64, bytes[2..10], payload.len);
+                self.storage[1] = 127;
+                mem.writeIntBig(u64, self.storage[2..10], payload.len);
                 payload_start += 8;
             }
 
-            mem.copy(u8, bytes[payload_start..], payload);
+            mem.copy(u8, self.storage[payload_start..], payload);
 
             const stream = self.socket.writer();
-            try stream.writeAll(bytes[0..(payload_start + payload.len)]);
+            try stream.writeAll(self.storage[0..(payload_start + payload.len)]);
         }
 
         var cursor: usize = 0;
