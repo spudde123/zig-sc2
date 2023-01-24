@@ -31,7 +31,10 @@ const OpCode = enum(u4) {
 
 pub const ClientError = error {
     BadResponse,
-    ErrorsField
+    ErrorsField,
+    ReplayBytes,
+    ReplayFile,
+    ReplayWrite,
 };
 
 pub const ComputerSetup = struct {
@@ -43,11 +46,6 @@ pub const ComputerSetup = struct {
 pub const BotSetup = struct {
     name: []const u8 = "Bot",
     race: sc2p.Race,
-};
-
-pub const GameJoin = struct {
-    success: bool = false,
-    player_id: u32 = 0,
 };
 
 /// Sc2 uses websockets for communication
@@ -151,7 +149,7 @@ pub const WebSocketClient = struct {
         map_name: []const u8,
         computer: ComputerSetup,
         realtime: bool
-    ) GameJoin {
+    ) !u32 {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
         
         // Create game
@@ -180,10 +178,10 @@ pub const WebSocketClient = struct {
         const create_game_req = sc2p.Request{.create_game = create_game};
         const create_game_payload = writer.encodeBaseStruct(create_game_req);
         
-        const create_game_res = self.writeAndWaitForMessage(create_game_payload) catch return .{};
+        const create_game_res = try self.writeAndWaitForMessage(create_game_payload);
         if (create_game_res.create_game == null or create_game_res.status == null) {
             std.debug.print("Did not get create game response\n", .{});
-            return .{};
+            return ClientError.BadResponse;
         }
 
         const cg_data = create_game_res.create_game.?;
@@ -193,7 +191,7 @@ pub const WebSocketClient = struct {
             if (cg_data.error_details) |details| {
                 std.debug.print("{s}\n", .{details});
             }
-            return .{};
+            return ClientError.BadResponse;
         }
 
         if (create_game_res.status.? != sc2p.Status.init_game) {
@@ -201,7 +199,7 @@ pub const WebSocketClient = struct {
                 "Wrong status after create game: {d}\n",
                 .{@enumToInt(create_game_res.status.?)}
             );
-            return .{};
+            return ClientError.BadResponse;
         }
 
         // Join game
@@ -229,10 +227,10 @@ pub const WebSocketClient = struct {
         const join_game_req = sc2p.Request{.join_game = join_game};
         const join_game_payload = writer.encodeBaseStruct(join_game_req);
 
-        var join_game_res = self.writeAndWaitForMessage(join_game_payload) catch return .{};
+        var join_game_res = try self.writeAndWaitForMessage(join_game_payload);
         if (join_game_res.join_game == null) {
             std.debug.print("Did not get join game response\n", .{});
-            return .{};
+            return ClientError.BadResponse;
         }
 
         const jg_data = join_game_res.join_game.?;
@@ -242,17 +240,17 @@ pub const WebSocketClient = struct {
             if (jg_data.error_details) |details| {
                 std.debug.print("{s}\n", .{details});
             }
-            return .{};
+            return ClientError.BadResponse;
         }
 
-        return GameJoin{.success = true, .player_id = jg_data.player_id.?};
+        return jg_data.player_id.?;
 
     }
 
     // @TODO: Implement this.
-    pub fn createGameVsHuman(self: *WebSocketClient) bool {
+    pub fn createGameVsHuman(self: *WebSocketClient) !void {
         _ = self;
-        return false;
+        return;
     }
 
     pub fn joinLadderGame(
@@ -260,7 +258,7 @@ pub const WebSocketClient = struct {
         bot_setup: BotSetup,
         start_port: u16,
 
-    ) GameJoin {
+    ) !u32 {
 
         const interface = sc2p.InterfaceOptions{
             .raw = true,
@@ -298,10 +296,10 @@ pub const WebSocketClient = struct {
         const join_game_req = sc2p.Request{.join_game = join_game};
         const join_game_payload = writer.encodeBaseStruct(join_game_req);
 
-        const join_game_res = self.writeAndWaitForMessage(join_game_payload) catch return .{};
+        const join_game_res = try self.writeAndWaitForMessage(join_game_payload);
         if (join_game_res.join_game == null) {
             std.debug.print("Did not get join game response\n", .{});
-            return .{};
+            return ClientError.BadResponse;
         }
 
         const jg_data = join_game_res.join_game.?;
@@ -311,13 +309,13 @@ pub const WebSocketClient = struct {
             if (jg_data.error_details) |details| {
                 std.debug.print("{s}\n", .{details});
             }
-            return .{};
+            return ClientError.BadResponse;
         }
 
-        return GameJoin{.success = true, .player_id = jg_data.player_id.?};
+        return jg_data.player_id.?;
     }
 
-    pub fn getObservation(self: *WebSocketClient, game_loop: ?u32) sc2p.ResponseObservation {
+    pub fn getObservation(self: *WebSocketClient, game_loop: ?u32) !sc2p.ResponseObservation {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 
         const obs_req = sc2p.RequestObservation{
@@ -330,12 +328,12 @@ pub const WebSocketClient = struct {
         };
 
         var payload = writer.encodeBaseStruct(base_req);
-        var res = self.writeAndWaitForMessage(payload) catch return .{};
+        var res = try self.writeAndWaitForMessage(payload);
 
         if (res.observation) |obs| {
             return obs;
         }
-        return .{};
+        return ClientError.BadResponse;
     }
 
     pub fn getGameInfo(self: *WebSocketClient) !sc2p.ResponseGameInfo {
@@ -379,10 +377,10 @@ pub const WebSocketClient = struct {
         const payload = writer.encodeBaseStruct(request);
 
         _ = try self.writeAndWaitForMessage(payload);
-
     }
 
     pub fn sendDebugRequest(self: *WebSocketClient, debug_proto: sc2p.RequestDebug) void {
+        // This can silently fail without a big problem.
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 
         const request = sc2p.Request{.debug = debug_proto};
@@ -431,7 +429,7 @@ pub const WebSocketClient = struct {
         return null;
     }
 
-    pub fn step(self: *WebSocketClient, count: u32) bool {
+    pub fn step(self: *WebSocketClient, count: u32) !void {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 
         const step_req = sc2p.RequestStep{
@@ -443,51 +441,42 @@ pub const WebSocketClient = struct {
         };
 
         const payload = writer.encodeBaseStruct(base_req);
-        _ = self.writeAndWaitForMessage(payload) catch return false;
-
-        return true;
+        _ = try self.writeAndWaitForMessage(payload);
     }
 
-    pub fn leave(self: *WebSocketClient) bool {
+    pub fn leave(self: *WebSocketClient) !void {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 
         const request = sc2p.Request{.leave_game = {}};
         const payload = writer.encodeBaseStruct(request);
 
-        _ = self.writeAndWaitForMessage(payload) catch return false;
-
-        return true;
+        _ = try self.writeAndWaitForMessage(payload);
     }
 
-    pub fn saveReplay(self: *WebSocketClient, replay_path: []const u8) bool {
+    pub fn saveReplay(self: *WebSocketClient, replay_path: []const u8) !void {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
 
         const request = sc2p.Request{.save_replay = {}};
         const payload = writer.encodeBaseStruct(request);
 
-        const res = self.writeAndWaitForMessage(payload) catch return false;
+        const res = try self.writeAndWaitForMessage(payload);
 
         if (res.save_replay) |replay_proto| {
-            const bytes = replay_proto.bytes orelse return false;
-            const file = fs.cwd().createFile(replay_path, .{}) catch return false;
+            const bytes = replay_proto.bytes orelse return ClientError.ReplayBytes;
+            const file = fs.cwd().createFile(replay_path, .{}) catch return ClientError.ReplayFile;
             defer file.close();
 
-            _ = file.writeAll(bytes) catch return false;
-            return true;
+            _ = file.writeAll(bytes) catch return ClientError.ReplayWrite;
+            return;
         }
-        return false;
+        return ClientError.BadResponse;
     }
 
-    pub fn quit(self: *WebSocketClient) bool {
+    pub fn quit(self: *WebSocketClient) !void {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
         const request = sc2p.Request{.quit = {}};
         const payload = writer.encodeBaseStruct(request);
-        const res = self.writeAndWaitForMessage(payload) catch return false;
-        if (res.quit) |_| {
-            return true;
-        }
-
-        return false;
+        _ = try self.writeAndWaitForMessage(payload);
     }
 
     pub fn ping(self: *WebSocketClient) sc2p.ResponsePing {

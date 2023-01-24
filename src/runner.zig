@@ -325,52 +325,52 @@ pub fn run(
 
     defer {
         if (sc2_process) |_| {
-            _ = client.quit();
+            _ = client.quit() catch {
+                log.err("Unable to quit the game\n", .{});
+            };
         }
     }
-
-    var game_join: ws.GameJoin = .{};
 
     const bot_setup: ws.BotSetup = .{
         .name = user_bot.name, 
         .race = user_bot.race
     };
-    if (ladder_game) {
-        game_join = client.joinLadderGame(bot_setup, start_port);
-    } else create_game_block: {
-        
-        var strings_to_concat = [_][]const u8{sc2_paths.map_folder, program_args.map_file_name, ".SC2Map"};
-        var map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
-        std.fs.accessAbsolute(map_absolute_path, .{}) catch {
-            log.err("Map file {s} was not found\n", .{map_absolute_path});
-            break :create_game_block;
-        };
 
-        game_join = client.createGameVsComputer(
-            bot_setup,
-            map_absolute_path,
-            ws.ComputerSetup{
-                .difficulty = program_args.computer_difficulty,
-                .build = program_args.computer_build,
-                .race = program_args.computer_race,
-            },
-            program_args.real_time,
-        );
-        
-    }
-    
-    if (!game_join.success) {
-        log.err("Failed to join the game\n", .{});
-        return;
-    }
+    const player_id: u32 = pid: {
+        if (ladder_game) {
+            break :pid client.joinLadderGame(bot_setup, start_port) catch |err| {
+                log.err("Failed to join ladder game: {s}\n", .{@errorName(err)});
+                return;
+            };
+        } else {
+            const strings_to_concat = [_][]const u8{sc2_paths.map_folder, program_args.map_file_name, ".SC2Map"};
+            const map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
+            std.fs.accessAbsolute(map_absolute_path, .{}) catch {
+                log.err("Map file {s} was not found\n", .{map_absolute_path});
+                return;
+            };
+            break :pid client.createGameVsComputer(
+                bot_setup,
+                map_absolute_path,
+                ws.ComputerSetup{
+                    .difficulty = program_args.computer_difficulty,
+                    .build = program_args.computer_build,
+                    .race = program_args.computer_race,
+                },
+                program_args.real_time,
+            ) catch |err| {
+                log.err("Failed to create game: {s}\n", .{@errorName(err)});
+                return;
+            };
+        }
+    };
 
-    const player_id = game_join.player_id;
     var game_info: bot_data.GameInfo = undefined;
 
     var first_step_done = false;
 
-    const game_data_proto = client.getGameData() catch {
-        log.err("Error getting game data\n", .{});
+    const game_data_proto = client.getGameData() catch |err| {
+        log.err("Error getting game data: {s}\n", .{@errorName(err)});
         return;
     };
 
@@ -386,13 +386,8 @@ pub fn run(
     var requested_game_loop: u32 = 0;
     while (true) {
 
-        const obs = if (program_args.real_time) client.getObservation(requested_game_loop) else client.getObservation(null);
+        const obs = if (program_args.real_time) try client.getObservation(requested_game_loop) else try client.getObservation(null);
 
-        if (obs.observation == null) {
-            log.err("Got an invalid observation\n", .{});
-            break;
-        }
-        
         var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, fixed_buffer);
         // Not sure if the given game loop may be larger than what was requested
         // if the bot takes too long to make the step.
@@ -402,9 +397,13 @@ pub fn run(
         if (bot.result) |res| {
             if (sc2_process) |_| {
                 if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
-                    _ = client.saveReplay(replay_name);
+                    _ = client.saveReplay(replay_name) catch |err| {
+                        log.err("Unable to save replay: {s}\n", .{@errorName(err)});
+                    };
                 }
-                _ = client.leave();
+                _ = client.leave() catch {
+                    log.err("Unable to leave game\n", .{});
+                };
             }
             try user_bot.onResult(bot, game_info, res);
             break;
@@ -471,11 +470,15 @@ pub fn run(
             
             if (sc2_process) |_| {
                 if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
-                    _ = client.saveReplay(replay_name);
+                    _ = client.saveReplay(replay_name) catch |err| {
+                        log.err("Unable to save replay: {s}\n", .{@errorName(err)});
+                    };
                 }
             }
             
-            _ = client.leave();
+            _ = client.leave() catch {
+                log.err("Unable to leave game\n", .{});
+            };
             try user_bot.onResult(bot, game_info, .defeat);
             break;
         }
@@ -491,7 +494,7 @@ pub fn run(
         }
 
         if (!program_args.real_time) {
-            _ = client.step(step_count);
+            _ = try client.step(step_count);
         }
 
         actions.clear();
