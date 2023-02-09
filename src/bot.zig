@@ -891,20 +891,21 @@ pub const Bot = struct {
                 if (unit.orders) |orders_proto| {
                     orders = try std.ArrayList(UnitOrder).initCapacity(allocator, orders_proto.len);
                     for (orders_proto) |order_proto| {
-                        var target: OrderTarget = undefined;
-                        if (order_proto.target_world_space_pos) |pos_target| {
-                            target = OrderTarget{
-                                .position = .{.x = pos_target.x.?, .y = pos_target.y.?},
-                            };
-                        } else if (order_proto.target_unit_tag) |tag_target| {
-                            target = OrderTarget{
-                                .tag = tag_target,
-                            };
-                        } else {
-                            target = OrderTarget{
-                                .empty = {},
-                            };
-                        }
+                        const target: OrderTarget = tg: {
+                            if (order_proto.target_world_space_pos) |pos_target| {
+                                break :tg .{
+                                    .position = .{.x = pos_target.x.?, .y = pos_target.y.?},
+                                };
+                            } else if (order_proto.target_unit_tag) |tag_target| {
+                                break :tg .{
+                                    .tag = tag_target,
+                                };
+                            } else {
+                                break :tg .{
+                                    .empty = {},
+                                };
+                            }
+                        };
 
                         const order = UnitOrder{
                             .ability_id = @intToEnum(AbilityId, order_proto.ability_id orelse 0),
@@ -1325,22 +1326,23 @@ pub const Actions = struct {
 
         fn toHashable(self: ActionData) HashableActionData {
             
-            var target: HashableOrderTarget = undefined;
-            switch (self.target) {
-                .empty => {
-                    target = .{.empty = {}};
-                },
-                .tag => |tag| {
-                    target = .{.tag = tag};
-                },
-                .position => |pos| {
-                    var point = HashablePoint2{
-                        .x = @floatToInt(i32, math.round(pos.x * 100)),
-                        .y = @floatToInt(i32, math.round(pos.y * 100)),
-                    };
-                    target = .{.position = point};
+            const target: HashableOrderTarget = tg: {
+                switch (self.target) {
+                    .empty => {
+                        break :tg .{.empty = {}};
+                    },
+                    .tag => |tag| {
+                        break :tg .{.tag = tag};
+                    },
+                    .position => |pos| {
+                        const point = HashablePoint2{
+                            .x = @floatToInt(i32, math.round(pos.x * 100)),
+                            .y = @floatToInt(i32, math.round(pos.y * 100)),
+                        };
+                        break :tg .{.position = point};
+                    }
                 }
-            }
+            };
 
             return HashableActionData{
                 .ability_id = self.ability_id,
@@ -1414,22 +1416,22 @@ pub const Actions = struct {
             .temp_allocator = temp_allocator,
             .order_list = try std.ArrayList(BotAction).initCapacity(perm_allocator, 400),
             .chat_messages = try std.ArrayList(ChatAction).initCapacity(perm_allocator, 10),
-            .debug_texts = std.ArrayList(sc2p.DebugText).init(temp_allocator),
-            .debug_lines = std.ArrayList(sc2p.DebugLine).init(temp_allocator),
-            .debug_boxes = std.ArrayList(sc2p.DebugBox).init(temp_allocator),
-            .debug_spheres = std.ArrayList(sc2p.DebugSphere).init(temp_allocator),
-            .debug_create_unit = std.ArrayList(sc2p.DebugCreateUnit).init(temp_allocator),
+            .debug_texts = std.ArrayList(sc2p.DebugText).init(perm_allocator),
+            .debug_lines = std.ArrayList(sc2p.DebugLine).init(perm_allocator),
+            .debug_boxes = std.ArrayList(sc2p.DebugBox).init(perm_allocator),
+            .debug_spheres = std.ArrayList(sc2p.DebugSphere).init(perm_allocator),
+            .debug_create_unit = std.ArrayList(sc2p.DebugCreateUnit).init(perm_allocator),
         };
     }
 
     pub fn clear(self: *Actions) void {
         self.order_list.clearRetainingCapacity();
         self.chat_messages.clearRetainingCapacity();
-        self.debug_texts.clearAndFree();
-        self.debug_lines.clearAndFree();
-        self.debug_boxes.clearAndFree();
-        self.debug_spheres.clearAndFree();
-        self.debug_create_unit.clearAndFree();
+        self.debug_texts.clearRetainingCapacity();
+        self.debug_lines.clearRetainingCapacity();
+        self.debug_boxes.clearRetainingCapacity();
+        self.debug_spheres.clearRetainingCapacity();
+        self.debug_create_unit.clearRetainingCapacity();
     }
 
     fn addAction(self: *Actions, order: BotAction) void {
