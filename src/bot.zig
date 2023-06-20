@@ -104,7 +104,10 @@ pub const GameInfo = struct {
     vision_blockers: []VisionBlocker,
     ramps: []Ramp,
 
-    const main_base_ramp_size = 16;
+    // The main base ramp generally has 16 cells but on some maps
+    // or base orientations it seems to be 17. Should work fine
+    // to just demand the size is smaller than 18.
+    const max_main_base_ramp_size = 18;
 
     pub fn fromProto(
         proto_data: sc2p.ResponseGameInfo,
@@ -498,7 +501,7 @@ pub const GameInfo = struct {
 
                     // Only main base ramps will have depot
                     // and barracks locations set
-                    if (points.len == main_base_ramp_size) {
+                    if (points.len < max_main_base_ramp_size) {
                         const ramp_dir = top_center.subtract(bottom_center).normalize();
 
                         const depot_candidate1 = top_center.add(ramp_dir.rotate(math.pi / 2.0).multiply(2)).floor();
@@ -556,8 +559,8 @@ pub const GameInfo = struct {
             -grid_width_i32 + 1
         };
         
-        assert(ramp_points.len == main_base_ramp_size);
-        var ramp_points_usize: [main_base_ramp_size]usize = undefined;
+        assert(ramp_points.len < max_main_base_ramp_size);
+        var ramp_points_usize: [max_main_base_ramp_size]usize = undefined;
         for (ramp_points) |point, i| {
             const x = @intCast(usize, point.x);
             const y = @intCast(usize, point.y);
@@ -588,7 +591,7 @@ pub const GameInfo = struct {
             };
             var ramp_neighbors: u64 = 0;
             for (edge) |edge_point| {
-                if (mem.indexOfScalar(usize, &ramp_points_usize, edge_point)) |_| ramp_neighbors += 1;
+                if (mem.indexOfScalar(usize, ramp_points_usize[0..ramp_points.len], edge_point)) |_| ramp_neighbors += 1;
             }
             if (placement.allEqual(depot_points[0..], 1) and ramp_neighbors > max_blocked_neighbors) {
                 max_blocked_neighbors = ramp_neighbors;
@@ -742,7 +745,7 @@ pub const GameInfo = struct {
         var main_base_ramp: Ramp = undefined;
         for (self.ramps) |ramp| {
             const dist = self.start_location.distanceSquaredTo(ramp.top_center);
-            if(ramp.points.len == main_base_ramp_size and dist < closest_dist) {
+            if(ramp.points.len < max_main_base_ramp_size and dist < closest_dist) {
                 closest_dist = dist;
                 main_base_ramp = ramp;
             }
@@ -756,7 +759,7 @@ pub const GameInfo = struct {
         var main_base_ramp: Ramp = undefined;
         for (self.ramps) |ramp| {
             const dist = self.enemy_start_locations[0].distanceSquaredTo(ramp.top_center);
-            if(ramp.points.len == main_base_ramp_size and dist < closest_dist) {
+            if(ramp.points.len < max_main_base_ramp_size and dist < closest_dist) {
                 closest_dist = dist;
                 main_base_ramp = ramp;
             }
