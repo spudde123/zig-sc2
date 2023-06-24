@@ -220,12 +220,12 @@ pub const GameInfo = struct {
         
         index = 0;
         while (index < map_size.w * map_size.h) : (index += 1) {
-            clean_slice[index] = math.max(placement_slice[index], pathing_slice[index]);
+            clean_slice[index] = @max(placement_slice[index], pathing_slice[index]);
         }
 
         for (geysers) |geyser| {
-            const geyser_x = @floatToInt(usize, geyser.position.x);
-            const geyser_y = @floatToInt(usize, geyser.position.y);
+            const geyser_x = @intFromFloat(usize, geyser.position.x);
+            const geyser_y = @intFromFloat(usize, geyser.position.y);
             var y: usize = geyser_y - 1;
             while (y < geyser_y + 2) : (y += 1) {
                 var x: usize = geyser_x - 1;
@@ -256,7 +256,7 @@ pub const GameInfo = struct {
             .map_size = map_size,
             .playable_area = playable_area,
             .start_location = start_location,
-            .enemy_start_locations = start_locations.toOwnedSlice(),
+            .enemy_start_locations = start_locations.items,
             .terrain_height = terrain_height,
             .pathing_grid = pathing_grid,
             .placement_grid = placement_grid,
@@ -328,18 +328,18 @@ pub const GameInfo = struct {
         }
 
         var result = allocator.alloc(Point2, groups.items.len) catch return &[_]Point2{};
-        for (groups.items) |group, group_index| {
+        for (groups.items, 0..) |group, group_index| {
             var center = Point2{.x = 0, .y = 0};
             for(group.resources[0..group.count]) |resource| {
                 center.x += resource.pos.x;
                 center.y += resource.pos.y;
             }
-            center.x = center.x / @intToFloat(f32, group.count);
-            center.y = center.y / @intToFloat(f32, group.count);
+            center.x = center.x / @floatFromInt(f32, group.count);
+            center.y = center.y / @floatFromInt(f32, group.count);
             center.x = math.floor(center.x) + 0.5;
             center.y = math.floor(center.y) + 0.5;
 
-            var min_total_distance: f32 = math.f32_max;
+            var min_total_distance: f32 = math.floatMax(f32);
             var x_offset: f32 = -7;
             while (x_offset < 8) : (x_offset += 1) {
                 var y_offset: f32 = -7;
@@ -381,7 +381,7 @@ pub const GameInfo = struct {
         temp_alloc: mem.Allocator,
     ) !RampsAndVisionBlockers {
         var groups = try temp_alloc.alloc(u8, pathing.data.len);
-        mem.set(u8, groups, 0);
+        @memset(groups, 0);
 
         var flood_fill_list = std.ArrayList(usize).init(temp_alloc);
         var group_count: u8 = 0;
@@ -391,7 +391,7 @@ pub const GameInfo = struct {
         var vbs = std.ArrayList(VisionBlocker).init(perm_alloc);
         var ramps = std.ArrayList(Ramp).init(perm_alloc);
 
-        for (pathing.data) |pathing_val, i| {
+        for (pathing.data, 0..) |pathing_val, i| {
             const placement_val = placement.data[i];
             // If we find a legitimate starting point do a flood fill
             // from there
@@ -456,7 +456,7 @@ pub const GameInfo = struct {
                     // don't ruin these calculations
                     if (current_group.len < 3) continue;
                     var points = try perm_alloc.alloc(GridPoint, current_group.len);
-                    for (current_group_slice) |point, j| {
+                    for (current_group_slice, 0..) |point, j| {
                         const x = @intCast(i32, @mod(point, grid_width));
                         const y = @intCast(i32, @divFloor(point, grid_width));
                         points[j] = GridPoint{.x = x, .y = y};
@@ -474,7 +474,7 @@ pub const GameInfo = struct {
                     var x_min: f32 = 0;
                     var y_min: f32 = 0;
 
-                    for (current_group_slice) |point, j| {
+                    for (current_group_slice, 0..) |point, j| {
                         const x = @intCast(i32, @mod(point, grid_width));
                         const y = @intCast(i32, @divFloor(point, grid_width));
                         points[j] = GridPoint{.x = x, .y = y};
@@ -482,12 +482,12 @@ pub const GameInfo = struct {
                         const height_val = terrain_height.data[point];
                         if (height_val == max_height) {
                             max_count += 1;
-                            x_max += @intToFloat(f32, x) + 0.5;
-                            y_max += @intToFloat(f32, y) + 0.5;
+                            x_max += @floatFromInt(f32, x) + 0.5;
+                            y_max += @floatFromInt(f32, y) + 0.5;
                         } else if (height_val == min_height) {
                             min_count += 1;
-                            x_min += @intToFloat(f32, x) + 0.5;
-                            y_min += @intToFloat(f32, y) + 0.5;
+                            x_min += @floatFromInt(f32, x) + 0.5;
+                            y_min += @floatFromInt(f32, y) + 0.5;
                         }
                     }
                     
@@ -514,7 +514,7 @@ pub const GameInfo = struct {
                         
                         barracks_middle = top_center.add(ramp_dir.multiply(2)).floor().add(.{.x = 0.5, .y = 0.5});
                         
-                        const depot_max_x = math.max(depot_first.?.x, depot_second.?.x);
+                        const depot_max_x = @max(depot_first.?.x, depot_second.?.x);
                         
                         const can_fit_addon = barracks_middle.?.x + 1 > depot_max_x;
                         barracks_with_addon = if (can_fit_addon) barracks_middle else barracks_middle.?.add(.{.x = -2, .y = 0});
@@ -536,8 +536,8 @@ pub const GameInfo = struct {
         }
 
         return RampsAndVisionBlockers{
-            .vbs = vbs.toOwnedSlice(),
-            .ramps = ramps.toOwnedSlice(),
+            .vbs = vbs.toOwnedSlice() catch &[_]VisionBlocker{},
+            .ramps = ramps.toOwnedSlice() catch &[_]Ramp{},
         };
     }
 
@@ -561,7 +561,7 @@ pub const GameInfo = struct {
         
         assert(ramp_points.len < max_main_base_ramp_size);
         var ramp_points_usize: [max_main_base_ramp_size]usize = undefined;
-        for (ramp_points) |point, i| {
+        for (ramp_points, 0..) |point, i| {
             const x = @intCast(usize, point.x);
             const y = @intCast(usize, point.y);
             ramp_points_usize[i] = x + y*grid_width;
@@ -721,27 +721,27 @@ pub const GameInfo = struct {
     }
 
     pub fn getTerrainZ(self: GameInfo, pos: Point2) f32 {
-        const x = @floatToInt(usize, math.floor(pos.x));
-        const y = @floatToInt(usize, math.floor(pos.y));
+        const x = @intFromFloat(usize, math.floor(pos.x));
+        const y = @intFromFloat(usize, math.floor(pos.y));
         
         assert(x >= 0 and x < self.terrain_height.w);
         assert(y >= 0 and y < self.terrain_height.h);
 
         const terrain_grid_width = self.terrain_height.w;
         const grid_index = x + y * terrain_grid_width;
-        const terrain_value = @intToFloat(f32, self.terrain_height.data[grid_index]);
+        const terrain_value = @floatFromInt(f32, self.terrain_height.data[grid_index]);
         return -16 + 32*terrain_value / 255;
     }
 
     pub fn getMapCenter(self: GameInfo) Point2 {
         const x_i32 = self.playable_area.p0.x + @divFloor(self.playable_area.width(),  2);
         const y_i32 = self.playable_area.p0.y + @divFloor(self.playable_area.height(), 2);
-        const middle_floor = Point2{.x = @intToFloat(f32, x_i32), .y = @intToFloat(f32, y_i32)};
+        const middle_floor = Point2{.x = @floatFromInt(f32, x_i32), .y = @floatFromInt(f32, y_i32)};
         return middle_floor.add(.{.x = 0.5, .y = 0.5});
     }
 
     pub fn getMainBaseRamp(self: GameInfo) Ramp {
-        var closest_dist: f32 = math.f32_max;
+        var closest_dist: f32 = math.floatMax(f32);
         var main_base_ramp: Ramp = undefined;
         for (self.ramps) |ramp| {
             const dist = self.start_location.distanceSquaredTo(ramp.top_center);
@@ -750,12 +750,12 @@ pub const GameInfo = struct {
                 main_base_ramp = ramp;
             }
         }
-        assert(closest_dist < math.f32_max);
+        assert(closest_dist < math.floatMax(f32));
         return main_base_ramp;
     }
 
     pub fn getEnemyMainBaseRamp(self: GameInfo) Ramp {
-        var closest_dist: f32 = math.f32_max;
+        var closest_dist: f32 = math.floatMax(f32);
         var main_base_ramp: Ramp = undefined;
         for (self.ramps) |ramp| {
             const dist = self.enemy_start_locations[0].distanceSquaredTo(ramp.top_center);
@@ -764,7 +764,7 @@ pub const GameInfo = struct {
                 main_base_ramp = ramp;
             }
         }
-        assert(closest_dist < math.f32_max);
+        assert(closest_dist < math.floatMax(f32));
         return main_base_ramp;
     }
 
@@ -840,7 +840,7 @@ pub const Bot = struct {
 
         const game_loop: u32 = response.observation.?.game_loop.?;
         
-        const time = @intToFloat(f32, game_loop) / 22.4;
+        const time = @floatFromInt(f32, game_loop) / 22.4;
 
         const obs: sc2p.ObservationRaw = response.observation.?.raw.?;
         
@@ -872,7 +872,7 @@ pub const Bot = struct {
                 if (unit.buff_ids) |buffs| {
                     buff_ids = try std.ArrayList(BuffId).initCapacity(allocator, buffs.len);
                     for (buffs) |buff| {
-                        buff_ids.appendAssumeCapacity(@intToEnum(BuffId, buff));
+                        buff_ids.appendAssumeCapacity(@enumFromInt(BuffId, buff));
                     }
                 } else {
                     buff_ids = try std.ArrayList(BuffId).initCapacity(allocator, 0);
@@ -911,7 +911,7 @@ pub const Bot = struct {
                         };
 
                         const order = UnitOrder{
-                            .ability_id = @intToEnum(AbilityId, order_proto.ability_id orelse 0),
+                            .ability_id = @enumFromInt(AbilityId, order_proto.ability_id orelse 0),
                             .target = target,
                             .progress = order_proto.progress orelse 0,
                         };
@@ -937,7 +937,7 @@ pub const Bot = struct {
                     rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, 0);
                 }
 
-                const unit_type = @intToEnum(UnitId, unit.unit_type.?);
+                const unit_type = @enumFromInt(UnitId, unit.unit_type.?);
                 const unit_data = game_data.units.get(unit_type).?;
 
                 const u = Unit{
@@ -954,7 +954,7 @@ pub const Bot = struct {
                     .radius = unit.radius orelse 0,
                     .build_progress = unit.build_progress orelse 0,
                     .cloak = unit.cloak orelse CloakState.unknown,
-                    .buff_ids = buff_ids.toOwnedSlice(),
+                    .buff_ids = buff_ids.items,
 
                     .detect_range = unit.detect_range orelse 0,
                     .radar_range = unit.radar_range orelse 0,
@@ -981,9 +981,9 @@ pub const Bot = struct {
                     .is_burrowed = unit.is_burrowed orelse false,
                     .is_hallucination = unit.is_hallucination orelse false,
 
-                    .orders = orders.toOwnedSlice(),
+                    .orders = orders.items,
                     .addon_tag = unit.addon_tag orelse 0,
-                    .passengers = passenger_tags.toOwnedSlice(),
+                    .passengers = passenger_tags.items,
                     .cargo_space_taken = unit.cargo_space_taken orelse 0,
                     .cargo_space_max = unit.cargo_space_max orelse 0,
 
@@ -993,7 +993,7 @@ pub const Bot = struct {
                     .engaged_target_tag = unit.engaged_target_tag orelse 0,
                     .buff_duration_remain = unit.buff_duration_remain orelse 0,
                     .buff_duration_max = unit.buff_duration_max orelse 0,
-                    .rally_targets = rally_targets.toOwnedSlice(),
+                    .rally_targets = rally_targets.items,
                     .available_abilities = &[_]AbilityId{},
                 };
                 
@@ -1132,7 +1132,7 @@ pub const Bot = struct {
         const upgrade_proto = obs.player.?.upgrade_ids;
         if (upgrade_proto) |upgrade_slice| {
             for (upgrade_slice) |upgrade| {
-                const upgrade_id = @intToEnum(UpgradeId, upgrade);
+                const upgrade_id = @enumFromInt(UpgradeId, upgrade);
                 try pending_upgrades.put(upgrade_id, 1);
             }
         }
@@ -1140,7 +1140,7 @@ pub const Bot = struct {
         var power_sources: []PowerSource = &[_]PowerSource{};
         if (obs.player.?.power_sources) |power_slice| {
             power_sources = try allocator.alloc(PowerSource, power_slice.len);
-            for (power_slice) |item, i| {
+            for (power_slice, 0..) |item, i| {
                 power_sources[i] = .{
                     .position = .{.x = item.pos.?.x.?, .y = item.pos.?.y.?},
                     .radius = item.radius orelse 0,
@@ -1175,13 +1175,13 @@ pub const Bot = struct {
         var effects: []Effect = &[_]Effect{};
         if (effects_proto) |effect_proto_slice| {
             effects = try allocator.alloc(Effect, effect_proto_slice.len);
-            for (effect_proto_slice) |effect_proto, effect_index| {
+            for (effect_proto_slice, 0..) |effect_proto, effect_index| {
                 var points = try allocator.alloc(Point2, effect_proto.pos.?.len);
-                for (effect_proto.pos.?) |pos_proto, pos_index| {
+                for (effect_proto.pos.?, 0..) |pos_proto, pos_index| {
                     points[pos_index] = Point2{.x = pos_proto.x.?, .y = pos_proto.y.?};
                 }
                 effects[effect_index] = Effect{
-                    .id = @intToEnum(EffectId, effect_proto.effect_id.?),
+                    .id = @enumFromInt(EffectId, effect_proto.effect_id.?),
                     .alliance = effect_proto.alliance.?,
                     .positions = points,
                     .radius = effect_proto.radius.?,
@@ -1192,7 +1192,7 @@ pub const Bot = struct {
         var sensor_towers: []SensorTower = &[_]SensorTower{};
         if (obs.radars) |sensor_towers_proto| {
             sensor_towers = try allocator.alloc(SensorTower, sensor_towers_proto.len);
-            for (sensor_towers_proto) |tower_proto, tower_index| {
+            for (sensor_towers_proto, 0..) |tower_proto, tower_index| {
                 sensor_towers[tower_index] = SensorTower{
                     .position = Point2{.x = tower_proto.pos.?.x.?, .y = tower_proto.pos.?.y.?},
                     .radius = tower_proto.radius.?,
@@ -1237,11 +1237,11 @@ pub const Bot = struct {
         return Bot{
             .units = prev_units.*,
             .enemy_units = prev_enemy.*,
-            .placeholders = placeholders.toOwnedSlice(),
-            .destructibles = destructibles.toOwnedSlice(),
-            .vespene_geysers = vespene_geysers.toOwnedSlice(),
-            .mineral_patches = mineral_patches.toOwnedSlice(),
-            .watch_towers = watch_towers.toOwnedSlice(),
+            .placeholders = placeholders.items,
+            .destructibles = destructibles.items,
+            .vespene_geysers = vespene_geysers.items,
+            .mineral_patches = mineral_patches.items,
+            .watch_towers = watch_towers.items,
             .game_loop = game_loop,
             .time = time,
             .result = result,
@@ -1259,12 +1259,12 @@ pub const Bot = struct {
             .pending_upgrades = pending_upgrades,
             .visibility = visibility_grid,
             .creep = creep_grid,
-            .dead_units = dead_units.toOwnedSlice(),
-            .units_created = units_created.toOwnedSlice(),
-            .damaged_units = damaged_units.toOwnedSlice(),
-            .construction_complete = construction_complete.toOwnedSlice(),
-            .enemies_entered_vision = enemies_entered_vision.toOwnedSlice(),
-            .enemies_left_vision = enemies_left_vision.toOwnedSlice(),
+            .dead_units = dead_units.items,
+            .units_created = units_created.items,
+            .damaged_units = damaged_units.items,
+            .construction_complete = construction_complete.items,
+            .enemies_entered_vision = enemies_entered_vision.items,
+            .enemies_left_vision = enemies_left_vision.items,
             .effects = effects,
             .sensor_towers = sensor_towers,
             .power_sources = power_sources,
@@ -1276,12 +1276,12 @@ pub const Bot = struct {
         // These should be in the same order as the tags were given
         // using keys()
         var unit_slice = self.units.values();
-        for (proto) |query_proto, i| {
+        for (proto, 0..) |query_proto, i| {
             if (query_proto.abilities) |ability_slice_proto| {
                 var ability_slice = allocator.alloc(AbilityId, ability_slice_proto.len) catch continue;
                 
-                for (ability_slice_proto) |ability_proto, j| {
-                    ability_slice[j] = @intToEnum(AbilityId, ability_proto.ability_id orelse 0);
+                for (ability_slice_proto, 0..) |ability_proto, j| {
+                    ability_slice[j] = @enumFromInt(AbilityId, ability_proto.ability_id orelse 0);
                 }
 
                 unit_slice[i].available_abilities = ability_slice;
@@ -1339,8 +1339,8 @@ pub const Actions = struct {
                     },
                     .position => |pos| {
                         const point = HashablePoint2{
-                            .x = @floatToInt(i32, math.round(pos.x * 100)),
-                            .y = @floatToInt(i32, math.round(pos.y * 100)),
+                            .x = @intFromFloat(i32, math.round(pos.x * 100)),
+                            .y = @intFromFloat(i32, math.round(pos.y * 100)),
                         };
                         break :tg .{.position = point};
                     }
@@ -1686,7 +1686,7 @@ pub const Actions = struct {
                 unit_lists.items[index].append(order.unit) catch break;
             } else {
                 var unit_command = sc2p.ActionRawUnitCommand{
-                    .ability_id = @intCast(i32, @enumToInt(order.data.ability_id)),
+                    .ability_id = @intCast(i32, @intFromEnum(order.data.ability_id)),
                     .queue_command = order.data.queue,
                 };
                 switch (order.data.target) {
@@ -1713,7 +1713,7 @@ pub const Actions = struct {
             }
         }
 
-        for (raw_unit_commands.items) |*command, i| {
+        for (raw_unit_commands.items, 0..) |*command, i| {
             command.unit_tags = unit_lists.items[i].items;
             const action_raw = sc2p.ActionRaw{.unit_command = command.*};
             const action = sc2p.Action{.action_raw = action_raw};
@@ -1721,7 +1721,7 @@ pub const Actions = struct {
         }
 
         const action_request = sc2p.RequestAction{
-            .actions = action_list.toOwnedSlice(),
+            .actions = action_list.items,
         };
 
         return action_request;
@@ -1892,7 +1892,7 @@ pub const Actions = struct {
 
     pub fn findPlacementForAbility(self: *Actions, ability: AbilityId, near: Point2, max_distance: f32) ?Point2 {
         assert(max_distance >= 1 and max_distance <= 30);
-        const ability_int = @intCast(i32, @enumToInt(ability));
+        const ability_int = @intCast(i32, @intFromEnum(ability));
         
         var options: [256]sc2p.RequestQueryBuildingPlacement = undefined;
         var outer_dist: f32 = 1;
@@ -1923,10 +1923,10 @@ pub const Actions = struct {
                 .ignore_resource_requirements = true,
             };
             const result = self.client.sendPlacementQuery(query);
-            var min_dist: f32 = math.f32_max;
+            var min_dist: f32 = math.floatMax(f32);
             var min_index: usize = options.len;
             if (result) |query_res| {
-                for (query_res) |option, i| {
+                for (query_res, 0..) |option, i| {
                     if (option.result.? == .success) {
                         const dist = near.distanceSquaredTo(.{.x = options[i].target_pos.?.x.?, .y = options[i].target_pos.?.y.?});
                         if (dist < min_dist) {
@@ -1955,7 +1955,7 @@ pub const Actions = struct {
 
     pub fn queryPlacementForAbility(self: *Actions, ability: AbilityId, spot: Point2) bool {
         var placements = [_]sc2p.RequestQueryBuildingPlacement{.{
-            .ability_id = @intCast(i32, @enumToInt(ability)),
+            .ability_id = @intCast(i32, @intFromEnum(ability)),
             .target_pos = .{.x = spot.x, .y = spot.y},
         }};
         const query = sc2p.RequestQuery{
@@ -1973,7 +1973,7 @@ pub const Actions = struct {
     /// and 2 if creating for the opponent
     pub fn debugCreateUnit(self: *Actions, unit_type: UnitId, owner: i32, pos: Point2, quantity: u32) void {
         const debug_unit = sc2p.DebugCreateUnit{
-            .unit_type = @enumToInt(unit_type),
+            .unit_type = @intFromEnum(unit_type),
             .owner = owner,
             .pos = .{.x = pos.x, .y = pos.y},
             .quantity = quantity,
@@ -2034,11 +2034,11 @@ pub const GameData = struct {
 
         for (proto_upgrades) |proto_upgrade| {
             const upg = UpgradeData{
-                .id = @intToEnum(UpgradeId, proto_upgrade.upgrade_id.?),
+                .id = @enumFromInt(UpgradeId, proto_upgrade.upgrade_id.?),
                 .mineral_cost = @intCast(i32, proto_upgrade.mineral_cost orelse 0),
                 .vespene_cost = @intCast(i32, proto_upgrade.vespene_cost orelse 0),
                 .research_time = proto_upgrade.research_time orelse 0,
-                .research_ability_id = @intToEnum(AbilityId, proto_upgrade.ability_id orelse 0),
+                .research_ability_id = @enumFromInt(AbilityId, proto_upgrade.ability_id orelse 0),
             };
 
             try gd.upgrades.put(upg.id, upg);
@@ -2071,7 +2071,7 @@ pub const GameData = struct {
                     const target_type = weapon_proto.target_type.?;
                     const range = weapon_proto.range.?;
                     const speed = weapon_proto.speed.?;
-                    const attacks: f32 = @intToFloat(f32, weapon_proto.attacks.?);
+                    const attacks: f32 = @floatFromInt(f32, weapon_proto.attacks.?);
                     const damage = weapon_proto.damage.?;
                     const dps = (damage*attacks) / speed;
                     switch (target_type) {
@@ -2094,7 +2094,7 @@ pub const GameData = struct {
             }
 
             const unit = UnitData{
-                .id = @intToEnum(UnitId, proto_unit.unit_id.?),
+                .id = @enumFromInt(UnitId, proto_unit.unit_id.?),
                 .cargo_size = @intCast(i32, proto_unit.cargo_size orelse 0),
                 .movement_speed = proto_unit.movement_speed orelse 0,
                 .armor = proto_unit.armor orelse 0,
@@ -2106,7 +2106,7 @@ pub const GameData = struct {
                 .vespene_cost = @intCast(i32, proto_unit.vespene_cost orelse 0),
                 .food_required = proto_unit.food_required orelse 0,
                 .food_provided = proto_unit.food_provided orelse 0,
-                .train_ability_id = @intToEnum(AbilityId, proto_unit.ability_id orelse 0),
+                .train_ability_id = @enumFromInt(AbilityId, proto_unit.ability_id orelse 0),
                 .race = proto_unit.race orelse Race.none,
                 .build_time = proto_unit.build_time orelse 0,
                 .sight_range = proto_unit.sight_range orelse 0,

@@ -37,7 +37,7 @@ pub const ProtoReader = struct {
         var header = try self.decodeUInt64();
 
         return ProtoHeader {
-            .wire_type = @intToEnum(WireType, header & 7),
+            .wire_type = @enumFromInt(WireType, header & 7),
             .field_number = @truncate(u8, header >> 3),
         };
     }
@@ -55,14 +55,14 @@ pub const ProtoReader = struct {
         // Seems fixed in 10.1
         const TupleType = comptime t: {
             var tuple_types: [field_nums_tuple.len]type = undefined;
-            inline for (field_nums_tuple) |field_info, i| {
+            inline for (field_nums_tuple, 0..) |field_info, i| {
                 const field_name = field_info[0];
                 const info = @typeInfo(@TypeOf(@field(res, field_name)));
                 const child_type = info.Optional.child;
                 const child_info = @typeInfo(child_type);
                 tuple_types[i] = switch (child_info) {
                     .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child),
-                    else => u8,
+                    else => void,
                 };
             }
             break :t std.meta.Tuple(&tuple_types);
@@ -70,14 +70,14 @@ pub const ProtoReader = struct {
         
         var list_tuple: TupleType = comptime l: {
             var tuple: TupleType = undefined;
-            inline for (field_nums_tuple) |field_info, i| {
+            inline for (field_nums_tuple, 0..) |field_info, i| {
                 const field_name = field_info[0];
                 const info = @typeInfo(@TypeOf(@field(res, field_name)));
                 const child_type = info.Optional.child;
                 const child_info = @typeInfo(child_type);
                 tuple[i] = switch (child_info) {
                     .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child){},
-                    else => 0,
+                    else => {},
                 };
             }
             break :l tuple;
@@ -89,7 +89,7 @@ pub const ProtoReader = struct {
             const header = try self.decodeProtoHeader();
 
             var recognized_field = false;
-            inline for (field_nums_tuple) |field_info, i| {
+            inline for (field_nums_tuple, 0..) |field_info, i| {
                 const field_name = field_info[0];
                 const field_num = field_info[1];
 
@@ -133,7 +133,7 @@ pub const ProtoReader = struct {
                                             },
                                             .Enum => {
                                                 const enum_int = try self.decodeUInt64();
-                                                try list_tuple[i].append(allocator, @intToEnum(ptr.child, enum_int));
+                                                try list_tuple[i].append(allocator, @enumFromInt(ptr.child, enum_int));
                                             },
                                             else => unreachable,
                                         }
@@ -166,7 +166,7 @@ pub const ProtoReader = struct {
                         },
                         .Enum => {
                             const enum_int = try self.decodeUInt64();
-                            obj_field.* = @intToEnum(child_type, enum_int);
+                            obj_field.* = @enumFromInt(child_type, enum_int);
                         },
                         else => unreachable,
                     }
@@ -203,7 +203,7 @@ pub const ProtoReader = struct {
     fn decodeUInt64(self: *ProtoReader) ParseError!u64 {
         var value: u64 = 0;
 
-        for (self.bytes[self.bytes_read..]) |byte, i| {
+        for (self.bytes[self.bytes_read..], 0..) |byte, i| {
             if (i >= 10) {
                 return error.Overflow;
             }
@@ -255,7 +255,7 @@ pub const ProtoWriter = struct {
 
     fn encodeProtoHeader(self: *ProtoWriter, header: ProtoHeader) void {
         var num = @as(u64, header.field_number) << 3;
-        num += @enumToInt(header.wire_type);
+        num += @intFromEnum(header.wire_type);
         self.encodeUInt64(num);
     }
 
@@ -344,12 +344,12 @@ pub const ProtoWriter = struct {
                     .Bool => {
                         const field_header = ProtoHeader{.wire_type = .varint, .field_number = field_num};
                         self.encodeProtoHeader(field_header);
-                        self.encodeUInt64(@as(u64, @boolToInt(data)));
+                        self.encodeUInt64(@as(u64, @intFromBool(data)));
                     },
                     .Enum => {
                         const field_header = ProtoHeader{.wire_type = .varint, .field_number = field_num};
                         self.encodeProtoHeader(field_header);
-                        self.encodeUInt64(@as(u64, @enumToInt(data)));
+                        self.encodeUInt64(@as(u64, @intFromEnum(data)));
                     },
                     .Void => {
                         // This only comes up when the proto file has an empty embedded message

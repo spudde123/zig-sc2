@@ -127,7 +127,7 @@ pub const Point2 = struct {
     pub fn octileDistance(self: Point2, other: Point2) f32 {
         const x_diff = math.fabs(self.x - other.x);
         const y_diff = math.fabs(self.y - other.y);
-        return math.max(x_diff, y_diff) + (math.sqrt2 - 1)*math.min(x_diff, y_diff);
+        return @max(x_diff, y_diff) + (math.sqrt2 - 1)*@min(x_diff, y_diff);
     }
 
 };
@@ -152,8 +152,8 @@ pub const Grid = struct {
     h: usize,
 
     pub fn getValue(self: Grid, point: Point2) u8 {
-        const x: usize = @floatToInt(usize, math.floor(point.x));
-        const y: usize = @floatToInt(usize, math.floor(point.y));
+        const x: usize = @intFromFloat(usize, math.floor(point.x));
+        const y: usize = @intFromFloat(usize, math.floor(point.y));
 
         assert(x >= 0 and x < self.w);
         assert(y >= 0 and y < self.h);
@@ -183,14 +183,14 @@ pub const Grid = struct {
     }
 
     pub fn pointToIndex(self: Grid, point: Point2) usize {
-        const x: usize = @floatToInt(usize, math.floor(point.x));
-        const y: usize = @floatToInt(usize, math.floor(point.y));
+        const x: usize = @intFromFloat(usize, math.floor(point.x));
+        const y: usize = @intFromFloat(usize, math.floor(point.y));
         return x + y*self.w;
     }
 
     pub fn indexToPoint(self: Grid, index: usize) Point2 {
-        const x = @intToFloat(f32, @mod(index, self.w));
-        const y = @intToFloat(f32, @divFloor(index, self.w));
+        const x = @floatFromInt(f32, @mod(index, self.w));
+        const y = @floatFromInt(f32, @divFloor(index, self.w));
         return .{
             .x = x,
             .y = y,
@@ -208,7 +208,7 @@ pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid, terrain: Gri
     const h = pathing.h;
     const level_diff = 16;
 
-    for (pathing.data) |val, i| {
+    for (pathing.data, 0..) |val, i| {
         const x = @mod(i, w);
         const y = i / w;
         // Edges of the map are pointless regardless
@@ -264,7 +264,7 @@ pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid, terrain: Gri
         }
     }
 
-    return list.toOwnedSlice();
+    return list.toOwnedSlice() catch &[_]usize{};
 }
 
 pub fn createReaperGrid(allocator: mem.Allocator, pathing_grid: Grid, climbable_points: []const usize) !Grid {
@@ -343,8 +343,8 @@ pub const InfluenceMap = struct {
 
     pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid) !InfluenceMap {
         var grid = try allocator.alloc(f32, base_grid.data.len);
-        for (base_grid.data) |val, i| {
-            grid[i] = if (val > 0) 1 else math.f32_max;
+        for (base_grid.data, 0..) |val, i| {
+            grid[i] = if (val > 0) 1 else math.floatMax(f32);
         }
         return .{
             .grid = grid,
@@ -354,8 +354,8 @@ pub const InfluenceMap = struct {
     }
 
     pub fn reset(self: *InfluenceMap, base_grid: Grid) void {
-        for (base_grid.data) |val, i| {
-            self.grid[i] = if (val > 0) 1 else math.f32_max;
+        for (base_grid.data, 0..) |val, i| {
+            self.grid[i] = if (val > 0) 1 else math.floatMax(f32);
         }
     }
 
@@ -368,12 +368,12 @@ pub const InfluenceMap = struct {
     }
 
     pub fn addInfluence(self: *InfluenceMap, center: Point2, radius: f32, amount: f32, decay: Decay) void {
-        const f32_w = @intToFloat(f32, self.w - 1);
-        const f32_h = @intToFloat(f32, self.h - 1);
-        const bounding_rect_min_x = @floatToInt(usize, math.max(center.x - radius, 0));
-        const bounding_rect_max_x = @floatToInt(usize, math.min(center.x + radius, f32_w));
-        const bounding_rect_min_y = @floatToInt(usize, math.max(center.y - radius, 0));
-        const bounding_rect_max_y = @floatToInt(usize, math.min(center.y + radius, f32_h));
+        const f32_w = @floatFromInt(f32, self.w - 1);
+        const f32_h = @floatFromInt(f32, self.h - 1);
+        const bounding_rect_min_x = @intFromFloat(usize, @max(center.x - radius, 0));
+        const bounding_rect_max_x = @intFromFloat(usize, @min(center.x + radius, f32_w));
+        const bounding_rect_min_y = @intFromFloat(usize, @max(center.y - radius, 0));
+        const bounding_rect_max_y = @intFromFloat(usize, @min(center.y + radius, f32_h));
         const r_sqrd = radius*radius;
 
         var y = bounding_rect_min_y;
@@ -392,7 +392,7 @@ pub const InfluenceMap = struct {
                             self.grid[index] += (1 - t)*amount + t*end_amount;
                         },
                     }
-                    self.grid[index] = math.max(1, self.grid[index]);
+                    self.grid[index] = @max(1, self.grid[index]);
                 }
             }
         }
@@ -404,22 +404,22 @@ pub const InfluenceMap = struct {
     }
 
     pub fn addInfluenceCreep(self: *InfluenceMap, creep: Grid, amount: f32) void {
-        for (creep.data) |val, i| {
+        for (creep.data, 0..) |val, i| {
             if (val > 0) self.grid[i] += amount;
         }
     }
 
     pub fn findClosestSafeSpot(self: *InfluenceMap, pos: Point2, radius: f32) ?Point2 {
-        const f32_w = @intToFloat(f32, self.w - 1);
-        const f32_h = @intToFloat(f32, self.h - 1);
-        const bounding_rect_min_x = @floatToInt(usize, math.max(pos.x - radius, 0));
-        const bounding_rect_max_x = @floatToInt(usize, math.min(pos.x + radius, f32_w));
-        const bounding_rect_min_y = @floatToInt(usize, math.max(pos.y - radius, 0));
-        const bounding_rect_max_y = @floatToInt(usize, math.min(pos.y + radius, f32_h));
+        const f32_w = @floatFromInt(f32, self.w - 1);
+        const f32_h = @floatFromInt(f32, self.h - 1);
+        const bounding_rect_min_x = @intFromFloat(usize, @max(pos.x - radius, 0));
+        const bounding_rect_max_x = @intFromFloat(usize, @min(pos.x + radius, f32_w));
+        const bounding_rect_min_y = @intFromFloat(usize, @max(pos.y - radius, 0));
+        const bounding_rect_max_y = @intFromFloat(usize, @min(pos.y + radius, f32_h));
         const r_sqrd = radius*radius;
 
-        var best_val: f32 = math.f32_max;
-        var best_dist: f32 = math.f32_max;
+        var best_val: f32 = math.floatMax(f32);
+        var best_dist: f32 = math.floatMax(f32);
         var best_point: ?Point2 = null;
 
         var y = bounding_rect_min_y;
@@ -429,7 +429,7 @@ pub const InfluenceMap = struct {
                 const index = x + self.w*y;
                 const point = self.indexToPoint(index).add(.{.x = 0.5, .y = 0.5});
                 const dist_sqrd = point.distanceSquaredTo(pos);
-                if (dist_sqrd < r_sqrd and self.grid[index] <= best_val and self.grid[index] < math.f32_max and dist_sqrd < best_dist) {
+                if (dist_sqrd < r_sqrd and self.grid[index] <= best_val and self.grid[index] < math.floatMax(f32) and dist_sqrd < best_dist) {
                     best_val = self.grid[index];
                     best_dist = dist_sqrd;
                     best_point = point;
@@ -467,15 +467,15 @@ pub const InfluenceMap = struct {
     /// that is pathable
     fn findClosestValidPoint(self: InfluenceMap, pos: Point2) ?Point2 {
         const radius = 6;
-        const f32_w = @intToFloat(f32, self.w - 1);
-        const f32_h = @intToFloat(f32, self.h - 1);
-        const bounding_rect_min_x = @floatToInt(usize, math.max(pos.x - radius, 0));
-        const bounding_rect_max_x = @floatToInt(usize, math.min(pos.x + radius, f32_w));
-        const bounding_rect_min_y = @floatToInt(usize, math.max(pos.y - radius, 0));
-        const bounding_rect_max_y = @floatToInt(usize, math.min(pos.y + radius, f32_h));
+        const f32_w = @floatFromInt(f32, self.w - 1);
+        const f32_h = @floatFromInt(f32, self.h - 1);
+        const bounding_rect_min_x = @intFromFloat(usize, @max(pos.x - radius, 0));
+        const bounding_rect_max_x = @intFromFloat(usize, @min(pos.x + radius, f32_w));
+        const bounding_rect_min_y = @intFromFloat(usize, @max(pos.y - radius, 0));
+        const bounding_rect_max_y = @intFromFloat(usize, @min(pos.y + radius, f32_h));
         const r_sqrd = radius*radius;
 
-        var best_dist: f32 = math.f32_max;
+        var best_dist: f32 = math.floatMax(f32);
         var best_point: ?Point2 = null;
         
         const terrain_height = MapInfo.terrain_height;
@@ -491,7 +491,7 @@ pub const InfluenceMap = struct {
                 
                 const height = terrain_height[index];
                 const dist_sqrd = point.distanceSquaredTo(pos);
-                if (dist_sqrd < r_sqrd and height == height_at_start and self.grid[index] < math.f32_max and dist_sqrd < best_dist) {
+                if (dist_sqrd < r_sqrd and height == height_at_start and self.grid[index] < math.floatMax(f32) and dist_sqrd < best_dist) {
                     best_dist = dist_sqrd;
                     best_point = point;
                 }
@@ -507,7 +507,7 @@ pub const InfluenceMap = struct {
                 const index = x + self.w*y;
                 const point = self.indexToPoint(index);
                 const dist_sqrd = point.distanceSquaredTo(pos);
-                if (dist_sqrd < r_sqrd and self.grid[index] < math.f32_max and dist_sqrd < best_dist) {
+                if (dist_sqrd < r_sqrd and self.grid[index] < math.floatMax(f32) and dist_sqrd < best_dist) {
                     best_dist = dist_sqrd;
                     best_point = point;
                 }
@@ -518,7 +518,7 @@ pub const InfluenceMap = struct {
 
     pub fn validateEndPoint(self: InfluenceMap, pos: Point2) ?Point2 {
         const index = self.pointToIndex(pos);
-        if (self.grid[index] < math.f32_max) return pos;
+        if (self.grid[index] < math.floatMax(f32)) return pos;
 
         return self.findClosestValidPoint(pos);
     }
@@ -608,8 +608,8 @@ pub const InfluenceMap = struct {
 
         const large_unit_f32: f32 = if (large_unit) 1 else 0;
         const Vector = @Vector(3, f32);
-        const no_large: Vector = @splat(3, @as(f32, math.f32_max));
-        const with_large = Vector{1, math.f32_max, math.f32_max};
+        const no_large: Vector = @splat(3, @as(f32, math.floatMax(f32)));
+        const with_large = Vector{1, math.floatMax(f32), math.floatMax(f32)};
 
         var closed = try std.DynamicBitSet.initEmpty(allocator, self.w*self.h);
         defer closed.deinit();
@@ -629,22 +629,22 @@ pub const InfluenceMap = struct {
             if (@reduce(.And, v1 < no_large)) neighbors.appendAssumeCapacity(.{.index = index - w - 1, .movement_cost = sqrt2});
             
             const v2 = Vector{large_unit_f32, grid[index - w - 1], grid[index - w + 1]};
-            if (grid[index - w] < math.f32_max and @reduce(.Or, v2 < with_large)) neighbors.appendAssumeCapacity(.{.index = index - w, .movement_cost = 1});
+            if (grid[index - w] < math.floatMax(f32) and @reduce(.Or, v2 < with_large)) neighbors.appendAssumeCapacity(.{.index = index - w, .movement_cost = 1});
             
             const v3 = Vector{grid[index - w + 1], grid[index + 1], grid[index - w]};
             if (@reduce(.And, v3 < no_large)) neighbors.appendAssumeCapacity(.{.index = index - w + 1, .movement_cost = sqrt2});
             
             const v4 = Vector{large_unit_f32, grid[index - w - 1], grid[index + w - 1]};
-            if (grid[index - 1] < math.f32_max and @reduce(.Or, v4 < with_large)) neighbors.appendAssumeCapacity(.{.index = index - 1, .movement_cost = 1});
+            if (grid[index - 1] < math.floatMax(f32) and @reduce(.Or, v4 < with_large)) neighbors.appendAssumeCapacity(.{.index = index - 1, .movement_cost = 1});
 
             const v5 = Vector{large_unit_f32, grid[index - w + 1], grid[index + w + 1]};
-            if (grid[index + 1] < math.f32_max and @reduce(.Or, v5 < with_large)) neighbors.appendAssumeCapacity(.{.index = index + 1, .movement_cost = 1});
+            if (grid[index + 1] < math.floatMax(f32) and @reduce(.Or, v5 < with_large)) neighbors.appendAssumeCapacity(.{.index = index + 1, .movement_cost = 1});
 
             const v6 = Vector{grid[index + w - 1], grid[index - 1], grid[index + w]};
             if (@reduce(.And, v6 < no_large)) neighbors.appendAssumeCapacity(.{.index = index + w - 1, .movement_cost = sqrt2});
             
             const v7 = Vector{large_unit_f32, grid[index + w - 1], grid[index + w + 1]};
-            if (grid[index + w] < math.f32_max and @reduce(.Or, v7 < with_large)) neighbors.appendAssumeCapacity(.{.index = index + w, .movement_cost = 1});
+            if (grid[index + w] < math.floatMax(f32) and @reduce(.Or, v7 < with_large)) neighbors.appendAssumeCapacity(.{.index = index + w, .movement_cost = 1});
 
             const v8 = Vector{grid[index + w + 1], grid[index + 1], grid[index + w]};
             if (@reduce(.And, v8 < no_large)) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
@@ -708,28 +708,28 @@ pub const InfluenceMap = struct {
             // We are assuming that we won't go out of bounds because in ingame grids the playable area is always only a portion
             // in the middle and it's surrounded by a lot of unpathable cells
 
-            if (grid[index - w - 1] < math.f32_max and grid[index - 1] < math.f32_max and grid[index - w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - w - 1, .movement_cost = sqrt2});
+            if (grid[index - w - 1] < math.floatMax(f32) and grid[index - 1] < math.floatMax(f32) and grid[index - w] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{.index = index - w - 1, .movement_cost = sqrt2});
             
-            if (grid[index - w] < math.f32_max) {
-                if (!large_unit or grid[index - w - 1] < math.f32_max or grid[index - w + 1] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - w, .movement_cost = 1});
+            if (grid[index - w] < math.floatMax(f32)) {
+                if (!large_unit or grid[index - w - 1] < math.floatMax(f32) or grid[index - w + 1] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{.index = index - w, .movement_cost = 1});
             }
-            if (grid[index - w + 1] < math.f32_max and grid[index + 1] < math.f32_max and grid[index - w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - w + 1, .movement_cost = sqrt2});
+            if (grid[index - w + 1] < math.floatMax(f32) and grid[index + 1] < math.floatMax(f32) and grid[index - w] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{.index = index - w + 1, .movement_cost = sqrt2});
             
-            if (grid[index - 1] < math.f32_max) {
-                if (!large_unit or grid[index - w - 1] < math.f32_max or grid[index + w - 1] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index - 1, .movement_cost = 1});
+            if (grid[index - 1] < math.floatMax(f32)) {
+                if (!large_unit or grid[index - w - 1] < math.floatMax(f32) or grid[index + w - 1] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{.index = index - 1, .movement_cost = 1});
             }
 
-            if (grid[index + 1] < math.f32_max) {
-                if (!large_unit or grid[index - w + 1] < math.f32_max or grid[index + w + 1] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + 1, .movement_cost = 1});
+            if (grid[index + 1] < math.floatMax(f32)) {
+                if (!large_unit or grid[index - w + 1] < math.floatMax(f32) or grid[index + w + 1] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{.index = index + 1, .movement_cost = 1});
             }
 
-            if (grid[index + w - 1] < math.f32_max and grid[index - 1] < math.f32_max and grid[index + w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w - 1, .movement_cost = sqrt2});
+            if (grid[index + w - 1] < math.floatMax(f32) and grid[index - 1] < math.floatMax(f32) and grid[index + w] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{.index = index + w - 1, .movement_cost = sqrt2});
             
-            if (grid[index + w] < math.f32_max) {
-                if (!large_unit or grid[index + w - 1] < math.f32_max or grid[index + w + 1] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w, .movement_cost = 1});
+            if (grid[index + w] < math.floatMax(f32)) {
+                if (!large_unit or grid[index + w - 1] < math.floatMax(f32) or grid[index + w + 1] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{.index = index + w, .movement_cost = 1});
             }
 
-            if (grid[index + w + 1] < math.f32_max and grid[index + 1] < math.f32_max and grid[index + w] < math.f32_max) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
+            if (grid[index + w + 1] < math.floatMax(f32) and grid[index + 1] < math.floatMax(f32) and grid[index + w] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{.index = index + w + 1, .movement_cost = sqrt2});
 
             for (neighbors.constSlice()) |nbr| {
                 if (closed.isSet(nbr.index)) continue;
@@ -755,14 +755,14 @@ pub const InfluenceMap = struct {
     }
     
     pub fn pointToIndex(self: InfluenceMap, point: Point2) usize {
-        const x: usize = @floatToInt(usize, math.floor(point.x));
-        const y: usize = @floatToInt(usize, math.floor(point.y));
+        const x: usize = @intFromFloat(usize, math.floor(point.x));
+        const y: usize = @intFromFloat(usize, math.floor(point.y));
         return x + y*self.w;
     }
 
     pub fn indexToPoint(self: InfluenceMap, index: usize) Point2 {
-        const x = @intToFloat(f32, @mod(index, self.w));
-        const y = @intToFloat(f32, @divFloor(index, self.w));
+        const x = @floatFromInt(f32, @mod(index, self.w));
+        const y = @floatFromInt(f32, @divFloor(index, self.w));
         return .{
             .x = x,
             .y = y,
@@ -779,17 +779,17 @@ test "test_pf_basic" {
     var data = try allocator.alloc(u8, size*size);
     defer allocator.free(data);
 
-    mem.set(u8, data, 0);
+    @memset(data, 0);
     var row: usize = 1;
     while (row < size - 1) : (row += 1) {
-        mem.set(u8, data[1 + row*size .. (row + 1)*size - 1], 1);
+        @memset(data[1 + row*size .. (row + 1)*size - 1], 1);
     }
     var grid = Grid{.data = data, .w = size, .h = size};
 
     var terrain_data = try allocator.alloc(u8, size*size);
     defer allocator.free(terrain_data);
 
-    mem.set(u8, terrain_data, 10);
+    @memset(terrain_data, 10);
     InfluenceMap.MapInfo.terrain_height = terrain_data;
 
     var map = try InfluenceMap.fromGrid(allocator, grid);

@@ -185,7 +185,7 @@ pub const UnitDistanceResult = struct {
 };
 
 pub fn findClosestUnit(units: []Unit, pos: Point2) ?UnitDistanceResult {
-    var min_distance: f32 = math.f32_max;
+    var min_distance: f32 = math.floatMax(f32);
     var closest_unit_result: ?UnitDistanceResult = null;
     for (units) |unit| {
         const dist_sqrd = unit.position.distanceSquaredTo(pos);
@@ -228,7 +228,7 @@ pub fn filter(
             list.append(unit) catch continue;
         }
     }
-    return list.toOwnedSlice();
+    return list.toOwnedSlice() catch &[_]Unit{};
 }
 
 pub fn amountOfType(
@@ -266,7 +266,7 @@ pub fn ofType(
             list.append(unit) catch continue;
         }
     }
-    return list.toOwnedSlice();
+    return list.toOwnedSlice() catch &[_]Unit{};
 }
 
 pub fn ofTypes(
@@ -280,7 +280,7 @@ pub fn ofTypes(
             list.append(unit) catch continue;
         }
     }
-    return list.toOwnedSlice();
+    return list.toOwnedSlice() catch &[_]Unit{};
 }
 
 fn unitTypeMatches(context: UnitId, unit: Unit) bool {
@@ -382,7 +382,7 @@ pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: 
 
         pub fn findClosest(self: *Self, pos: Point2) ?UnitDistanceResult {
             self.index = 0;
-            var min_dist: f32 = math.f32_max;
+            var min_dist: f32 = math.floatMax(f32);
             var result: ?UnitDistanceResult = null;
             while (self.next()) |unit| {
                 const dist = pos.distanceSquaredTo(unit.position);
@@ -400,7 +400,7 @@ pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: 
 
         pub fn findClosestUsingAbility(self: *Self, pos: Point2, ability: AbilityId) ?UnitDistanceResult {
             self.index = 0;
-            var min_dist: f32 = math.f32_max;
+            var min_dist: f32 = math.floatMax(f32);
             var result: ?UnitDistanceResult = null;
             while (self.next()) |unit| {
                 if (!unit.isUsingAbility(ability)) continue;

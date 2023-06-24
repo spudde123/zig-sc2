@@ -187,7 +187,7 @@ pub const WebSocketClient = struct {
         const cg_data = create_game_res.create_game.?;
 
         if (cg_data.error_code) |code| {
-            std.debug.print("Create game error: {d}\n", .{@enumToInt(code)});
+            std.debug.print("Create game error: {d}\n", .{@intFromEnum(code)});
             if (cg_data.error_details) |details| {
                 std.debug.print("{s}\n", .{details});
             }
@@ -197,7 +197,7 @@ pub const WebSocketClient = struct {
         if (create_game_res.status.? != sc2p.Status.init_game) {
             std.debug.print(
                 "Wrong status after create game: {d}\n",
-                .{@enumToInt(create_game_res.status.?)}
+                .{@intFromEnum(create_game_res.status.?)}
             );
             return ClientError.BadResponse;
         }
@@ -393,7 +393,7 @@ pub const WebSocketClient = struct {
         var writer = proto.ProtoWriter{.buffer = self.req_buffer};
         var query_list = self.step_allocator.alloc(sc2p.RequestQueryAvailableAbilities, unit_tags.len) catch return null;
 
-        for (unit_tags) |tag, i| {
+        for (unit_tags, 0..) |tag, i| {
             const abil_req = sc2p.RequestQueryAvailableAbilities{
                 .unit_tag = tag,
             };
@@ -494,7 +494,7 @@ pub const WebSocketClient = struct {
 
     pub fn writeAndWaitForMessage(self: *WebSocketClient, payload: []u8) !sc2p.Response {
         {
-            self.storage[0] = @enumToInt(OpCode.binary);
+            self.storage[0] = @intFromEnum(OpCode.binary);
             self.storage[0] |= 0x80;
 
             var payload_start: usize = 2;
