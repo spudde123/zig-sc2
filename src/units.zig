@@ -122,34 +122,28 @@ pub const Unit = struct {
     pub fn isCollecting(self: Unit) bool {
         if (self.orders.len == 0) return false;
         const order = self.orders[0];
-        
-        return (
-            order.ability_id == .Harvest_Gather_SCV
-            or order.ability_id == .Harvest_Return_SCV
-            or order.ability_id == .Harvest_Gather_Drone
-            or order.ability_id == .Harvest_Return_Drone
-            or order.ability_id == .Harvest_Gather_Probe
-            or order.ability_id == .Harvest_Return_Probe
-            or order.ability_id == .Harvest_Gather_Mule
-            or order.ability_id == .Harvest_Return_Mule
-        );
+
+        return (order.ability_id == .Harvest_Gather_SCV or
+            order.ability_id == .Harvest_Return_SCV or
+            order.ability_id == .Harvest_Gather_Drone or
+            order.ability_id == .Harvest_Return_Drone or
+            order.ability_id == .Harvest_Gather_Probe or
+            order.ability_id == .Harvest_Return_Probe or
+            order.ability_id == .Harvest_Gather_Mule or
+            order.ability_id == .Harvest_Return_Mule);
     }
 
     pub fn isRepairing(self: Unit) bool {
         if (self.orders.len == 0) return false;
         const order = self.orders[0];
-        
-        return (
-            order.ability_id == .Effect_Repair
-            or order.ability_id == .Effect_Repair_Mule
-            or order.ability_id == .Effect_Repair_SCV
-        );
+
+        return (order.ability_id == .Effect_Repair or order.ability_id == .Effect_Repair_Mule or order.ability_id == .Effect_Repair_SCV);
     }
 
     pub fn isUsingAbility(self: Unit, ability: AbilityId) bool {
         if (self.orders.len == 0) return false;
         const order = self.orders[0];
-        
+
         return order.ability_id == ability;
     }
 
@@ -169,7 +163,7 @@ pub const Unit = struct {
 
     pub fn isReady(self: Unit) bool {
         return self.build_progress >= 1;
-    } 
+    }
 };
 
 pub fn getUnitByTag(units: []Unit, tag: u64) ?Unit {
@@ -219,7 +213,7 @@ pub fn findFurthestUnit(units: []Unit, pos: Point2) ?UnitDistanceResult {
 pub fn filter(
     units: []Unit,
     allocator: mem.Allocator,
-    context: anytype, 
+    context: anytype,
     comptime filterFn: fn (context: @TypeOf(context), unit: Unit) bool,
 ) []Unit {
     var list = std.ArrayList(Unit).init(allocator);
@@ -289,51 +283,51 @@ fn unitTypeMatches(context: UnitId, unit: Unit) bool {
 
 fn unitTypesMatch(context: []const UnitId, unit: Unit) bool {
     for (context) |unit_id| {
-        if(unit.unit_type == unit_id) return true;
+        if (unit.unit_type == unit_id) return true;
     }
     return false;
 }
 
 fn unitTypesDontMatch(context: []const UnitId, unit: Unit) bool {
     for (context) |unit_id| {
-        if(unit.unit_type == unit_id) return false;
+        if (unit.unit_type == unit_id) return false;
     }
     return true;
 }
 
 fn tagsMatch(context: []u64, unit: Unit) bool {
     for (context) |tag| {
-        if(unit.tag == tag) return true;
+        if (unit.tag == tag) return true;
     }
     return false;
 }
 
 fn tagsDontMatch(context: []u64, unit: Unit) bool {
     for (context) |tag| {
-        if(unit.tag == tag) return false;
+        if (unit.tag == tag) return false;
     }
-    
+
     return true;
 }
 
 pub fn includeTags(tags: []u64, units: []Unit) UnitIterator([]u64, tagsMatch) {
-    return UnitIterator([]u64, tagsMatch){.buffer = units, .context = tags};
+    return UnitIterator([]u64, tagsMatch){ .buffer = units, .context = tags };
 }
 
 pub fn excludeTags(tags: []u64, units: []Unit) UnitIterator([]u64, tagsDontMatch) {
-    return UnitIterator([]u64, tagsDontMatch){.buffer = units, .context = tags};
+    return UnitIterator([]u64, tagsDontMatch){ .buffer = units, .context = tags };
 }
 
 pub fn includeType(unit_type: UnitId, units: []Unit) UnitIterator(UnitId, unitTypeMatches) {
-    return UnitIterator(UnitId, unitTypeMatches){.buffer = units, .context = unit_type};
+    return UnitIterator(UnitId, unitTypeMatches){ .buffer = units, .context = unit_type };
 }
 
 pub fn includeTypes(unit_types: []const UnitId, units: []Unit) UnitIterator([]const UnitId, unitTypesMatch) {
-    return UnitIterator([]const UnitId, unitTypesMatch){.buffer = units, .context = unit_types};
+    return UnitIterator([]const UnitId, unitTypesMatch){ .buffer = units, .context = unit_types };
 }
 
 pub fn excludeTypes(unit_types: []const UnitId, units: []Unit) UnitIterator([]const UnitId, unitTypesDontMatch) {
-    return UnitIterator([]const UnitId, unitTypesDontMatch){.buffer = units, .context = unit_types};
+    return UnitIterator([]const UnitId, unitTypesDontMatch){ .buffer = units, .context = unit_types };
 }
 
 pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: ContextType, unit: Unit) bool) type {
@@ -343,7 +337,7 @@ pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: 
         context: ContextType,
 
         const Self = @This();
-        
+
         pub fn next(self: *Self) ?Unit {
             if (self.index >= self.buffer.len) return null;
 
@@ -366,7 +360,7 @@ pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: 
         }
 
         pub fn count(self: *Self) usize {
-            self.index = 0;    
+            self.index = 0;
 
             var result: usize = 0;
             while (self.next()) |_| {

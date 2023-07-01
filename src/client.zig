@@ -29,7 +29,7 @@ const OpCode = enum(u4) {
     _,
 };
 
-pub const ClientError = error {
+pub const ClientError = error{
     BadResponse,
     ErrorsField,
     ReplayBytes,
@@ -53,9 +53,8 @@ pub const BotSetup = struct {
 /// https://github.com/Blizzard/s2client-proto.
 /// It doesn't use other frame types specified
 /// in the websocket protocol besides binary
-/// and it doesn't use masking of the messages 
+/// and it doesn't use masking of the messages
 pub const WebSocketClient = struct {
-    
     addr: net.Address,
     socket: net.Stream,
     prng: rand.Random,
@@ -68,15 +67,14 @@ pub const WebSocketClient = struct {
     /// while the client is in use.
     /// step_alloc is meant to be freed after each game loop
     pub fn init(host: []const u8, port: u16, perm_alloc: mem.Allocator, step_alloc: mem.Allocator) !WebSocketClient {
-
         const addr = try net.Address.parseIp(host, port);
         const socket = try net.tcpConnectToAddress(addr);
 
         const seed = @truncate(u64, @bitCast(u128, time.nanoTimestamp()));
         var xoshiro = std.rand.DefaultPrng.init(seed);
         const prng = xoshiro.random();
-        const req_buffer = try perm_alloc.alloc(u8, 1024*1000);
-        const storage = try perm_alloc.alloc(u8, 5*1024*1000);
+        const req_buffer = try perm_alloc.alloc(u8, 1024 * 1000);
+        const storage = try perm_alloc.alloc(u8, 5 * 1024 * 1000);
 
         return WebSocketClient{
             .addr = addr,
@@ -96,17 +94,16 @@ pub const WebSocketClient = struct {
     }
 
     pub fn completeHandshake(self: *WebSocketClient, path: []const u8) !bool {
-        
         var raw_key: [handshake_key_length]u8 = undefined;
         var handshake_key: [handshake_key_length_b64]u8 = undefined;
-        
+
         self.prng.bytes(&raw_key);
 
         _ = base64.standard.Encoder.encode(&handshake_key, &raw_key);
 
         const request = "GET {s} HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: Websocket\r\nSec-WebSocket-Key: {s}\r\nSec-WebSocket-Version: 13\r\n\r\n";
         const stream = self.socket.writer();
-        try stream.print(request, .{path, handshake_key});
+        try stream.print(request, .{ path, handshake_key });
 
         var buf: [256]u8 = undefined;
         var total_read: usize = 0;
@@ -114,7 +111,7 @@ pub const WebSocketClient = struct {
             const n = try self.socket.read(buf[total_read..]);
             total_read += n;
         }
-        
+
         std.debug.print("{s}\n", .{buf[0..total_read]});
 
         var split_iter = mem.split(u8, buf[0..], "\r\n");
@@ -148,10 +145,10 @@ pub const WebSocketClient = struct {
         bot_setup: BotSetup,
         map_name: []const u8,
         computer: ComputerSetup,
-        realtime: bool
+        realtime: bool,
     ) !u32 {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
-        
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
+
         // Create game
         const bot_proto = sc2p.PlayerSetup{
             .player_type = .participant,
@@ -163,7 +160,7 @@ pub const WebSocketClient = struct {
             .ai_build = computer.build,
         };
 
-        var setups = [_]sc2p.PlayerSetup{bot_proto, computer_proto};
+        var setups = [_]sc2p.PlayerSetup{ bot_proto, computer_proto };
         const map = sc2p.LocalMap{
             .map_path = map_name,
         };
@@ -174,10 +171,10 @@ pub const WebSocketClient = struct {
             .disable_fog = false,
             .realtime = realtime,
         };
-        
-        const create_game_req = sc2p.Request{.create_game = create_game};
+
+        const create_game_req = sc2p.Request{ .create_game = create_game };
         const create_game_payload = writer.encodeBaseStruct(create_game_req);
-        
+
         const create_game_res = try self.writeAndWaitForMessage(create_game_payload);
         if (create_game_res.create_game == null or create_game_res.status == null) {
             std.debug.print("Did not get create game response\n", .{});
@@ -195,10 +192,7 @@ pub const WebSocketClient = struct {
         }
 
         if (create_game_res.status.? != sc2p.Status.init_game) {
-            std.debug.print(
-                "Wrong status after create game: {d}\n",
-                .{@intFromEnum(create_game_res.status.?)}
-            );
+            std.debug.print("Wrong status after create game: {d}\n", .{@intFromEnum(create_game_res.status.?)});
             return ClientError.BadResponse;
         }
 
@@ -213,7 +207,7 @@ pub const WebSocketClient = struct {
             .show_placeholders = true,
             .show_burrowed_shadows = true,
         };
-        
+
         const join_game = sc2p.RequestJoinGame{
             .race = bot_setup.race,
             .options = interface,
@@ -224,7 +218,7 @@ pub const WebSocketClient = struct {
 
         writer.cursor = 0;
 
-        const join_game_req = sc2p.Request{.join_game = join_game};
+        const join_game_req = sc2p.Request{ .join_game = join_game };
         const join_game_payload = writer.encodeBaseStruct(join_game_req);
 
         var join_game_res = try self.writeAndWaitForMessage(join_game_payload);
@@ -244,7 +238,6 @@ pub const WebSocketClient = struct {
         }
 
         return jg_data.player_id.?;
-
     }
 
     // @TODO: Implement this.
@@ -257,9 +250,7 @@ pub const WebSocketClient = struct {
         self: *WebSocketClient,
         bot_setup: BotSetup,
         start_port: u16,
-
     ) !u32 {
-
         const interface = sc2p.InterfaceOptions{
             .raw = true,
             .score = false,
@@ -281,7 +272,7 @@ pub const WebSocketClient = struct {
             .game_port = int_port + 3,
             .base_port = int_port + 4,
         };
-        
+
         const join_game = sc2p.RequestJoinGame{
             .race = bot_setup.race,
             .options = interface,
@@ -290,10 +281,9 @@ pub const WebSocketClient = struct {
             .player_name = bot_setup.name,
         };
 
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
-
-        const join_game_req = sc2p.Request{.join_game = join_game};
+        const join_game_req = sc2p.Request{ .join_game = join_game };
         const join_game_payload = writer.encodeBaseStruct(join_game_req);
 
         const join_game_res = try self.writeAndWaitForMessage(join_game_payload);
@@ -316,7 +306,7 @@ pub const WebSocketClient = struct {
     }
 
     pub fn getObservation(self: *WebSocketClient, game_loop: ?u32) !sc2p.ResponseObservation {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
         const obs_req = sc2p.RequestObservation{
             .disable_fog = false,
@@ -337,9 +327,9 @@ pub const WebSocketClient = struct {
     }
 
     pub fn getGameInfo(self: *WebSocketClient) !sc2p.ResponseGameInfo {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
-        const request = sc2p.Request{.game_info = {}};
+        const request = sc2p.Request{ .game_info = {} };
         const payload = writer.encodeBaseStruct(request);
 
         const res = try self.writeAndWaitForMessage(payload);
@@ -352,13 +342,13 @@ pub const WebSocketClient = struct {
     }
 
     pub fn getGameData(self: *WebSocketClient) !sc2p.ResponseData {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
         const data_request = sc2p.RequestData{
             .unit_id = true,
             .upgrade_id = true,
         };
-        const request = sc2p.Request{.game_data = data_request};
+        const request = sc2p.Request{ .game_data = data_request };
         const payload = writer.encodeBaseStruct(request);
 
         const res = try self.writeAndWaitForMessage(payload);
@@ -371,9 +361,9 @@ pub const WebSocketClient = struct {
     }
 
     pub fn sendActions(self: *WebSocketClient, action_proto: sc2p.RequestAction) !void {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
-        const request = sc2p.Request{.action = action_proto};
+        const request = sc2p.Request{ .action = action_proto };
         const payload = writer.encodeBaseStruct(request);
 
         _ = try self.writeAndWaitForMessage(payload);
@@ -381,16 +371,16 @@ pub const WebSocketClient = struct {
 
     pub fn sendDebugRequest(self: *WebSocketClient, debug_proto: sc2p.RequestDebug) void {
         // This can silently fail without a big problem.
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
-        const request = sc2p.Request{.debug = debug_proto};
+        const request = sc2p.Request{ .debug = debug_proto };
         const payload = writer.encodeBaseStruct(request);
 
         _ = self.writeAndWaitForMessage(payload) catch return;
     }
 
     pub fn getAvailableAbilities(self: *WebSocketClient, unit_tags: []u64, ignore_resource_requirements: bool) ?[]sc2p.ResponseQueryAvailableAbilities {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
         var query_list = self.step_allocator.alloc(sc2p.RequestQueryAvailableAbilities, unit_tags.len) catch return null;
 
         for (unit_tags, 0..) |tag, i| {
@@ -404,7 +394,7 @@ pub const WebSocketClient = struct {
             .ignore_resource_requirements = ignore_resource_requirements,
         };
 
-        const request = sc2p.Request{.query = query_req};
+        const request = sc2p.Request{ .query = query_req };
         const payload = writer.encodeBaseStruct(request);
 
         const res = self.writeAndWaitForMessage(payload) catch return null;
@@ -416,9 +406,9 @@ pub const WebSocketClient = struct {
     }
 
     pub fn sendPlacementQuery(self: *WebSocketClient, query: sc2p.RequestQuery) ?[]sc2p.ResponseQueryBuildingPlacement {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
-        const request = sc2p.Request{.query = query};
+        const request = sc2p.Request{ .query = query };
         const payload = writer.encodeBaseStruct(request);
 
         const res = self.writeAndWaitForMessage(payload) catch return null;
@@ -430,7 +420,7 @@ pub const WebSocketClient = struct {
     }
 
     pub fn step(self: *WebSocketClient, count: u32) !void {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
         const step_req = sc2p.RequestStep{
             .count = count,
@@ -445,18 +435,18 @@ pub const WebSocketClient = struct {
     }
 
     pub fn leave(self: *WebSocketClient) !void {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
-        const request = sc2p.Request{.leave_game = {}};
+        const request = sc2p.Request{ .leave_game = {} };
         const payload = writer.encodeBaseStruct(request);
 
         _ = try self.writeAndWaitForMessage(payload);
     }
 
     pub fn saveReplay(self: *WebSocketClient, replay_path: []const u8) !void {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
 
-        const request = sc2p.Request{.save_replay = {}};
+        const request = sc2p.Request{ .save_replay = {} };
         const payload = writer.encodeBaseStruct(request);
 
         const res = try self.writeAndWaitForMessage(payload);
@@ -473,15 +463,15 @@ pub const WebSocketClient = struct {
     }
 
     pub fn quit(self: *WebSocketClient) !void {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
-        const request = sc2p.Request{.quit = {}};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
+        const request = sc2p.Request{ .quit = {} };
         const payload = writer.encodeBaseStruct(request);
         _ = try self.writeAndWaitForMessage(payload);
     }
 
     pub fn ping(self: *WebSocketClient) sc2p.ResponsePing {
-        var writer = proto.ProtoWriter{.buffer = self.req_buffer};
-        const request = sc2p.Request{.ping = {}};
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
+        const request = sc2p.Request{ .ping = {} };
         const payload = writer.encodeBaseStruct(request);
         const res = self.writeAndWaitForMessage(payload) catch return .{};
 
@@ -520,7 +510,7 @@ pub const WebSocketClient = struct {
         var cursor: usize = 0;
         var read_length = try self.socket.read(self.storage);
         cursor += read_length;
-        
+
         while (!self.messageReceived(cursor)) {
             read_length = try self.socket.read(self.storage[cursor..]);
             cursor += read_length;
@@ -538,7 +528,7 @@ pub const WebSocketClient = struct {
             payload_start += 8;
         }
 
-        var reader = proto.ProtoReader{.bytes = self.storage[payload_start .. (payload_start + payload_length)]};
+        var reader = proto.ProtoReader{ .bytes = self.storage[payload_start..(payload_start + payload_length)] };
         const res = try reader.decodeStruct(reader.bytes.len, sc2p.Response, self.step_allocator);
 
         if (res.errors) |errors| {
@@ -569,7 +559,6 @@ pub const WebSocketClient = struct {
 
         return cursor >= payload_start + payload_length;
     }
-
 };
 
 fn checkHandshakeKey(original: []const u8, received: []const u8) bool {

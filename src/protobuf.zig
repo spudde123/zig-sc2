@@ -11,7 +11,7 @@ const WireType = enum(u8) {
     start_group = 3,
     end_group = 4,
     _32bit = 5,
-    _
+    _,
 };
 
 const ParseError = error{
@@ -36,17 +36,16 @@ pub const ProtoReader = struct {
     fn decodeProtoHeader(self: *ProtoReader) !ProtoHeader {
         var header = try self.decodeUInt64();
 
-        return ProtoHeader {
+        return ProtoHeader{
             .wire_type = @enumFromInt(WireType, header & 7),
             .field_number = @truncate(u8, header >> 3),
         };
     }
 
-
     /// Use an arena allocator and free all allocations afterwards when the results aren't needed anymore
     pub fn decodeStruct(self: *ProtoReader, size: usize, comptime T: type, allocator: mem.Allocator) ParseError!T {
         var res = T{};
-        
+
         const field_nums_tuple = @field(T, "field_nums");
         // Make a tuple to store arraylists for the fields
         // where we need to generate slices of unknown length.
@@ -67,7 +66,7 @@ pub const ProtoReader = struct {
             }
             break :t std.meta.Tuple(&tuple_types);
         };
-        
+
         var list_tuple: TupleType = comptime l: {
             var tuple: TupleType = undefined;
             inline for (field_nums_tuple, 0..) |field_info, i| {
@@ -84,7 +83,7 @@ pub const ProtoReader = struct {
         };
 
         var start: usize = self.bytes_read;
-        
+
         while (self.bytes_read - start < size) {
             const header = try self.decodeProtoHeader();
 
@@ -109,8 +108,7 @@ pub const ProtoReader = struct {
                             if (ptr.child == u8) {
                                 obj_field.* = try self.decodeBytes(allocator);
                             } else {
-
-                                switch(ptr.child) {
+                                switch (ptr.child) {
                                     []const u8 => {
                                         var string = try self.decodeBytes(allocator);
                                         try list_tuple[i].append(allocator, string);
@@ -137,7 +135,7 @@ pub const ProtoReader = struct {
                                             },
                                             else => unreachable,
                                         }
-                                    }
+                                    },
                                 }
                                 obj_field.* = list_tuple[i].items;
                             }
@@ -198,8 +196,8 @@ pub const ProtoReader = struct {
         }
 
         return res;
-    } 
-    
+    }
+
     fn decodeUInt64(self: *ProtoReader) ParseError!u64 {
         var value: u64 = 0;
 
@@ -228,21 +226,20 @@ pub const ProtoReader = struct {
         const num_of_bytes = try self.decodeUInt64();
         const header_len = self.bytes_read - starting_byte;
         var data = try allocator.alloc(u8, num_of_bytes);
-        mem.copy(u8, data, self.bytes[(starting_byte + header_len) .. (starting_byte + header_len + num_of_bytes)]);
+        mem.copy(u8, data, self.bytes[(starting_byte + header_len)..(starting_byte + header_len + num_of_bytes)]);
         self.bytes_read += num_of_bytes;
 
         return data;
     }
 
     fn decodeFloat(self: *ProtoReader) ParseError!f32 {
-        const float_bits = mem.readIntSliceLittle(u32, self.bytes[self.bytes_read .. (self.bytes_read + 4)]);
+        const float_bits = mem.readIntSliceLittle(u32, self.bytes[self.bytes_read..(self.bytes_read + 4)]);
         self.bytes_read += 4;
         return @bitCast(f32, float_bits);
     }
 };
 
 pub const ProtoWriter = struct {
-
     buffer: []u8,
     cursor: usize = 0,
 
@@ -250,7 +247,7 @@ pub const ProtoWriter = struct {
         self.cursor = 0;
         const varint_byte_length = self.encodeElementStruct(s);
         const total_size = self.cursor;
-        return self.buffer[varint_byte_length .. total_size];   
+        return self.buffer[varint_byte_length..total_size];
     }
 
     fn encodeProtoHeader(self: *ProtoWriter, header: ProtoHeader) void {
@@ -262,35 +259,34 @@ pub const ProtoWriter = struct {
     // Returns the number of bytes the preceding varint takes
     // so encodeBaseStruct can use it
     fn encodeElementStruct(self: *ProtoWriter, s: anytype) usize {
-        
+
         // Leave 1 space for varint size by default
         self.cursor += 1;
 
         const content_start: usize = self.cursor;
         const field_nums_tuple = @field(@TypeOf(s), "field_nums");
-        
+
         inline for (field_nums_tuple) |field_info| {
             const field_name = field_info[0];
             const field_num = field_info[1];
             const obj_field = @field(s, field_name);
 
             if (obj_field) |data| {
-                
                 const info = @typeInfo(@TypeOf(data));
                 switch (info) {
                     .Struct => {
-                        const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
+                        const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
                         self.encodeProtoHeader(field_header);
                         _ = self.encodeElementStruct(data);
                     },
                     .Pointer => |ptr| {
                         if (ptr.child == u8) {
-                            const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
+                            const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
 
                             self.encodeProtoHeader(field_header);
                             self.encodeBytes(data);
                         } else if (ptr.child == []const u8) {
-                            const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
+                            const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
 
                             for (data) |string| {
                                 self.encodeProtoHeader(field_header);
@@ -300,7 +296,7 @@ pub const ProtoWriter = struct {
                             const child_info = @typeInfo(ptr.child);
                             switch (child_info) {
                                 .Struct => {
-                                    const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
+                                    const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
 
                                     for (data) |d| {
                                         self.encodeProtoHeader(field_header);
@@ -308,7 +304,7 @@ pub const ProtoWriter = struct {
                                     }
                                 },
                                 .Int => |int| {
-                                    const field_header = ProtoHeader{.wire_type = .varint, .field_number = field_num};
+                                    const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
 
                                     for (data) |integer_val| {
                                         self.encodeProtoHeader(field_header);
@@ -324,8 +320,7 @@ pub const ProtoWriter = struct {
                         }
                     },
                     .Int => |int| {
-                        
-                        const field_header = ProtoHeader{.wire_type = .varint, .field_number = field_num};
+                        const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
                         self.encodeProtoHeader(field_header);
 
                         if (int.signedness == .unsigned) {
@@ -336,24 +331,24 @@ pub const ProtoWriter = struct {
                     },
                     .Float => |float| {
                         if (float.bits == 32) {
-                            const field_header = ProtoHeader{.wire_type = ._32bit, .field_number = field_num};
+                            const field_header = ProtoHeader{ .wire_type = ._32bit, .field_number = field_num };
                             self.encodeProtoHeader(field_header);
                             self.encodeFloat(data);
                         } else unreachable;
                     },
                     .Bool => {
-                        const field_header = ProtoHeader{.wire_type = .varint, .field_number = field_num};
+                        const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
                         self.encodeProtoHeader(field_header);
                         self.encodeUInt64(@as(u64, @intFromBool(data)));
                     },
                     .Enum => {
-                        const field_header = ProtoHeader{.wire_type = .varint, .field_number = field_num};
+                        const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
                         self.encodeProtoHeader(field_header);
                         self.encodeUInt64(@as(u64, @intFromEnum(data)));
                     },
                     .Void => {
                         // This only comes up when the proto file has an empty embedded message
-                        const field_header = ProtoHeader{.wire_type = .length_delim, .field_number = field_num};
+                        const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
                         self.encodeProtoHeader(field_header);
                         self.encodeUInt64(0);
                     },
@@ -366,11 +361,11 @@ pub const ProtoWriter = struct {
 
         const varint_byte_length = varIntByteLength(@as(u64, struct_encoding_size));
         self.cursor = content_start - 1;
-        
+
         if (varint_byte_length == 1) {
             self.encodeUInt64(@as(u64, struct_encoding_size));
         } else {
-            mem.copyBackwards(u8, self.buffer[content_start - 1 + varint_byte_length ..], self.buffer[content_start .. (content_start + struct_encoding_size)]);
+            mem.copyBackwards(u8, self.buffer[content_start - 1 + varint_byte_length ..], self.buffer[content_start..(content_start + struct_encoding_size)]);
             self.encodeUInt64(@as(u64, struct_encoding_size));
         }
 
@@ -378,7 +373,7 @@ pub const ProtoWriter = struct {
         self.cursor = content_start - 1 + total_size;
         return varint_byte_length;
     }
-    
+
     fn encodeUInt64(self: *ProtoWriter, data: u64) void {
         if (data == 0) {
             self.buffer[self.cursor] = 0;
@@ -406,7 +401,7 @@ pub const ProtoWriter = struct {
 
     fn encodeBytes(self: *ProtoWriter, bytes: []const u8) void {
         self.encodeUInt64(bytes.len);
-        mem.copy(u8, self.buffer[self.cursor .. (self.cursor + bytes.len)], bytes);
+        mem.copy(u8, self.buffer[self.cursor..(self.cursor + bytes.len)], bytes);
         self.cursor += bytes.len;
     }
 
@@ -415,7 +410,6 @@ pub const ProtoWriter = struct {
         mem.writeIntSliceLittle(u32, result, @bitCast(u32, data));
         self.cursor += 4;
     }
-
 };
 
 fn varIntByteLength(data: u64) usize {
@@ -435,10 +429,10 @@ test "protobuf_floats" {
     var buffer: [256]u8 = undefined;
 
     var data: f32 = 9.81;
-    var writer = ProtoWriter{.buffer = buffer[0..]};
+    var writer = ProtoWriter{ .buffer = buffer[0..] };
     writer.encodeFloat(data);
 
-    var reader = ProtoReader{.bytes = buffer[0..writer.cursor]};
+    var reader = ProtoReader{ .bytes = buffer[0..writer.cursor] };
     var decoded_data = try reader.decodeFloat();
 
     try std.testing.expectEqual(data, decoded_data);
@@ -446,33 +440,28 @@ test "protobuf_floats" {
 
 test "protobuf_bytes" {
     var buffer: [256]u8 = undefined;
-    
-    const comparison = [_]u8 {0x07, 0x74, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x67};
-    var writer = ProtoWriter{.buffer = buffer[0..]};
+
+    const comparison = [_]u8{ 0x07, 0x74, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x67 };
+    var writer = ProtoWriter{ .buffer = buffer[0..] };
     writer.encodeBytes("testing");
     try std.testing.expectEqualSlices(
         u8,
         comparison[0..],
         buffer[0..writer.cursor],
     );
-    
-    var reader = ProtoReader{.bytes = buffer[0..]};
+
+    var reader = ProtoReader{ .bytes = buffer[0..] };
 
     var decoded = try reader.decodeBytes(std.testing.allocator);
-    try std.testing.expectEqualSlices(
-        u8,
-        decoded,
-        comparison[1..]
-    );
+    try std.testing.expectEqualSlices(u8, decoded, comparison[1..]);
     try std.testing.expectEqual(reader.bytes_read, 8);
     std.testing.allocator.free(decoded);
 }
 
 test "protobuf_varint" {
+    var buf0 = [_]u8{ 1, 0b10101100, 0b00000010, 0b10010110, 0b00000001, 26 };
 
-    var buf0 = [_]u8{1, 0b10101100, 0b00000010, 0b10010110, 0b00000001, 26};
-
-    var reader = ProtoReader{.bytes = buf0[0..]};
+    var reader = ProtoReader{ .bytes = buf0[0..] };
     var uint = try reader.decodeUInt64();
     try std.testing.expectEqual(uint, 1);
 
@@ -483,13 +472,13 @@ test "protobuf_varint" {
     try std.testing.expectEqual(uint, 150);
 
     var header = try reader.decodeProtoHeader();
-    std.debug.print("Type: {d}, Field: {d}\n", .{header.wire_type, header.field_number});
+    std.debug.print("Type: {d}, Field: {d}\n", .{ header.wire_type, header.field_number });
 
     var buf1: [1000]u8 = undefined;
     var buf2: [1000]u8 = undefined;
 
-    var writer1 = ProtoWriter{.buffer = buf1[0..]};
-    var writer2 = ProtoWriter{.buffer = buf2[0..]};
+    var writer1 = ProtoWriter{ .buffer = buf1[0..] };
+    var writer2 = ProtoWriter{ .buffer = buf2[0..] };
 
     writer1.encodeUInt64(std.math.maxInt(u64));
     writer2.encodeInt64(-1);
@@ -501,52 +490,47 @@ test "protobuf_varint" {
     );
 
     var buffer: [256]u8 = undefined;
-    var writer3 = ProtoWriter{.buffer = buffer[0..]};
+    var writer3 = ProtoWriter{ .buffer = buffer[0..] };
 
     writer3.encodeUInt64(300);
     for (buffer[0..writer3.cursor]) |byte| {
         std.debug.print("{b} ", .{byte});
     }
     std.debug.print("\n", .{});
-
 }
 
 test "protobuf_struct" {
     var buf1: [2048]u8 = undefined;
-    var writer = ProtoWriter{.buffer = buf1[0..]};
+    var writer = ProtoWriter{ .buffer = buf1[0..] };
 
     const Test1 = struct {
         pub const field_nums = .{
-            .{"a", 1},
+            .{ "a", 1 },
         };
         a: ?i32 = null,
     };
 
     const Test2 = struct {
         pub const field_nums = .{
-            .{"c", 3},
+            .{ "c", 3 },
         };
         c: ?Test1 = null,
     };
 
-    var t1 = Test1{.a = 150};
-    var t2 = Test2{.c = t1};
+    var t1 = Test1{ .a = 150 };
+    var t2 = Test2{ .c = t1 };
 
     const encoding = writer.encodeBaseStruct(t2);
-    const comparison1 = [_]u8 {0b00011010, 0b00000011, 0b00001000, 0b10010110, 0b00000001};
-    try std.testing.expectEqualSlices(
-        u8,
-        comparison1[0..],
-        encoding
-    );
+    const comparison1 = [_]u8{ 0b00011010, 0b00000011, 0b00001000, 0b10010110, 0b00000001 };
+    try std.testing.expectEqualSlices(u8, comparison1[0..], encoding);
 
     const Test3 = struct {
         pub const field_nums = .{
-            .{"a", 1},
-            .{"b", 2},
-            .{"c", 3},
-            .{"d", 4},
-            .{"e", 5},
+            .{ "a", 1 },
+            .{ "b", 2 },
+            .{ "c", 3 },
+            .{ "d", 4 },
+            .{ "e", 5 },
         };
         a: ?bool = null,
         b: ?f32 = null,
@@ -557,8 +541,8 @@ test "protobuf_struct" {
 
     const Test5 = struct {
         pub const field_nums = .{
-            .{"a", 1},
-            .{"b", 2},
+            .{ "a", 1 },
+            .{ "b", 2 },
         };
         a: ?u32 = null,
         b: ?f32 = null,
@@ -571,15 +555,15 @@ test "protobuf_struct" {
 
     const Test4 = struct {
         pub const field_nums = .{
-            .{"f", 1},
-            .{"g", 2},
-            .{"h", 3},
-            .{"i", 4},
-            .{"j", 5},
-            .{"k", 6},
-            .{"l", 7},
-            .{"m", 8},
-            .{"n", 9},
+            .{ "f", 1 },
+            .{ "g", 2 },
+            .{ "h", 3 },
+            .{ "i", 4 },
+            .{ "j", 5 },
+            .{ "k", 6 },
+            .{ "l", 7 },
+            .{ "m", 8 },
+            .{ "n", 9 },
         };
         f: ?f32 = null,
         g: ?[]const u8 = null,
@@ -605,12 +589,12 @@ test "protobuf_struct" {
         .b = 7.5,
     };
 
-    var t5_array: [2]Test5 = .{t5, t5};
+    var t5_array: [2]Test5 = .{ t5, t5 };
 
-    var string_array = [_][]const u8{"string1", "string2", "string3"};
+    var string_array = [_][]const u8{ "string1", "string2", "string3" };
 
-    var tag_array = [_]u64{32, 66, 128, 256, 1000};
-    var bytes_array = [_]u8{1,2,3,4,5,6,7,8,9,10};
+    var tag_array = [_]u64{ 32, 66, 128, 256, 1000 };
+    var bytes_array = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
     var t4 = Test4{
         .f = 1.5,
         .g = "testing",
@@ -630,18 +614,18 @@ test "protobuf_struct" {
     }
     std.debug.print("\n", .{});
 
-    var reader = ProtoReader{.bytes = res[1..5]};
+    var reader = ProtoReader{ .bytes = res[1..5] };
     var first_float = try reader.decodeFloat();
     std.debug.print("{d}\n", .{first_float});
 
-    var reader2 = ProtoReader{.bytes = res};
-    
+    var reader2 = ProtoReader{ .bytes = res };
+
     var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_instance.deinit();
     const arena = arena_instance.allocator();
     const decoded_t4 = try reader2.decodeStruct(res.len, Test4, arena);
     //std.debug.print("{any}\n", .{decoded_t4});
-    
+
     try std.testing.expectEqual(t4.f.?, decoded_t4.f.?);
     try std.testing.expectEqualSlices(u8, t4.g.?, decoded_t4.g.?);
     try std.testing.expectEqual(t4.j.?[1].a.?, decoded_t4.j.?[1].a.?);

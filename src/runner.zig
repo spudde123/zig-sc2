@@ -21,7 +21,7 @@ const InputType = enum(u8) {
     computer_race,
     computer_difficulty,
     computer_build,
-    map
+    map,
 };
 
 const ProgramArguments = struct {
@@ -30,40 +30,39 @@ const ProgramArguments = struct {
     start_port: ?u16 = null,
     opponent_id: ?[]const u8 = null,
     real_time: bool = false,
-
     computer_race: sc2p.Race = .random,
     computer_difficulty: sc2p.AiDifficulty = .very_hard,
     computer_build: sc2p.AiBuild = .random,
-    map_file_name: []const u8 = "InsideAndOutAIE"
+    map_file_name: []const u8 = "InsideAndOutAIE",
 };
 
 const race_map = std.ComptimeStringMap(sc2p.Race, .{
-    .{"terran", .terran},
-    .{"zerg", .zerg},
-    .{"protoss", .protoss},
-    .{"random", .random},
+    .{ "terran", .terran },
+    .{ "zerg", .zerg },
+    .{ "protoss", .protoss },
+    .{ "random", .random },
 });
 
 const difficulty_map = std.ComptimeStringMap(sc2p.AiDifficulty, .{
-    .{"very_easy", .very_easy},
-    .{"easy", .easy},
-    .{"medium", .medium},
-    .{"medium_hard", .medium_hard},
-    .{"hard", .hard},
-    .{"harder", .harder},
-    .{"very_hard", .very_hard},
-    .{"cheat_vision", .cheat_vision},
-    .{"cheat_money", .cheat_money},
-    .{"cheat_insane", .cheat_insane},
+    .{ "very_easy", .very_easy },
+    .{ "easy", .easy },
+    .{ "medium", .medium },
+    .{ "medium_hard", .medium_hard },
+    .{ "hard", .hard },
+    .{ "harder", .harder },
+    .{ "very_hard", .very_hard },
+    .{ "cheat_vision", .cheat_vision },
+    .{ "cheat_money", .cheat_money },
+    .{ "cheat_insane", .cheat_insane },
 });
 
 const build_map = std.ComptimeStringMap(sc2p.AiBuild, .{
-    .{"random", .random},
-    .{"rush", .rush},
-    .{"timing", .timing},
-    .{"power", .power},
-    .{"macro", .macro},
-    .{"air", .air}
+    .{ "random", .random },
+    .{ "rush", .rush },
+    .{ "timing", .timing },
+    .{ "power", .power },
+    .{ "macro", .macro },
+    .{ "air", .air },
 });
 
 const Sc2Paths = struct {
@@ -88,9 +87,9 @@ const Sc2PathError = error{
 };
 
 fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
-    const map_concat = [_][]const u8{base_folder, "/Maps/"};
-    const support64_concat = [_][]const u8{base_folder, "/Support64/"};
-    const versions_concat = [_][]const u8{base_folder, "/Versions/"};
+    const map_concat = [_][]const u8{ base_folder, "/Maps/" };
+    const support64_concat = [_][]const u8{ base_folder, "/Support64/" };
+    const versions_concat = [_][]const u8{ base_folder, "/Versions/" };
     const versions_path = try mem.concat(allocator, u8, &versions_concat);
     var dir = try fs.openIterableDirAbsolute(versions_path, .{});
     defer dir.close();
@@ -117,9 +116,9 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
             else => unreachable,
         },
         .latest_binary = switch (builtin.os.tag) {
-            .windows => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{versions_path, max_version}),
-            .macos => try fmt.allocPrint(allocator, "{s}Base{d}/SC2.app/Contents/MacOS/SC2", .{versions_path, max_version}),
-            .linux => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64", .{versions_path, max_version}),
+            .windows => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{ versions_path, max_version }),
+            .macos => try fmt.allocPrint(allocator, "{s}Base{d}/SC2.app/Contents/MacOS/SC2", .{ versions_path, max_version }),
+            .linux => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64", .{ versions_path, max_version }),
             else => unreachable,
         },
     };
@@ -135,7 +134,6 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
     var current_input_type = InputType.none;
 
     while (arg_iter.next()) |argument| {
-        
         if (mem.startsWith(u8, argument, "-")) {
             if (mem.eql(u8, argument, "--LadderServer")) {
                 current_input_type = InputType.ladder_server;
@@ -212,7 +210,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                 InputType.map => {
                     program_args.map_file_name = argument;
                 },
-                else => {}
+                else => {},
             }
             current_input_type = InputType.none;
         }
@@ -221,12 +219,11 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
     return program_args;
 }
 
-
 pub fn run(
     user_bot: anytype,
     step_count: u32,
     base_allocator: mem.Allocator,
-    local_run: LocalRunSetup
+    local_run: LocalRunSetup,
 ) !void {
     // Step_count 1 may cause problems from
     // what i've heard with unit orders
@@ -241,19 +238,19 @@ pub fn run(
     defer arena_instance.deinit();
 
     // Fixed buffer which is reset at the end of each step
-    var step_bytes = try arena.alloc(u8, 30*1024*1024);
+    var step_bytes = try arena.alloc(u8, 30 * 1024 * 1024);
     var fixed_buffer_instance = std.heap.FixedBufferAllocator.init(step_bytes);
     const fixed_buffer = fixed_buffer_instance.allocator();
-    
+
     const program_args = readArguments(arena);
-    
+
     var ladder_game = false;
     var host: []const u8 = "127.0.0.1";
     var game_port: u16 = local_run.game_port;
     var start_port: u16 = 5002;
     var sc2_process: ?ChildProcess = null;
     var sc2_paths: Sc2Paths = undefined;
-    
+
     if (program_args.ladder_server) |ladder_server| {
         ladder_game = true;
         host = ladder_server;
@@ -262,27 +259,26 @@ pub fn run(
             log.err("Start port is missing\n", .{});
             return;
         };
-        
+
         game_port = program_args.game_port orelse {
             log.err("Game port is missing\n", .{});
             return;
         };
     } else {
-        
         sc2_paths = getSc2Paths(local_run.sc2_base_folder, arena) catch {
             log.err("Couldn't form SC2 paths\n", .{});
             return;
         };
-        const sc2_args = [_] []const u8{
+        const sc2_args = [_][]const u8{
             sc2_paths.latest_binary,
             "-listen",
             host,
             "-port",
             try fmt.allocPrint(arena, "{d}", .{game_port}),
             "-dataDir",
-            sc2_paths.base_folder
+            sc2_paths.base_folder,
         };
-        
+
         sc2_process = ChildProcess.init(sc2_args[0..], arena);
         sc2_process.?.cwd = sc2_paths.working_directory;
 
@@ -297,7 +293,7 @@ pub fn run(
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
         std.debug.print("Doing ws connection loop {d}\n", .{attempt});
         client = ws.WebSocketClient.init(host, game_port, arena, fixed_buffer) catch {
-            time.sleep(2*time.ns_per_s);
+            time.sleep(2 * time.ns_per_s);
             continue;
         };
         connection_ok = true;
@@ -305,13 +301,13 @@ pub fn run(
 
     if (!connection_ok) {
         log.err("Failed to connect to sc2\n", .{});
-        
+
         if (sc2_process) |*sc2| {
             _ = try sc2.kill();
         }
         return;
     }
-    
+
     defer client.deinit();
 
     const handshake_ok = try client.completeHandshake("/sc2api");
@@ -331,10 +327,7 @@ pub fn run(
         }
     }
 
-    const bot_setup: ws.BotSetup = .{
-        .name = user_bot.name, 
-        .race = user_bot.race
-    };
+    const bot_setup: ws.BotSetup = .{ .name = user_bot.name, .race = user_bot.race };
 
     const player_id: u32 = pid: {
         if (ladder_game) {
@@ -343,7 +336,7 @@ pub fn run(
                 return;
             };
         } else {
-            const strings_to_concat = [_][]const u8{sc2_paths.map_folder, program_args.map_file_name, ".SC2Map"};
+            const strings_to_concat = [_][]const u8{ sc2_paths.map_folder, program_args.map_file_name, ".SC2Map" };
             const map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
             std.fs.accessAbsolute(map_absolute_path, .{}) catch {
                 log.err("Map file {s} was not found\n", .{map_absolute_path});
@@ -385,7 +378,6 @@ pub fn run(
 
     var requested_game_loop: u32 = 0;
     while (true) {
-
         const obs = if (program_args.real_time) try client.getObservation(requested_game_loop) else try client.getObservation(null);
 
         var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, fixed_buffer);
@@ -417,7 +409,6 @@ pub fn run(
         }
 
         if (!first_step_done) {
-
             const game_info_proto = client.getGameInfo() catch {
                 log.err("Error getting game info\n", .{});
                 break;
@@ -426,17 +417,18 @@ pub fn run(
             const start_location: bot_data.Point2 = sl: {
                 const unit_slice = bot.units.values();
                 for (unit_slice) |unit| {
-                    if (unit.unit_type == bot_data.UnitId.CommandCenter
-                        or unit.unit_type == bot_data.UnitId.Hatchery
-                        or unit.unit_type == bot_data.UnitId.Nexus) {
-                            break :sl unit.position;
+                    if (unit.unit_type == bot_data.UnitId.CommandCenter or
+                        unit.unit_type == bot_data.UnitId.Hatchery or
+                        unit.unit_type == bot_data.UnitId.Nexus)
+                    {
+                        break :sl unit.position;
                     }
                 }
-                break :sl bot_data.Point2{.x = 0, .y = 0};
+                break :sl bot_data.Point2{ .x = 0, .y = 0 };
             };
-            
+
             game_info = try bot_data.GameInfo.fromProto(
-                game_info_proto, 
+                game_info_proto,
                 player_id,
                 program_args.opponent_id,
                 start_location,
@@ -444,7 +436,7 @@ pub fn run(
                 bot.vespene_geysers,
                 bot.destructibles,
                 arena,
-                fixed_buffer
+                fixed_buffer,
             );
             bot_data.grids.InfluenceMap.MapInfo.terrain_height = game_info.terrain_height.data;
             game_info.updateGrids(bot);
@@ -467,7 +459,6 @@ pub fn run(
         try user_bot.onStep(bot, game_info, &actions);
 
         if (actions.leave_game) {
-            
             if (sc2_process) |_| {
                 if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
                     _ = client.saveReplay(replay_name) catch |err| {
@@ -475,7 +466,7 @@ pub fn run(
                     };
                 }
             }
-            
+
             _ = client.leave() catch {
                 log.err("Unable to leave game\n", .{});
             };
@@ -506,7 +497,7 @@ fn createReplayName(
     allocator: mem.Allocator,
     bot_name: []const u8,
     opponent: []const u8,
-    map: []const u8
+    map: []const u8,
 ) ?[]const u8 {
     const no_gap_bot_size = mem.replacementSize(u8, bot_name, " ", "");
     var new_bot_name = allocator.alloc(u8, no_gap_bot_size) catch return null;
@@ -530,10 +521,9 @@ fn createReplayName(
     return replay_name;
 }
 
-
 test "runner_test_basic" {
     // Just test that we can connect without problems
-    
+
     const TestBot = struct {
         const Self = @This();
         name: []const u8,
@@ -543,7 +533,7 @@ test "runner_test_basic" {
             self: *Self,
             bot: bot_data.Bot,
             game_info: bot_data.GameInfo,
-            actions: *bot_data.Actions
+            actions: *bot_data.Actions,
         ) !void {
             _ = self;
             const enemy_start_location = game_info.enemy_start_locations[0];
@@ -562,7 +552,7 @@ test "runner_test_basic" {
             self: *Self,
             bot: bot_data.Bot,
             game_info: bot_data.GameInfo,
-            actions: *bot_data.Actions
+            actions: *bot_data.Actions,
         ) !void {
             _ = game_info;
             _ = self;
@@ -573,7 +563,7 @@ test "runner_test_basic" {
             self: *Self,
             bot: bot_data.Bot,
             game_info: bot_data.GameInfo,
-            result: bot_data.Result
+            result: bot_data.Result,
         ) !void {
             _ = bot;
             _ = game_info;
@@ -582,7 +572,7 @@ test "runner_test_basic" {
         }
     };
 
-    var test_bot = TestBot{.name = "tester", .race = .terran};
+    var test_bot = TestBot{ .name = "tester", .race = .terran };
 
     try run(&test_bot, 2, std.testing.allocator, .{});
 }

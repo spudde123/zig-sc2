@@ -11,20 +11,20 @@ pub const Status = enum(u8) {
 
 pub const Request = struct {
     pub const field_nums = .{
-        .{"create_game", 1},
-        .{"join_game", 2},
-        .{"leave_game", 5},
-        .{"quit", 8},
-        .{"game_info", 9},
-        .{"observation", 10},
-        .{"action", 11},
-        .{"step", 12},
-        .{"game_data", 13},
-        .{"query", 14},
-        .{"save_replay", 15},
-        .{"ping", 19},
-        .{"debug", 20},
-        .{"id", 97},
+        .{ "create_game", 1 },
+        .{ "join_game", 2 },
+        .{ "leave_game", 5 },
+        .{ "quit", 8 },
+        .{ "game_info", 9 },
+        .{ "observation", 10 },
+        .{ "action", 11 },
+        .{ "step", 12 },
+        .{ "game_data", 13 },
+        .{ "query", 14 },
+        .{ "save_replay", 15 },
+        .{ "ping", 19 },
+        .{ "debug", 20 },
+        .{ "id", 97 },
     };
     create_game: ?RequestCreateGame = null,
     join_game: ?RequestJoinGame = null,
@@ -44,22 +44,22 @@ pub const Request = struct {
 
 pub const Response = struct {
     pub const field_nums = .{
-        .{"create_game", 1},
-        .{"join_game", 2},
-        .{"leave_game", 5},
-        .{"quit", 8},
-        .{"game_info", 9},
-        .{"observation", 10},
-        .{"action", 11},
-        .{"step", 12},
-        .{"game_data", 13},
-        .{"query", 14},
-        .{"save_replay", 15},
-        .{"ping", 19},
-        .{"debug", 20},
-        .{"id", 97},
-        .{"errors", 98},
-        .{"status", 99},
+        .{ "create_game", 1 },
+        .{ "join_game", 2 },
+        .{ "leave_game", 5 },
+        .{ "quit", 8 },
+        .{ "game_info", 9 },
+        .{ "observation", 10 },
+        .{ "action", 11 },
+        .{ "step", 12 },
+        .{ "game_data", 13 },
+        .{ "query", 14 },
+        .{ "save_replay", 15 },
+        .{ "ping", 19 },
+        .{ "debug", 20 },
+        .{ "id", 97 },
+        .{ "errors", 98 },
+        .{ "status", 99 },
     };
     create_game: ?ResponseCreateGame = null,
     join_game: ?ResponseJoinGame = null,
@@ -82,11 +82,11 @@ pub const Response = struct {
 
 pub const RequestCreateGame = struct {
     pub const field_nums = .{
-        .{"map", 1},
-        .{"player_setup", 3},
-        .{"disable_fog", 4},
-        .{"random_seed", 5},
-        .{"realtime", 6},
+        .{ "map", 1 },
+        .{ "player_setup", 3 },
+        .{ "disable_fog", 4 },
+        .{ "random_seed", 5 },
+        .{ "realtime", 6 },
     };
     map: ?LocalMap = null,
     player_setup: ?[]PlayerSetup = null,
@@ -108,8 +108,8 @@ pub const ErrorCreateGame = enum(u8) {
 
 pub const ResponseCreateGame = struct {
     pub const field_nums = .{
-        .{"error_code", 1},
-        .{"error_details", 2},
+        .{ "error_code", 1 },
+        .{ "error_details", 2 },
     };
     error_code: ?ErrorCreateGame = null,
     error_details: ?[]const u8 = null,
@@ -117,12 +117,12 @@ pub const ResponseCreateGame = struct {
 
 pub const RequestJoinGame = struct {
     pub const field_nums = .{
-        .{"race", 1},
-        .{"options", 3},
-        .{"server_ports", 4},
-        .{"client_ports", 5},
-        .{"player_name", 7},
-        .{"host_ip", 8},
+        .{ "race", 1 },
+        .{ "options", 3 },
+        .{ "server_ports", 4 },
+        .{ "client_ports", 5 },
+        .{ "player_name", 7 },
+        .{ "host_ip", 8 },
     };
     race: ?Race = null,
     options: ?InterfaceOptions = null,
@@ -139,7 +139,6 @@ pub const ErrorJoinGame = enum(u8) {
     missing_ports = 4,
     game_full = 5,
     launch_error = 6,
-
     feature_unsupported = 7,
     no_space_for_user = 8,
     map_does_not_exist = 9,
@@ -147,14 +146,14 @@ pub const ErrorJoinGame = enum(u8) {
     checksum_error = 11,
     network_error = 12,
     other_error = 13,
-    _
+    _,
 };
 
 pub const ResponseJoinGame = struct {
     pub const field_nums = .{
-        .{"player_id", 1},
-        .{"error_code", 2},
-        .{"error_details", 3},
+        .{ "player_id", 1 },
+        .{ "error_code", 2 },
+        .{ "error_details", 3 },
     };
     player_id: ?u32 = null,
     error_code: ?ErrorJoinGame = null,
@@ -163,12 +162,12 @@ pub const ResponseJoinGame = struct {
 
 pub const ResponseGameInfo = struct {
     pub const field_nums = .{
-        .{"map_name", 1},
-        .{"local_map_path", 2},
-        .{"player_info", 3},
-        .{"start_raw", 4},
-        .{"options", 5},
-        .{"mod_names", 6},
+        .{ "map_name", 1 },
+        .{ "local_map_path", 2 },
+        .{ "player_info", 3 },
+        .{ "start_raw", 4 },
+        .{ "options", 5 },
+        .{ "mod_names", 6 },
     };
     map_name: ?[]const u8 = null,
     local_map_path: ?[]const u8 = null,
@@ -180,22 +179,22 @@ pub const ResponseGameInfo = struct {
 
 pub const RequestAction = struct {
     pub const field_nums = .{
-        .{"actions", 1},
+        .{ "actions", 1 },
     };
     actions: ?[]Action = null,
 };
 
 pub const ResponseAction = struct {
     pub const field_nums = .{
-        .{"results", 1},
+        .{ "results", 1 },
     };
     results: ?[]ActionResult = null,
 };
 
 pub const RequestObservation = struct {
     pub const field_nums = .{
-        .{"disable_fog", 1},
-        .{"game_loop", 2},
+        .{ "disable_fog", 1 },
+        .{ "game_loop", 2 },
     };
     disable_fog: ?bool = null,
     game_loop: ?u32 = null,
@@ -203,24 +202,24 @@ pub const RequestObservation = struct {
 
 pub const RequestStep = struct {
     pub const field_nums = .{
-        .{"count", 1},
+        .{ "count", 1 },
     };
     count: ?u32 = null,
 };
 
 pub const ResponseStep = struct {
     pub const field_nums = .{
-        .{"simulation_loop", 1},
+        .{ "simulation_loop", 1 },
     };
     simulation_loop: ?u32 = null,
 };
 
 pub const ResponsePing = struct {
     pub const field_nums = .{
-        .{"game_version", 1},
-        .{"data_version", 2},
-        .{"data_build", 3},
-        .{"base_build", 4},
+        .{ "game_version", 1 },
+        .{ "data_version", 2 },
+        .{ "data_build", 3 },
+        .{ "base_build", 4 },
     };
     game_version: ?[]const u8 = null,
     data_version: ?[]const u8 = null,
@@ -230,18 +229,18 @@ pub const ResponsePing = struct {
 
 pub const ResponseSaveReplay = struct {
     pub const field_nums = .{
-        .{"bytes", 1},
+        .{ "bytes", 1 },
     };
     bytes: ?[]u8 = null,
 };
 
 pub const ResponseObservation = struct {
     pub const field_nums = .{
-        .{"actions", 1},
-        .{"action_errors", 2},
-        .{"observation", 3},
-        .{"player_result", 4},
-        .{"chat", 5},
+        .{ "actions", 1 },
+        .{ "action_errors", 2 },
+        .{ "observation", 3 },
+        .{ "player_result", 4 },
+        .{ "chat", 5 },
     };
     actions: ?[]Action = null,
     action_errors: ?[]ActionError = null,
@@ -252,15 +251,15 @@ pub const ResponseObservation = struct {
 
 pub const Observation = struct {
     pub const field_nums = .{
-        .{"player_common", 1},
-        .{"abilities", 3},
-        .{"score", 4},
-        .{"raw", 5},
+        .{ "player_common", 1 },
+        .{ "abilities", 3 },
+        .{ "score", 4 },
+        .{ "raw", 5 },
         //.{"feature_layer", 6},
         //.{"render", 7},
         //.{"ui", 8},
-        .{"game_loop", 9},
-        .{"alerts", 10},
+        .{ "game_loop", 9 },
+        .{ "alerts", 10 },
     };
     player_common: ?PlayerCommon = null,
     abilities: ?[]AvailableAbility = null,
@@ -276,17 +275,17 @@ pub const Observation = struct {
 
 pub const PlayerCommon = struct {
     pub const field_nums = .{
-        .{"player_id", 1},
-        .{"minerals", 2},
-        .{"vespene", 3},
-        .{"food_cap", 4},
-        .{"food_used", 5},
-        .{"food_army", 6},
-        .{"food_workers", 7},
-        .{"idle_worker_count", 8},
-        .{"army_count", 9},
-        .{"warp_gate_count", 10},
-        .{"larva_count", 11},
+        .{ "player_id", 1 },
+        .{ "minerals", 2 },
+        .{ "vespene", 3 },
+        .{ "food_cap", 4 },
+        .{ "food_used", 5 },
+        .{ "food_army", 6 },
+        .{ "food_workers", 7 },
+        .{ "idle_worker_count", 8 },
+        .{ "army_count", 9 },
+        .{ "warp_gate_count", 10 },
+        .{ "larva_count", 11 },
     };
     player_id: ?u32 = null,
     minerals: ?u32 = null,
@@ -308,9 +307,9 @@ pub const ScoreType = enum(u8) {
 
 pub const Score = struct {
     pub const field_nums = .{
-        .{"score_type", 6},
-        .{"score", 7},
-        .{"details", 8},
+        .{ "score_type", 6 },
+        .{ "score", 7 },
+        .{ "details", 8 },
     };
     score_type: ?ScoreType = null,
     score: ?i32 = null,
@@ -319,11 +318,11 @@ pub const Score = struct {
 
 pub const CategoryScoreDetails = struct {
     pub const field_nums = .{
-        .{"none", 1},
-        .{"army", 2},
-        .{"economy", 3},
-        .{"technology", 4},
-        .{"upgrade", 5},
+        .{ "none", 1 },
+        .{ "army", 2 },
+        .{ "economy", 3 },
+        .{ "technology", 4 },
+        .{ "upgrade", 5 },
     };
     none: ?f32 = null,
     army: ?f32 = null,
@@ -334,9 +333,9 @@ pub const CategoryScoreDetails = struct {
 
 pub const VitalScoreDetails = struct {
     pub const field_nums = .{
-        .{"life", 1},
-        .{"shields", 2},
-        .{"energy", 3},
+        .{ "life", 1 },
+        .{ "shields", 2 },
+        .{ "energy", 3 },
     };
     life: ?f32 = null,
     shields: ?f32 = null,
@@ -345,34 +344,34 @@ pub const VitalScoreDetails = struct {
 
 pub const ScoreDetails = struct {
     pub const field_nums = .{
-        .{"idle_production_time", 1},
-        .{"idle_worker_time", 2},
-        .{"total_value_units", 3},
-        .{"total_value_structures", 4},
-        .{"killed_value_units", 5},
-        .{"killed_value_structures", 6},
-        .{"collected_minerals", 7},
-        .{"collected_vespene", 8},
-        .{"collection_rate_minerals", 9},
-        .{"collection_rate_vespene", 10},
-        .{"spent_minerals", 11},
-        .{"spent_vespene", 12},
-        .{"food_used", 13},
-        .{"killed_minerals", 14},
-        .{"killed_vespene", 15},
-        .{"lost_minerals", 16},
-        .{"lost_vespene", 17},
-        .{"friendly_fire_minerals", 18},
-        .{"friendly_fire_vespene", 19},
-        .{"used_minerals", 20},
-        .{"used_vespene", 21},
-        .{"total_used_minerals", 22},
-        .{"total_used_vespene", 23},
-        .{"total_damage_dealt", 24},
-        .{"total_damage_taken", 25},
-        .{"total_healed", 26},
-        .{"current_apm", 27},
-        .{"current_effective_apm", 28},
+        .{ "idle_production_time", 1 },
+        .{ "idle_worker_time", 2 },
+        .{ "total_value_units", 3 },
+        .{ "total_value_structures", 4 },
+        .{ "killed_value_units", 5 },
+        .{ "killed_value_structures", 6 },
+        .{ "collected_minerals", 7 },
+        .{ "collected_vespene", 8 },
+        .{ "collection_rate_minerals", 9 },
+        .{ "collection_rate_vespene", 10 },
+        .{ "spent_minerals", 11 },
+        .{ "spent_vespene", 12 },
+        .{ "food_used", 13 },
+        .{ "killed_minerals", 14 },
+        .{ "killed_vespene", 15 },
+        .{ "lost_minerals", 16 },
+        .{ "lost_vespene", 17 },
+        .{ "friendly_fire_minerals", 18 },
+        .{ "friendly_fire_vespene", 19 },
+        .{ "used_minerals", 20 },
+        .{ "used_vespene", 21 },
+        .{ "total_used_minerals", 22 },
+        .{ "total_used_vespene", 23 },
+        .{ "total_damage_dealt", 24 },
+        .{ "total_damage_taken", 25 },
+        .{ "total_healed", 26 },
+        .{ "current_apm", 27 },
+        .{ "current_effective_apm", 28 },
     };
     idle_production_time: ?f32 = null,
     idle_worker_time: ?f32 = null,
@@ -406,12 +405,12 @@ pub const ScoreDetails = struct {
 
 pub const ObservationRaw = struct {
     pub const field_nums = .{
-        .{"player", 1},
-        .{"units", 2},
-        .{"map_state", 3},
-        .{"event", 4},
-        .{"effects", 5},
-        .{"radars", 6},
+        .{ "player", 1 },
+        .{ "units", 2 },
+        .{ "map_state", 3 },
+        .{ "event", 4 },
+        .{ "effects", 5 },
+        .{ "radars", 6 },
     };
     player: ?PlayerRaw = null,
     units: ?[]Unit = null,
@@ -423,8 +422,8 @@ pub const ObservationRaw = struct {
 
 pub const RadarRing = struct {
     pub const field_nums = .{
-        .{"pos", 1},
-        .{"radius", 2},
+        .{ "pos", 1 },
+        .{ "radius", 2 },
     };
     pos: ?Point = null,
     radius: ?f32 = null,
@@ -432,9 +431,9 @@ pub const RadarRing = struct {
 
 pub const PowerSource = struct {
     pub const field_nums = .{
-        .{"pos", 1},
-        .{"radius", 2},
-        .{"tag", 3},
+        .{ "pos", 1 },
+        .{ "radius", 2 },
+        .{ "tag", 3 },
     };
     pos: ?Point = null,
     radius: ?f32 = null,
@@ -443,9 +442,9 @@ pub const PowerSource = struct {
 
 pub const PlayerRaw = struct {
     pub const field_nums = .{
-        .{"power_sources", 1},
-        .{"camera", 2},
-        .{"upgrade_ids", 3},
+        .{ "power_sources", 1 },
+        .{ "camera", 2 },
+        .{ "upgrade_ids", 3 },
     };
     power_sources: ?[]PowerSource = null,
     camera: ?Point = null,
@@ -454,8 +453,8 @@ pub const PlayerRaw = struct {
 
 pub const MapState = struct {
     pub const field_nums = .{
-        .{"visibility", 1},
-        .{"creep", 2},
+        .{ "visibility", 1 },
+        .{ "creep", 2 },
     };
     visibility: ?ImageData = null,
     creep: ?ImageData = null,
@@ -463,7 +462,7 @@ pub const MapState = struct {
 
 pub const Event = struct {
     pub const field_nums = .{
-        .{"dead_units", 1},
+        .{ "dead_units", 1 },
     };
     dead_units: ?[]u64 = null,
 };
@@ -492,11 +491,11 @@ pub const CloakState = enum(u8) {
 
 pub const Effect = struct {
     pub const field_nums = .{
-        .{"effect_id", 1},
-        .{"pos", 2},
-        .{"alliance", 3},
-        .{"owner", 4},
-        .{"radius", 5},
+        .{ "effect_id", 1 },
+        .{ "pos", 2 },
+        .{ "alliance", 3 },
+        .{ "owner", 4 },
+        .{ "radius", 5 },
     };
     effect_id: ?u32 = null,
     pos: ?[]Point2D = null,
@@ -507,8 +506,8 @@ pub const Effect = struct {
 
 pub const RallyTarget = struct {
     pub const field_nums = .{
-        .{"point", 1},
-        .{"tag", 2},
+        .{ "point", 1 },
+        .{ "tag", 2 },
     };
     point: ?Point = null,
     tag: ?u64 = null,
@@ -516,10 +515,10 @@ pub const RallyTarget = struct {
 
 pub const UnitOrder = struct {
     pub const field_nums = .{
-        .{"ability_id", 1},
-        .{"target_world_space_pos", 2},
-        .{"target_unit_tag", 3},
-        .{"progress", 4},
+        .{ "ability_id", 1 },
+        .{ "target_world_space_pos", 2 },
+        .{ "target_unit_tag", 3 },
+        .{ "progress", 4 },
     };
     ability_id: ?u32 = null,
     target_world_space_pos: ?Point = null,
@@ -529,14 +528,14 @@ pub const UnitOrder = struct {
 
 pub const PassengerUnit = struct {
     pub const field_nums = .{
-        .{"tag", 1},
-        .{"health", 2},
-        .{"health_max", 3},
-        .{"shield", 4},
-        .{"shield_max", 7},
-        .{"energy", 5},
-        .{"energy_max", 8},
-        .{"unit_type", 6},
+        .{ "tag", 1 },
+        .{ "health", 2 },
+        .{ "health_max", 3 },
+        .{ "shield", 4 },
+        .{ "shield_max", 7 },
+        .{ "energy", 5 },
+        .{ "energy_max", 8 },
+        .{ "unit_type", 6 },
     };
     tag: ?u64 = null,
     health: ?f32 = null,
@@ -550,57 +549,57 @@ pub const PassengerUnit = struct {
 
 pub const Unit = struct {
     pub const field_nums = .{
-        .{"display_type", 1},
-        .{"alliance", 2},
-        .{"tag", 3},
-        .{"unit_type", 4},
-        .{"owner", 5},
-        .{"pos", 6},
-        .{"facing", 7},
-        .{"radius", 8},
-        .{"build_progress", 9},
-        .{"cloak", 10},
-        .{"buff_ids", 27},
-        .{"detect_range", 31},
-        .{"radar_range", 32},
-        .{"is_selected", 11},
-        .{"is_on_screen", 12},
-        .{"is_blip", 13},
-        .{"is_powered", 35},
-        .{"is_active", 39},
-        .{"attack_upgrade_level", 40},
-        .{"armor_upgrade_level", 41},
-        .{"shield_upgrade_level", 42},
-        .{"health", 14},
-        .{"health_max", 15},
-        .{"shield", 16},
-        .{"shield_max", 36},
-        .{"energy", 17},
-        .{"energy_max", 37},
-        .{"mineral_contents", 18},
-        .{"vespene_contents", 19},
-        .{"is_flying", 20},
-        .{"is_burrowed", 21},
-        .{"is_hallucination", 38},
-        .{"orders", 22},
-        .{"addon_tag", 23},
-        .{"passengers", 24},
-        .{"cargo_space_taken", 25},
-        .{"cargo_space_max", 26},
-        .{"assigned_harvesters", 28},
-        .{"ideal_harvesters", 29},
-        .{"weapon_cooldown", 30},
-        .{"engaged_target_tag", 34},
-        .{"buff_duration_remain", 43},
-        .{"buff_duration_max", 44},
-        .{"rally_targets", 45},
+        .{ "display_type", 1 },
+        .{ "alliance", 2 },
+        .{ "tag", 3 },
+        .{ "unit_type", 4 },
+        .{ "owner", 5 },
+        .{ "pos", 6 },
+        .{ "facing", 7 },
+        .{ "radius", 8 },
+        .{ "build_progress", 9 },
+        .{ "cloak", 10 },
+        .{ "buff_ids", 27 },
+        .{ "detect_range", 31 },
+        .{ "radar_range", 32 },
+        .{ "is_selected", 11 },
+        .{ "is_on_screen", 12 },
+        .{ "is_blip", 13 },
+        .{ "is_powered", 35 },
+        .{ "is_active", 39 },
+        .{ "attack_upgrade_level", 40 },
+        .{ "armor_upgrade_level", 41 },
+        .{ "shield_upgrade_level", 42 },
+        .{ "health", 14 },
+        .{ "health_max", 15 },
+        .{ "shield", 16 },
+        .{ "shield_max", 36 },
+        .{ "energy", 17 },
+        .{ "energy_max", 37 },
+        .{ "mineral_contents", 18 },
+        .{ "vespene_contents", 19 },
+        .{ "is_flying", 20 },
+        .{ "is_burrowed", 21 },
+        .{ "is_hallucination", 38 },
+        .{ "orders", 22 },
+        .{ "addon_tag", 23 },
+        .{ "passengers", 24 },
+        .{ "cargo_space_taken", 25 },
+        .{ "cargo_space_max", 26 },
+        .{ "assigned_harvesters", 28 },
+        .{ "ideal_harvesters", 29 },
+        .{ "weapon_cooldown", 30 },
+        .{ "engaged_target_tag", 34 },
+        .{ "buff_duration_remain", 43 },
+        .{ "buff_duration_max", 44 },
+        .{ "rally_targets", 45 },
     };
     display_type: ?DisplayType = null,
     alliance: ?Alliance = null,
     tag: ?u64 = null,
     unit_type: ?u32 = null,
     owner: ?i32 = null,
-    
+
     pos: ?Point = null,
     facing: ?f32 = null,
     radius: ?f32 = null,
@@ -638,24 +637,24 @@ pub const Unit = struct {
     passengers: ?[]PassengerUnit = null,
     cargo_space_taken: ?i32 = null,
     cargo_space_max: ?i32 = null,
-    
+
     assigned_harvesters: ?i32 = null,
     ideal_harvesters: ?i32 = null,
     weapon_cooldown: ?f32 = null,
     engaged_target_tag: ?u64 = null,
     buff_duration_remain: ?i32 = null,
     buff_duration_max: ?i32 = null,
-    rally_targets:?[]RallyTarget = null,    
+    rally_targets: ?[]RallyTarget = null,
 };
 
 pub const Action = struct {
     pub const field_nums = .{
-        .{"action_raw", 1},
+        .{ "action_raw", 1 },
         //.{"action_feature_layer", 2},
         //.{"action_render", 3},
         //.{"action_ui", 4},
-        .{"action_chat", 6},
-        .{"game_loop", 7}
+        .{ "action_chat", 6 },
+        .{ "game_loop", 7 },
     };
     action_raw: ?ActionRaw = null,
     //action_feature_layer: ?ActionSpatial = null,
@@ -667,9 +666,9 @@ pub const Action = struct {
 
 pub const ActionError = struct {
     pub const field_nums = .{
-        .{"unit_tag", 1},
-        .{"ability_id", 2},
-        .{"result", 3},
+        .{ "unit_tag", 1 },
+        .{ "ability_id", 2 },
+        .{ "result", 3 },
     };
     unit_tag: ?u64 = null,
     ability_id: ?u64 = null,
@@ -678,8 +677,8 @@ pub const ActionError = struct {
 
 pub const PlayerResult = struct {
     pub const field_nums = .{
-        .{"player_id", 1},
-        .{"result", 2},
+        .{ "player_id", 1 },
+        .{ "result", 2 },
     };
     player_id: ?u32 = null,
     result: ?Result = null,
@@ -694,8 +693,8 @@ pub const Result = enum(u8) {
 
 pub const ChatReceived = struct {
     pub const field_nums = .{
-        .{"player_id", 1},
-        .{"message", 2},
+        .{ "player_id", 1 },
+        .{ "message", 2 },
     };
     player_id: ?u32 = null,
     message: ?[]const u8 = null,
@@ -708,8 +707,8 @@ pub const Channel = enum(u8) {
 
 pub const ActionChat = struct {
     pub const field_nums = .{
-        .{"channel", 1},
-        .{"message", 2},
+        .{ "channel", 1 },
+        .{ "message", 2 },
     };
     channel: ?Channel = null,
     message: ?[]const u8 = null,
@@ -717,9 +716,9 @@ pub const ActionChat = struct {
 
 pub const ActionRaw = struct {
     pub const field_nums = .{
-        .{"unit_command", 1},
-        .{"camera_move", 2},
-        .{"toggle_autocast", 3},
+        .{ "unit_command", 1 },
+        .{ "camera_move", 2 },
+        .{ "toggle_autocast", 3 },
     };
     unit_command: ?ActionRawUnitCommand = null,
     camera_move: ?ActionRawCameraMove = null,
@@ -728,11 +727,11 @@ pub const ActionRaw = struct {
 
 pub const ActionRawUnitCommand = struct {
     pub const field_nums = .{
-        .{"ability_id", 1},
-        .{"target_world_space_pos", 2},
-        .{"target_unit_tag", 3},
-        .{"unit_tags", 4},
-        .{"queue_command", 5},
+        .{ "ability_id", 1 },
+        .{ "target_world_space_pos", 2 },
+        .{ "target_unit_tag", 3 },
+        .{ "unit_tags", 4 },
+        .{ "queue_command", 5 },
     };
     ability_id: ?i32 = null,
     target_world_space_pos: ?Point2D = null,
@@ -743,15 +742,15 @@ pub const ActionRawUnitCommand = struct {
 
 pub const ActionRawCameraMove = struct {
     pub const field_nums = .{
-        .{"point", 1},
+        .{ "point", 1 },
     };
     point: ?Point = null,
 };
 
 pub const ActionRawToggleAutocast = struct {
     pub const field_nums = .{
-        .{"ability_id", 1},
-        .{"unit_tags", 2},
+        .{ "ability_id", 1 },
+        .{ "unit_tags", 2 },
     };
     ability_id: ?i32 = null,
     unit_tags: ?[]u64 = null,
@@ -759,13 +758,13 @@ pub const ActionRawToggleAutocast = struct {
 
 pub const PlayerInfo = struct {
     pub const field_nums = .{
-        .{"player_id", 1},
-        .{"player_type", 2},
-        .{"race_requested", 3},
-        .{"race_actual", 4},
-        .{"difficulty", 5},
-        .{"player_name", 6},
-        .{"ai_build", 7},
+        .{ "player_id", 1 },
+        .{ "player_type", 2 },
+        .{ "race_requested", 3 },
+        .{ "race_actual", 4 },
+        .{ "difficulty", 5 },
+        .{ "player_name", 6 },
+        .{ "ai_build", 7 },
     };
     player_id: ?u32 = null,
     player_type: ?PlayerType = null,
@@ -778,15 +777,15 @@ pub const PlayerInfo = struct {
 
 pub const InterfaceOptions = struct {
     pub const field_nums = .{
-        .{"raw", 1},
-        .{"score", 2},
+        .{ "raw", 1 },
+        .{ "score", 2 },
         //.{"feature_layer", 3},
         //.{"render", 4},
-        .{"show_cloaked", 5},
-        .{"raw_affects_selection", 6},
-        .{"raw_crop_to_playable_area", 7},
-        .{"show_placeholders", 8},
-        .{"show_burrowed_shadows", 9},
+        .{ "show_cloaked", 5 },
+        .{ "raw_affects_selection", 6 },
+        .{ "raw_crop_to_playable_area", 7 },
+        .{ "show_placeholders", 8 },
+        .{ "show_burrowed_shadows", 9 },
     };
     raw: ?bool = null,
     score: ?bool = null,
@@ -801,8 +800,8 @@ pub const InterfaceOptions = struct {
 
 pub const PortSet = struct {
     pub const field_nums = .{
-        .{"game_port", 1},
-        .{"base_port", 2},
+        .{ "game_port", 1 },
+        .{ "base_port", 2 },
     };
     game_port: ?i32 = null,
     base_port: ?i32 = null,
@@ -810,7 +809,7 @@ pub const PortSet = struct {
 
 pub const LocalMap = struct {
     pub const field_nums = .{
-        .{"map_path", 1},
+        .{ "map_path", 1 },
     };
     map_path: ?[]const u8 = null,
 };
@@ -821,43 +820,19 @@ pub const PlayerType = enum(u8) {
     observer = 3,
 };
 
-pub const Race = enum(u8) {
-    none = 0,
-    terran = 1,
-    zerg = 2,
-    protoss = 3,
-    random = 4
-};
+pub const Race = enum(u8) { none = 0, terran = 1, zerg = 2, protoss = 3, random = 4 };
 
-pub const AiDifficulty = enum(u8) {
-    very_easy = 1,
-    easy = 2,
-    medium = 3,
-    medium_hard = 4,
-    hard = 5,
-    harder = 6,
-    very_hard = 7,
-    cheat_vision = 8,
-    cheat_money = 9,
-    cheat_insane = 10
-};
+pub const AiDifficulty = enum(u8) { very_easy = 1, easy = 2, medium = 3, medium_hard = 4, hard = 5, harder = 6, very_hard = 7, cheat_vision = 8, cheat_money = 9, cheat_insane = 10 };
 
-pub const AiBuild = enum(u8) {
-    random = 1,
-    rush = 2,
-    timing = 3,
-    power = 4,
-    macro = 5,
-    air = 6
-};
+pub const AiBuild = enum(u8) { random = 1, rush = 2, timing = 3, power = 4, macro = 5, air = 6 };
 
 pub const PlayerSetup = struct {
     pub const field_nums = .{
-        .{"player_type", 1},
-        .{"race", 2},
-        .{"difficulty", 3},
-        .{"name", 4},
-        .{"ai_build", 5},
+        .{ "player_type", 1 },
+        .{ "race", 2 },
+        .{ "difficulty", 3 },
+        .{ "name", 4 },
+        .{ "ai_build", 5 },
     };
     player_type: ?PlayerType = null,
 
@@ -870,8 +845,8 @@ pub const PlayerSetup = struct {
 
 pub const Size2DI = struct {
     pub const field_nums = .{
-        .{"x", 1},
-        .{"y", 2},
+        .{ "x", 1 },
+        .{ "y", 2 },
     };
     x: ?i32 = null,
     y: ?i32 = null,
@@ -879,8 +854,8 @@ pub const Size2DI = struct {
 
 pub const PointI = struct {
     pub const field_nums = .{
-        .{"x", 1},
-        .{"y", 2},
+        .{ "x", 1 },
+        .{ "y", 2 },
     };
     x: ?i32 = null,
     y: ?i32 = null,
@@ -888,8 +863,8 @@ pub const PointI = struct {
 
 pub const RectangleI = struct {
     pub const field_nums = .{
-        .{"p0", 1},
-        .{"p1", 2},
+        .{ "p0", 1 },
+        .{ "p1", 2 },
     };
     p0: ?PointI = null,
     p1: ?PointI = null,
@@ -897,8 +872,8 @@ pub const RectangleI = struct {
 
 pub const Point2D = struct {
     pub const field_nums = .{
-        .{"x", 1},
-        .{"y", 2},
+        .{ "x", 1 },
+        .{ "y", 2 },
     };
     x: ?f32 = null,
     y: ?f32 = null,
@@ -906,9 +881,9 @@ pub const Point2D = struct {
 
 pub const Point = struct {
     pub const field_nums = .{
-        .{"x", 1},
-        .{"y", 2},
-        .{"z", 3},
+        .{ "x", 1 },
+        .{ "y", 2 },
+        .{ "z", 3 },
     };
     x: ?f32 = null,
     y: ?f32 = null,
@@ -917,9 +892,9 @@ pub const Point = struct {
 
 pub const ImageData = struct {
     pub const field_nums = .{
-        .{"bits_per_pixel", 1},
-        .{"size", 2},
-        .{"image", 3},
+        .{ "bits_per_pixel", 1 },
+        .{ "size", 2 },
+        .{ "image", 3 },
     };
     bits_per_pixel: ?i32 = null,
     size: ?Size2DI = null,
@@ -928,8 +903,8 @@ pub const ImageData = struct {
 
 pub const AvailableAbility = struct {
     pub const field_nums = .{
-        .{"ability_id", 1},
-        .{"requires_point", 2},
+        .{ "ability_id", 1 },
+        .{ "requires_point", 2 },
     };
     ability_id: ?i32 = null,
     requires_point: ?bool = null,
@@ -937,12 +912,12 @@ pub const AvailableAbility = struct {
 
 pub const StartRaw = struct {
     pub const field_nums = .{
-        .{"map_size", 1},
-        .{"pathing_grid", 2},
-        .{"terrain_height", 3},
-        .{"placement_grid", 4},
-        .{"playable_area", 5},
-        .{"start_locations", 6},
+        .{ "map_size", 1 },
+        .{ "pathing_grid", 2 },
+        .{ "terrain_height", 3 },
+        .{ "placement_grid", 4 },
+        .{ "playable_area", 5 },
+        .{ "start_locations", 6 },
     };
     map_size: ?Size2DI = null,
     pathing_grid: ?ImageData = null,
@@ -1196,21 +1171,21 @@ pub const Alert = enum(u8) {
 
 pub const RequestDebug = struct {
     pub const field_nums = .{
-        .{"commands", 1},
+        .{ "commands", 1 },
     };
     commands: ?[]DebugCommand = null,
 };
 
 pub const DebugCommand = struct {
     pub const field_nums = .{
-        .{"draw", 1},
-        .{"game_state", 2},
-        .{"create_unit", 3},
-        .{"kill_unit", 4},
-        .{"test_process", 5},
-        .{"score", 6},
-        .{"end_game", 7},
-        .{"unit_value", 8},
+        .{ "draw", 1 },
+        .{ "game_state", 2 },
+        .{ "create_unit", 3 },
+        .{ "kill_unit", 4 },
+        .{ "test_process", 5 },
+        .{ "score", 6 },
+        .{ "end_game", 7 },
+        .{ "unit_value", 8 },
     };
     draw: ?DebugDraw = null,
     game_state: ?DebugGameState = null,
@@ -1224,10 +1199,10 @@ pub const DebugCommand = struct {
 
 pub const DebugDraw = struct {
     pub const field_nums = .{
-        .{"text", 1},
-        .{"lines", 2},
-        .{"boxes", 3},
-        .{"spheres", 4},
+        .{ "text", 1 },
+        .{ "lines", 2 },
+        .{ "boxes", 3 },
+        .{ "spheres", 4 },
     };
     text: ?[]DebugText = null,
     lines: ?[]DebugLine = null,
@@ -1237,9 +1212,9 @@ pub const DebugDraw = struct {
 
 pub const Color = struct {
     pub const field_nums = .{
-        .{"r", 1},
-        .{"g", 2},
-        .{"b", 3},
+        .{ "r", 1 },
+        .{ "g", 2 },
+        .{ "b", 3 },
     };
     r: ?u32 = null,
     g: ?u32 = null,
@@ -1248,11 +1223,11 @@ pub const Color = struct {
 
 pub const DebugText = struct {
     pub const field_nums = .{
-        .{"color", 1},
-        .{"text", 2},
-        .{"virtual_pos", 3},
-        .{"world_pos", 4},
-        .{"size", 5},
+        .{ "color", 1 },
+        .{ "text", 2 },
+        .{ "virtual_pos", 3 },
+        .{ "world_pos", 4 },
+        .{ "size", 5 },
     };
     color: ?Color = null,
     text: ?[]const u8 = null,
@@ -1263,8 +1238,8 @@ pub const DebugText = struct {
 
 pub const Line = struct {
     pub const field_nums = .{
-        .{"p0", 1},
-        .{"p1", 2},
+        .{ "p0", 1 },
+        .{ "p1", 2 },
     };
     p0: ?Point = null,
     p1: ?Point = null,
@@ -1272,8 +1247,8 @@ pub const Line = struct {
 
 pub const DebugLine = struct {
     pub const field_nums = .{
-        .{"color", 1},
-        .{"line", 2},
+        .{ "color", 1 },
+        .{ "line", 2 },
     };
     color: ?Color = null,
     line: ?Line = null,
@@ -1281,9 +1256,9 @@ pub const DebugLine = struct {
 
 pub const DebugBox = struct {
     pub const field_nums = .{
-        .{"color", 1},
-        .{"min", 2},
-        .{"max", 3},
+        .{ "color", 1 },
+        .{ "min", 2 },
+        .{ "max", 3 },
     };
     color: ?Color = null,
     min: ?Point = null,
@@ -1292,9 +1267,9 @@ pub const DebugBox = struct {
 
 pub const DebugSphere = struct {
     pub const field_nums = .{
-        .{"color", 1},
-        .{"p", 2},
-        .{"r", 3},
+        .{ "color", 1 },
+        .{ "p", 2 },
+        .{ "r", 3 },
     };
     color: ?Color = null,
     p: ?Point = null,
@@ -1318,10 +1293,10 @@ pub const DebugGameState = enum(u8) {
 
 pub const DebugCreateUnit = struct {
     pub const field_nums = .{
-        .{"unit_type", 1},
-        .{"owner", 2},
-        .{"pos", 3},
-        .{"quantity", 4},
+        .{ "unit_type", 1 },
+        .{ "owner", 2 },
+        .{ "pos", 3 },
+        .{ "quantity", 4 },
     };
     unit_type: ?u32 = null,
     owner: ?i32 = null,
@@ -1331,7 +1306,7 @@ pub const DebugCreateUnit = struct {
 
 pub const DebugKillUnit = struct {
     pub const field_nums = .{
-        .{"tags", 1},
+        .{ "tags", 1 },
     };
     tags: ?[]u64 = null,
 };
@@ -1344,8 +1319,8 @@ pub const TestProcessState = enum(u8) {
 
 pub const DebugTestProcess = struct {
     pub const field_nums = .{
-        .{"state", 1},
-        .{"delay_ms", 2},
+        .{ "state", 1 },
+        .{ "delay_ms", 2 },
     };
     state: ?TestProcessState = null,
     delay_ms: ?i32 = null,
@@ -1353,7 +1328,7 @@ pub const DebugTestProcess = struct {
 
 pub const DebugSetScore = struct {
     pub const field_nums = .{
-        .{"score", 1},
+        .{ "score", 1 },
     };
     score: ?f32 = null,
 };
@@ -1365,7 +1340,7 @@ pub const EndResult = enum(u8) {
 
 pub const DebugEndGame = struct {
     pub const field_nums = .{
-        .{"end_result", 1},
+        .{ "end_result", 1 },
     };
     end_result: ?EndResult = null,
 };
@@ -1378,9 +1353,9 @@ pub const UnitValue = enum(u8) {
 
 pub const DebugSetUnitValue = struct {
     pub const field_nums = .{
-        .{"unit_value", 1},
-        .{"value", 2},
-        .{"unit_tag", 3},
+        .{ "unit_value", 1 },
+        .{ "value", 2 },
+        .{ "unit_tag", 3 },
     };
     unit_value: ?UnitValue = null,
     value: ?f32 = null,
@@ -1389,11 +1364,11 @@ pub const DebugSetUnitValue = struct {
 
 pub const RequestData = struct {
     pub const field_nums = .{
-        .{"ability_id", 1},
-        .{"unit_id", 2},
-        .{"upgrade_id", 3},
-        .{"buff_id", 4},
-        .{"effect_id", 5},
+        .{ "ability_id", 1 },
+        .{ "unit_id", 2 },
+        .{ "upgrade_id", 3 },
+        .{ "buff_id", 4 },
+        .{ "effect_id", 5 },
     };
     ability_id: ?bool = null,
     unit_id: ?bool = null,
@@ -1405,8 +1380,8 @@ pub const RequestData = struct {
 pub const ResponseData = struct {
     pub const field_nums = .{
         //.{"abilities", 1},
-        .{"units", 2},
-        .{"upgrades", 3},
+        .{ "units", 2 },
+        .{ "upgrades", 3 },
         //.{"buffs", 4},
         //.{"effects", 5},
     };
@@ -1439,8 +1414,8 @@ pub const TargetType = enum(u8) {
 
 pub const DamageBonus = struct {
     pub const field_nums = .{
-        .{"attribute", 1},
-        .{"bonus", 2},
+        .{ "attribute", 1 },
+        .{ "bonus", 2 },
     };
     attribute: ?Attribute = null,
     bonus: ?f32 = null,
@@ -1448,12 +1423,12 @@ pub const DamageBonus = struct {
 
 pub const Weapon = struct {
     pub const field_nums = .{
-        .{"target_type", 1},
-        .{"damage", 2},
-        .{"damage_bonus", 3},
-        .{"attacks", 4},
-        .{"range", 5},
-        .{"speed", 6},
+        .{ "target_type", 1 },
+        .{ "damage", 2 },
+        .{ "damage_bonus", 3 },
+        .{ "attacks", 4 },
+        .{ "range", 5 },
+        .{ "speed", 6 },
     };
     target_type: ?TargetType = null,
     damage: ?f32 = null,
@@ -1465,12 +1440,12 @@ pub const Weapon = struct {
 
 pub const UpgradeData = struct {
     pub const field_nums = .{
-        .{"upgrade_id", 1},
-        .{"name", 2},
-        .{"mineral_cost", 3},
-        .{"vespene_cost", 4},
-        .{"research_time", 5},
-        .{"ability_id", 6},
+        .{ "upgrade_id", 1 },
+        .{ "name", 2 },
+        .{ "mineral_cost", 3 },
+        .{ "vespene_cost", 4 },
+        .{ "research_time", 5 },
+        .{ "ability_id", 6 },
     };
     upgrade_id: ?u32 = null,
     name: ?[]const u8 = null,
@@ -1482,28 +1457,28 @@ pub const UpgradeData = struct {
 
 pub const UnitTypeData = struct {
     pub const field_nums = .{
-        .{"unit_id", 1},
-        .{"name", 2},
-        .{"available", 3},
-        .{"cargo_size", 4},
-        .{"attributes", 8},
-        .{"movement_speed", 9},
-        .{"armor", 10},
-        .{"weapons", 11},
-        .{"mineral_cost", 12},
-        .{"vespene_cost", 13},
-        .{"food_required", 14},
-        .{"ability_id", 15},
-        .{"race", 16},
-        .{"build_time", 17},
-        .{"food_provided", 18},
-        .{"has_vespene", 19},
-        .{"has_minerals", 20},
-        .{"sight_range", 25},
-        .{"tech_alias", 21},
-        .{"unit_alias", 22},
-        .{"tech_requirement", 23},
-        .{"require_attached", 24},
+        .{ "unit_id", 1 },
+        .{ "name", 2 },
+        .{ "available", 3 },
+        .{ "cargo_size", 4 },
+        .{ "attributes", 8 },
+        .{ "movement_speed", 9 },
+        .{ "armor", 10 },
+        .{ "weapons", 11 },
+        .{ "mineral_cost", 12 },
+        .{ "vespene_cost", 13 },
+        .{ "food_required", 14 },
+        .{ "ability_id", 15 },
+        .{ "race", 16 },
+        .{ "build_time", 17 },
+        .{ "food_provided", 18 },
+        .{ "has_vespene", 19 },
+        .{ "has_minerals", 20 },
+        .{ "sight_range", 25 },
+        .{ "tech_alias", 21 },
+        .{ "unit_alias", 22 },
+        .{ "tech_requirement", 23 },
+        .{ "require_attached", 24 },
     };
     unit_id: ?u32 = null,
     name: ?[]const u8 = null,
@@ -1531,10 +1506,10 @@ pub const UnitTypeData = struct {
 
 pub const RequestQuery = struct {
     pub const field_nums = .{
-        .{"pathing", 1},
-        .{"abilities", 2},
-        .{"placements", 3},
-        .{"ignore_resource_requirements", 4},
+        .{ "pathing", 1 },
+        .{ "abilities", 2 },
+        .{ "placements", 3 },
+        .{ "ignore_resource_requirements", 4 },
     };
     pathing: ?[]RequestQueryPathing = null,
     abilities: ?[]RequestQueryAvailableAbilities = null,
@@ -1544,9 +1519,9 @@ pub const RequestQuery = struct {
 
 pub const ResponseQuery = struct {
     pub const field_nums = .{
-        .{"pathing", 1},
-        .{"abilities", 2},
-        .{"placements", 3},
+        .{ "pathing", 1 },
+        .{ "abilities", 2 },
+        .{ "placements", 3 },
     };
     pathing: ?[]ResponseQueryPathing = null,
     abilities: ?[]ResponseQueryAvailableAbilities = null,
@@ -1555,9 +1530,9 @@ pub const ResponseQuery = struct {
 
 pub const RequestQueryPathing = struct {
     pub const field_nums = .{
-        .{"start_pos", 1},
-        .{"unit_tag", 2},
-        .{"end_pos", 3},
+        .{ "start_pos", 1 },
+        .{ "unit_tag", 2 },
+        .{ "end_pos", 3 },
     };
     start_pos: ?Point2D = null,
     unit_tag: ?u64 = null,
@@ -1566,34 +1541,34 @@ pub const RequestQueryPathing = struct {
 
 pub const ResponseQueryPathing = struct {
     pub const field_nums = .{
-        .{"distance", 1},
+        .{ "distance", 1 },
     };
     distance: ?f32 = null,
 };
 
 pub const RequestQueryAvailableAbilities = struct {
     pub const field_nums = .{
-        .{"unit_tag", 1},
+        .{ "unit_tag", 1 },
     };
     unit_tag: ?u64 = null,
 };
 
 pub const ResponseQueryAvailableAbilities = struct {
     pub const field_nums = .{
-        .{"abilities", 1},
-        .{"unit_tag", 2},
-        .{"unit_type_id", 3},
+        .{ "abilities", 1 },
+        .{ "unit_tag", 2 },
+        .{ "unit_type_id", 3 },
     };
     abilities: ?[]AvailableAbility = null,
     unit_tag: ?u64 = null,
-    unit_type_id: ?u32 = null
+    unit_type_id: ?u32 = null,
 };
 
 pub const RequestQueryBuildingPlacement = struct {
     pub const field_nums = .{
-        .{"ability_id", 1},
-        .{"target_pos", 2},
-        .{"placing_unit_tag", 3},
+        .{ "ability_id", 1 },
+        .{ "target_pos", 2 },
+        .{ "placing_unit_tag", 3 },
     };
     ability_id: ?i32 = null,
     target_pos: ?Point2D = null,
@@ -1602,7 +1577,7 @@ pub const RequestQueryBuildingPlacement = struct {
 
 pub const ResponseQueryBuildingPlacement = struct {
     pub const field_nums = .{
-        .{"result", 1},
+        .{ "result", 1 },
     };
     result: ?ActionResult = null,
 };
