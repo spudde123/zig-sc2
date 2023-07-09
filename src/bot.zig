@@ -501,7 +501,7 @@ pub const GameInfo = struct {
                     // Only main base ramps will have depot
                     // and barracks locations set
                     if (points.len < max_main_base_ramp_size) {
-                        const ramp_dir = top_center.subtract(bottom_center).normalize();
+                        const ramp_dir = top_center.sub(bottom_center).normalize();
 
                         const depot_candidate1 = top_center.add(ramp_dir.rotate(math.pi / 2.0).multiply(2)).floor();
                         const depot_index1 = placement.pointToIndex(depot_candidate1);

@@ -16,7 +16,9 @@ const CloakState = sc2p.CloakState;
 const Race = sc2p.Race;
 const Attribute = sc2p.Attribute;
 
-const Point2 = @import("grids.zig").Point2;
+const grids = @import("grids.zig");
+const Point2 = grids.Point2;
+const Circle = grids.Circle;
 
 pub const PowerSource = struct {
     position: Point2,
@@ -308,6 +310,22 @@ fn tagsDontMatch(context: []u64, unit: Unit) bool {
     }
 
     return true;
+}
+
+fn closerThan(context: Circle, unit: Unit) bool {
+    return context.isInside(unit.position);
+}
+
+fn furtherThan(context: Circle, unit: Unit) bool {
+    return !context.isInside(unit.position);
+}
+
+pub fn insideDistance(circle: Circle, units: []Unit) UnitIterator(Circle, closerThan) {
+    return UnitIterator(Circle, closerThan){ .buffer = units, .context = circle };
+}
+
+pub fn outsideDistance(circle: Circle, units: []Unit) UnitIterator(Circle, closerThan) {
+    return UnitIterator(Circle, furtherThan){ .buffer = units, .context = circle };
 }
 
 pub fn includeTags(tags: []u64, units: []Unit) UnitIterator([]u64, tagsMatch) {

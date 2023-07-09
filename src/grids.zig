@@ -32,6 +32,15 @@ pub const GridPoint = struct {
     y: i32,
 };
 
+pub const Circle = struct {
+    center: Point2,
+    r: f32,
+
+    pub fn isInside(self: Circle, point: Point2) bool {
+        return self.center.distanceSquaredTo(point) < self.r * self.r;
+    }
+};
+
 pub const Point2 = struct {
     x: f32 = 0,
     y: f32 = 0,
@@ -77,7 +86,7 @@ pub const Point2 = struct {
         };
     }
 
-    pub fn subtract(self: Point2, other: Point2) Point2 {
+    pub fn sub(self: Point2, other: Point2) Point2 {
         return .{
             .x = self.x - other.x,
             .y = self.y - other.y,
@@ -123,6 +132,32 @@ pub const Point2 = struct {
         const x_diff = math.fabs(self.x - other.x);
         const y_diff = math.fabs(self.y - other.y);
         return @max(x_diff, y_diff) + (math.sqrt2 - 1) * @min(x_diff, y_diff);
+    }
+
+    pub fn findClosestPoint(self: Point2, points: []const Point2) ?Point2 {
+        var min_distance: f32 = math.floatMax(f32);
+        var closest_point: ?Point2 = null;
+        for (points) |point| {
+            const dist_sqrd = self.distanceSquaredTo(point);
+            if (dist_sqrd < min_distance) {
+                min_distance = dist_sqrd;
+                closest_point = point;
+            }
+        }
+        return closest_point;
+    }
+
+    pub fn findFurthestPoint(self: Point2, points: []const Point2) ?Point2 {
+        var max_distance: f32 = 0;
+        var furthest_point: ?Point2 = null;
+        for (points) |point| {
+            const dist_sqrd = self.distanceSquaredTo(point);
+            if (dist_sqrd > max_distance) {
+                max_distance = dist_sqrd;
+                furthest_point = point;
+            }
+        }
+        return furthest_point;
     }
 };
 
