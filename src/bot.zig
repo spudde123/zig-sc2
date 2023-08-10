@@ -149,7 +149,7 @@ pub const GameInfo = struct {
         const raw_proto = proto_data.start_raw.?;
 
         const map_size_proto = raw_proto.map_size.?;
-        const map_size = GridSize{ .w = @intCast(usize, map_size_proto.x.?), .h = @intCast(usize, map_size_proto.y.?) };
+        const map_size = GridSize{ .w = @as(usize, @intCast(map_size_proto.x.?)), .h = @as(usize, @intCast(map_size_proto.y.?)) };
 
         const playable_area_proto = raw_proto.playable_area.?;
         const rect_p0 = playable_area_proto.p0.?;
@@ -182,7 +182,7 @@ pub const GameInfo = struct {
         assert(pathing_proto.size.?.x.? == map_size.w);
         assert(pathing_proto.size.?.y.? == map_size.h);
         const pathing_proto_slice = pathing_proto.image.?;
-        var pathing_slice = try allocator.alloc(u8, @intCast(usize, map_size.w * map_size.h));
+        var pathing_slice = try allocator.alloc(u8, @as(usize, @intCast(map_size.w * map_size.h)));
 
         const PackedIntType = PackedIntIo(u1, .Big);
 
@@ -223,8 +223,8 @@ pub const GameInfo = struct {
         }
 
         for (geysers) |geyser| {
-            const geyser_x = @intFromFloat(usize, geyser.position.x);
-            const geyser_y = @intFromFloat(usize, geyser.position.y);
+            const geyser_x = @as(usize, @intFromFloat(geyser.position.x));
+            const geyser_y = @as(usize, @intFromFloat(geyser.position.y));
             var y: usize = geyser_y - 1;
             while (y < geyser_y + 2) : (y += 1) {
                 var x: usize = geyser_x - 1;
@@ -333,8 +333,8 @@ pub const GameInfo = struct {
                 center.x += resource.pos.x;
                 center.y += resource.pos.y;
             }
-            center.x = center.x / @floatFromInt(f32, group.count);
-            center.y = center.y / @floatFromInt(f32, group.count);
+            center.x = center.x / @as(f32, @floatFromInt(group.count));
+            center.y = center.y / @as(f32, @floatFromInt(group.count));
             center.x = math.floor(center.x) + 0.5;
             center.y = math.floor(center.y) + 0.5;
 
@@ -456,8 +456,8 @@ pub const GameInfo = struct {
                     if (current_group.len < 3) continue;
                     var points = try perm_alloc.alloc(GridPoint, current_group.len);
                     for (current_group_slice, 0..) |point, j| {
-                        const x = @intCast(i32, @mod(point, grid_width));
-                        const y = @intCast(i32, @divFloor(point, grid_width));
+                        const x = @as(i32, @intCast(@mod(point, grid_width)));
+                        const y = @as(i32, @intCast(@divFloor(point, grid_width)));
                         points[j] = GridPoint{ .x = x, .y = y };
                     }
                     const vision_blocker = VisionBlocker{ .points = points };
@@ -474,19 +474,19 @@ pub const GameInfo = struct {
                     var y_min: f32 = 0;
 
                     for (current_group_slice, 0..) |point, j| {
-                        const x = @intCast(i32, @mod(point, grid_width));
-                        const y = @intCast(i32, @divFloor(point, grid_width));
+                        const x = @as(i32, @intCast(@mod(point, grid_width)));
+                        const y = @as(i32, @intCast(@divFloor(point, grid_width)));
                         points[j] = GridPoint{ .x = x, .y = y };
 
                         const height_val = terrain_height.data[point];
                         if (height_val == max_height) {
                             max_count += 1;
-                            x_max += @floatFromInt(f32, x) + 0.5;
-                            y_max += @floatFromInt(f32, y) + 0.5;
+                            x_max += @as(f32, @floatFromInt(x)) + 0.5;
+                            y_max += @as(f32, @floatFromInt(y)) + 0.5;
                         } else if (height_val == min_height) {
                             min_count += 1;
-                            x_min += @floatFromInt(f32, x) + 0.5;
-                            y_min += @floatFromInt(f32, y) + 0.5;
+                            x_min += @as(f32, @floatFromInt(x)) + 0.5;
+                            y_min += @as(f32, @floatFromInt(y)) + 0.5;
                         }
                     }
 
@@ -545,7 +545,7 @@ pub const GameInfo = struct {
         var max_blocked_neighbors: u64 = 0;
 
         const grid_width = placement.w;
-        const grid_width_i32 = @intCast(i32, placement.w);
+        const grid_width_i32 = @as(i32, @intCast(placement.w));
         const offsets = [_]i32{
             0,
             1,
@@ -561,13 +561,13 @@ pub const GameInfo = struct {
         assert(ramp_points.len < max_main_base_ramp_size);
         var ramp_points_usize: [max_main_base_ramp_size]usize = undefined;
         for (ramp_points, 0..) |point, i| {
-            const x = @intCast(usize, point.x);
-            const y = @intCast(usize, point.y);
+            const x = @as(usize, @intCast(point.x));
+            const y = @as(usize, @intCast(point.y));
             ramp_points_usize[i] = x + y * grid_width;
         }
 
         for (offsets) |offset| {
-            const current_index = @intCast(usize, @intCast(i32, depot_index) + offset);
+            const current_index = @as(usize, @intCast(@as(i32, @intCast(depot_index)) + offset));
             var depot_points = [_]usize{
                 current_index,
                 current_index + 1,
@@ -634,14 +634,14 @@ pub const GameInfo = struct {
 
         for (self.ramps) |ramp| {
             for (ramp.points) |point| {
-                const index = @intCast(usize, point.x) + @intCast(usize, point.y) * self.placement_grid.w;
+                const index = @as(usize, @intCast(point.x)) + @as(usize, @intCast(point.y)) * self.placement_grid.w;
                 self.placement_grid.data[index] = 0;
             }
         }
 
         for (self.vision_blockers) |vb| {
             for (vb.points) |point| {
-                const index = @intCast(usize, point.x) + @intCast(usize, point.y) * self.placement_grid.w;
+                const index = @as(usize, @intCast(point.x)) + @as(usize, @intCast(point.y)) * self.placement_grid.w;
                 self.placement_grid.data[index] = 0;
             }
         }
@@ -720,22 +720,22 @@ pub const GameInfo = struct {
     }
 
     pub fn getTerrainZ(self: GameInfo, pos: Point2) f32 {
-        const x = @intFromFloat(usize, math.floor(pos.x));
-        const y = @intFromFloat(usize, math.floor(pos.y));
+        const x = @as(usize, @intFromFloat(math.floor(pos.x)));
+        const y = @as(usize, @intFromFloat(math.floor(pos.y)));
 
         assert(x >= 0 and x < self.terrain_height.w);
         assert(y >= 0 and y < self.terrain_height.h);
 
         const terrain_grid_width = self.terrain_height.w;
         const grid_index = x + y * terrain_grid_width;
-        const terrain_value = @floatFromInt(f32, self.terrain_height.data[grid_index]);
+        const terrain_value = @as(f32, @floatFromInt(self.terrain_height.data[grid_index]));
         return -16 + 32 * terrain_value / 255;
     }
 
     pub fn getMapCenter(self: GameInfo) Point2 {
         const x_i32 = self.playable_area.p0.x + @divFloor(self.playable_area.width(), 2);
         const y_i32 = self.playable_area.p0.y + @divFloor(self.playable_area.height(), 2);
-        const middle_floor = Point2{ .x = @floatFromInt(f32, x_i32), .y = @floatFromInt(f32, y_i32) };
+        const middle_floor = Point2{ .x = @as(f32, @floatFromInt(x_i32)), .y = @as(f32, @floatFromInt(y_i32)) };
         return middle_floor.add(.{ .x = 0.5, .y = 0.5 });
     }
 
@@ -837,7 +837,7 @@ pub const Bot = struct {
 
         const game_loop: u32 = response.observation.?.game_loop.?;
 
-        const time = @floatFromInt(f32, game_loop) / 22.4;
+        const time = @as(f32, @floatFromInt(game_loop)) / 22.4;
 
         const obs: sc2p.ObservationRaw = response.observation.?.raw.?;
 
@@ -866,7 +866,7 @@ pub const Bot = struct {
                 if (unit.buff_ids) |buffs| {
                     buff_ids = try std.ArrayList(BuffId).initCapacity(allocator, buffs.len);
                     for (buffs) |buff| {
-                        buff_ids.appendAssumeCapacity(@enumFromInt(BuffId, buff));
+                        buff_ids.appendAssumeCapacity(@as(BuffId, @enumFromInt(buff)));
                     }
                 } else {
                     buff_ids = try std.ArrayList(BuffId).initCapacity(allocator, 0);
@@ -905,7 +905,7 @@ pub const Bot = struct {
                         };
 
                         const order = UnitOrder{
-                            .ability_id = @enumFromInt(AbilityId, order_proto.ability_id orelse 0),
+                            .ability_id = @as(AbilityId, @enumFromInt(order_proto.ability_id orelse 0)),
                             .target = target,
                             .progress = order_proto.progress orelse 0,
                         };
@@ -931,7 +931,7 @@ pub const Bot = struct {
                     rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, 0);
                 }
 
-                const unit_type = @enumFromInt(UnitId, unit.unit_type.?);
+                const unit_type = @as(UnitId, @enumFromInt(unit.unit_type.?));
                 const unit_data = game_data.units.get(unit_type).?;
 
                 const u = Unit{
@@ -1125,7 +1125,7 @@ pub const Bot = struct {
         const upgrade_proto = obs.player.?.upgrade_ids;
         if (upgrade_proto) |upgrade_slice| {
             for (upgrade_slice) |upgrade| {
-                const upgrade_id = @enumFromInt(UpgradeId, upgrade);
+                const upgrade_id = @as(UpgradeId, @enumFromInt(upgrade));
                 try pending_upgrades.put(upgrade_id, 1);
             }
         }
@@ -1146,8 +1146,8 @@ pub const Bot = struct {
         assert(visibility_proto.bits_per_pixel.? == 8);
 
         const grid_size_proto = visibility_proto.size.?;
-        const grid_width = @intCast(usize, grid_size_proto.x.?);
-        const grid_height = @intCast(usize, grid_size_proto.y.?);
+        const grid_width = @as(usize, @intCast(grid_size_proto.x.?));
+        const grid_height = @as(usize, @intCast(grid_size_proto.y.?));
 
         var visibility_data = try allocator.dupe(u8, visibility_proto.image.?);
         const visibility_grid = Grid{ .data = visibility_data, .w = grid_width, .h = grid_height };
@@ -1174,7 +1174,7 @@ pub const Bot = struct {
                     points[pos_index] = Point2{ .x = pos_proto.x.?, .y = pos_proto.y.? };
                 }
                 effects[effect_index] = Effect{
-                    .id = @enumFromInt(EffectId, effect_proto.effect_id.?),
+                    .id = @as(EffectId, @enumFromInt(effect_proto.effect_id.?)),
                     .alliance = effect_proto.alliance.?,
                     .positions = points,
                     .radius = effect_proto.radius.?,
@@ -1238,8 +1238,8 @@ pub const Bot = struct {
             .game_loop = game_loop,
             .time = time,
             .result = result,
-            .minerals = @intCast(i32, player_common.minerals orelse 0),
-            .vespene = @intCast(i32, player_common.vespene orelse 0),
+            .minerals = @as(i32, @intCast(player_common.minerals orelse 0)),
+            .vespene = @as(i32, @intCast(player_common.vespene orelse 0)),
             .food_cap = player_common.food_cap orelse 0,
             .food_used = player_common.food_used orelse 0,
             .food_army = player_common.food_army orelse 0,
@@ -1274,7 +1274,7 @@ pub const Bot = struct {
                 var ability_slice = allocator.alloc(AbilityId, ability_slice_proto.len) catch continue;
 
                 for (ability_slice_proto, 0..) |ability_proto, j| {
-                    ability_slice[j] = @enumFromInt(AbilityId, ability_proto.ability_id orelse 0);
+                    ability_slice[j] = @as(AbilityId, @enumFromInt(ability_proto.ability_id orelse 0));
                 }
 
                 unit_slice[i].available_abilities = ability_slice;
@@ -1329,8 +1329,8 @@ pub const Actions = struct {
                     },
                     .position => |pos| {
                         const point = HashablePoint2{
-                            .x = @intFromFloat(i32, math.round(pos.x * 100)),
-                            .y = @intFromFloat(i32, math.round(pos.y * 100)),
+                            .x = @as(i32, @intFromFloat(math.round(pos.x * 100))),
+                            .y = @as(i32, @intFromFloat(math.round(pos.y * 100))),
                         };
                         break :tg .{ .position = point };
                     },
@@ -1674,7 +1674,7 @@ pub const Actions = struct {
                 unit_lists.items[index].append(order.unit) catch break;
             } else {
                 var unit_command = sc2p.ActionRawUnitCommand{
-                    .ability_id = @intCast(i32, @intFromEnum(order.data.ability_id)),
+                    .ability_id = @as(i32, @intCast(@intFromEnum(order.data.ability_id))),
                     .queue_command = order.data.queue,
                 };
                 switch (order.data.target) {
@@ -1876,7 +1876,7 @@ pub const Actions = struct {
 
     pub fn findPlacementForAbility(self: *Actions, ability: AbilityId, near: Point2, max_distance: f32) ?Point2 {
         assert(max_distance >= 1 and max_distance <= 30);
-        const ability_int = @intCast(i32, @intFromEnum(ability));
+        const ability_int = @as(i32, @intCast(@intFromEnum(ability)));
 
         var options: [256]sc2p.RequestQueryBuildingPlacement = undefined;
         var outer_dist: f32 = 1;
@@ -1940,7 +1940,7 @@ pub const Actions = struct {
 
     pub fn queryPlacementForAbility(self: *Actions, ability: AbilityId, spot: Point2) bool {
         var placements = [_]sc2p.RequestQueryBuildingPlacement{.{
-            .ability_id = @intCast(i32, @intFromEnum(ability)),
+            .ability_id = @as(i32, @intCast(@intFromEnum(ability))),
             .target_pos = .{ .x = spot.x, .y = spot.y },
         }};
         const query = sc2p.RequestQuery{
@@ -2014,11 +2014,11 @@ pub const GameData = struct {
 
         for (proto_upgrades) |proto_upgrade| {
             const upg = UpgradeData{
-                .id = @enumFromInt(UpgradeId, proto_upgrade.upgrade_id.?),
-                .mineral_cost = @intCast(i32, proto_upgrade.mineral_cost orelse 0),
-                .vespene_cost = @intCast(i32, proto_upgrade.vespene_cost orelse 0),
+                .id = @as(UpgradeId, @enumFromInt(proto_upgrade.upgrade_id.?)),
+                .mineral_cost = @as(i32, @intCast(proto_upgrade.mineral_cost orelse 0)),
+                .vespene_cost = @as(i32, @intCast(proto_upgrade.vespene_cost orelse 0)),
                 .research_time = proto_upgrade.research_time orelse 0,
-                .research_ability_id = @enumFromInt(AbilityId, proto_upgrade.ability_id orelse 0),
+                .research_ability_id = @as(AbilityId, @enumFromInt(proto_upgrade.ability_id orelse 0)),
             };
 
             try gd.upgrades.put(upg.id, upg);
@@ -2051,7 +2051,7 @@ pub const GameData = struct {
                     const target_type = weapon_proto.target_type.?;
                     const range = weapon_proto.range.?;
                     const speed = weapon_proto.speed.?;
-                    const attacks: f32 = @floatFromInt(f32, weapon_proto.attacks.?);
+                    const attacks: f32 = @as(f32, @floatFromInt(weapon_proto.attacks.?));
                     const damage = weapon_proto.damage.?;
                     const dps = (damage * attacks) / speed;
                     switch (target_type) {
@@ -2074,19 +2074,19 @@ pub const GameData = struct {
             }
 
             const unit = UnitData{
-                .id = @enumFromInt(UnitId, proto_unit.unit_id.?),
-                .cargo_size = @intCast(i32, proto_unit.cargo_size orelse 0),
+                .id = @as(UnitId, @enumFromInt(proto_unit.unit_id.?)),
+                .cargo_size = @as(i32, @intCast(proto_unit.cargo_size orelse 0)),
                 .movement_speed = proto_unit.movement_speed orelse 0,
                 .armor = proto_unit.armor orelse 0,
                 .air_dps = air_dps,
                 .ground_dps = ground_dps,
                 .air_range = air_range,
                 .ground_range = ground_range,
-                .mineral_cost = @intCast(i32, proto_unit.mineral_cost orelse 0),
-                .vespene_cost = @intCast(i32, proto_unit.vespene_cost orelse 0),
+                .mineral_cost = @as(i32, @intCast(proto_unit.mineral_cost orelse 0)),
+                .vespene_cost = @as(i32, @intCast(proto_unit.vespene_cost orelse 0)),
                 .food_required = proto_unit.food_required orelse 0,
                 .food_provided = proto_unit.food_provided orelse 0,
-                .train_ability_id = @enumFromInt(AbilityId, proto_unit.ability_id orelse 0),
+                .train_ability_id = @as(AbilityId, @enumFromInt(proto_unit.ability_id orelse 0)),
                 .race = proto_unit.race orelse Race.none,
                 .build_time = proto_unit.build_time orelse 0,
                 .sight_range = proto_unit.sight_range orelse 0,

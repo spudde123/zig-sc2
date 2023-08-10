@@ -37,8 +37,8 @@ pub const ProtoReader = struct {
         var header = try self.decodeUInt64();
 
         return ProtoHeader{
-            .wire_type = @enumFromInt(WireType, header & 7),
-            .field_number = @truncate(u8, header >> 3),
+            .wire_type = @as(WireType, @enumFromInt(header & 7)),
+            .field_number = @as(u8, @truncate(header >> 3)),
         };
     }
 
@@ -114,11 +114,11 @@ pub const ProtoReader = struct {
                                         try list_tuple[i].append(allocator, string);
                                     },
                                     u32, u64 => {
-                                        const int_to_add = @intCast(ptr.child, try self.decodeUInt64());
+                                        const int_to_add = @as(ptr.child, @intCast(try self.decodeUInt64()));
                                         try list_tuple[i].append(allocator, int_to_add);
                                     },
                                     i32, i64 => {
-                                        const int_to_add = @intCast(ptr.child, try self.decodeInt64());
+                                        const int_to_add = @as(ptr.child, @intCast(try self.decodeInt64()));
                                         try list_tuple[i].append(allocator, int_to_add);
                                     },
                                     else => {
@@ -131,7 +131,7 @@ pub const ProtoReader = struct {
                                             },
                                             .Enum => {
                                                 const enum_int = try self.decodeUInt64();
-                                                try list_tuple[i].append(allocator, @enumFromInt(ptr.child, enum_int));
+                                                try list_tuple[i].append(allocator, @as(ptr.child, @enumFromInt(enum_int)));
                                             },
                                             else => unreachable,
                                         }
@@ -142,9 +142,9 @@ pub const ProtoReader = struct {
                         },
                         .Int => |int| {
                             if (int.signedness == .unsigned) {
-                                obj_field.* = @intCast(child_type, try self.decodeUInt64());
+                                obj_field.* = @as(child_type, @intCast(try self.decodeUInt64()));
                             } else {
-                                obj_field.* = @intCast(child_type, try self.decodeInt64());
+                                obj_field.* = @as(child_type, @intCast(try self.decodeInt64()));
                             }
                         },
                         .Float => |float| {
@@ -164,7 +164,7 @@ pub const ProtoReader = struct {
                         },
                         .Enum => {
                             const enum_int = try self.decodeUInt64();
-                            obj_field.* = @enumFromInt(child_type, enum_int);
+                            obj_field.* = @as(child_type, @enumFromInt(enum_int));
                         },
                         else => unreachable,
                     }
@@ -206,7 +206,7 @@ pub const ProtoReader = struct {
                 return error.Overflow;
             }
 
-            value += @intCast(u64, 0x7F & byte) << (7 * @intCast(u6, i));
+            value += @as(u64, @intCast(0x7F & byte)) << (7 * @as(u6, @intCast(i)));
             // If msb is 0 we've reached the last byte
             if (byte & 0x80 == 0) {
                 self.bytes_read += i + 1;
@@ -218,7 +218,7 @@ pub const ProtoReader = struct {
     }
 
     fn decodeInt64(self: *ProtoReader) ParseError!i64 {
-        return @bitCast(i64, try self.decodeUInt64());
+        return @as(i64, @bitCast(try self.decodeUInt64()));
     }
 
     fn decodeBytes(self: *ProtoReader, allocator: mem.Allocator) ![]u8 {
@@ -235,7 +235,7 @@ pub const ProtoReader = struct {
     fn decodeFloat(self: *ProtoReader) ParseError!f32 {
         const float_bits = mem.readIntSliceLittle(u32, self.bytes[self.bytes_read..(self.bytes_read + 4)]);
         self.bytes_read += 4;
-        return @bitCast(f32, float_bits);
+        return @as(f32, @bitCast(float_bits));
     }
 };
 
@@ -386,7 +386,7 @@ pub const ProtoWriter = struct {
 
         // MSB of all bytes before last to 1
         while (value > 0) : (i += 1) {
-            self.buffer[self.cursor + i] = @as(u8, 0x80) + @truncate(u7, value);
+            self.buffer[self.cursor + i] = @as(u8, 0x80) + @as(u7, @truncate(value));
             value >>= 7;
         }
 
@@ -396,7 +396,7 @@ pub const ProtoWriter = struct {
     }
 
     fn encodeInt64(self: *ProtoWriter, data: i64) void {
-        self.encodeUInt64(@bitCast(u64, data));
+        self.encodeUInt64(@as(u64, @bitCast(data)));
     }
 
     fn encodeBytes(self: *ProtoWriter, bytes: []const u8) void {
@@ -407,7 +407,7 @@ pub const ProtoWriter = struct {
 
     fn encodeFloat(self: *ProtoWriter, data: f32) void {
         var result = self.buffer[self.cursor..(self.cursor + 4)];
-        mem.writeIntSliceLittle(u32, result, @bitCast(u32, data));
+        mem.writeIntSliceLittle(u32, result, @as(u32, @bitCast(data)));
         self.cursor += 4;
     }
 };

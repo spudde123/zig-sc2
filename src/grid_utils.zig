@@ -233,10 +233,10 @@ pub fn findPlacement(placement_grid: Grid, unit: UnitId, near: Point2, max_dista
 }
 
 fn queryPlacementSize(placement_grid: Grid, size: GridSize, pos: Point2) bool {
-    const pos_x = @intFromFloat(usize, pos.x);
+    const pos_x = @as(usize, @intFromFloat(pos.x));
     const start_x = pos_x - @divFloor(size.w, 2);
 
-    const pos_y = @intFromFloat(usize, pos.y);
+    const pos_y = @as(usize, @intFromFloat(pos.y));
     var y = pos_y - @divFloor(size.h, 2);
     const end_y = y + size.h;
 
@@ -271,8 +271,8 @@ pub fn setBuildingToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &buildings_3x3, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         var y: usize = unit_y - 1;
         while (y < unit_y + 2) : (y += 1) {
             const start = unit_x - 1 + grid.w * y;
@@ -283,8 +283,8 @@ pub fn setBuildingToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &buildings_5x5, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         // These have the corners cut off
         // in the pathing grid but let's just keep it a
         // square so the placement grid is also
@@ -326,8 +326,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_4x4, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         var y: usize = unit_y - 2;
         while (y < unit_y + 2) : (y += 1) {
             const start = unit_x - 2 + grid.w * y;
@@ -338,8 +338,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_2x4, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         var y: usize = unit_y - 2;
         while (y < unit_y + 2) : (y += 1) {
             const start = unit_x - 1 + grid.w * y;
@@ -350,8 +350,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_4x2, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         var y: usize = unit_y - 1;
         while (y < unit_y + 1) : (y += 1) {
             const start = unit_x - 2 + grid.w * y;
@@ -362,8 +362,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_2x6, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         var y: usize = unit_y - 3;
         while (y < unit_y + 3) : (y += 1) {
             const start = unit_x - 1 + grid.w * y;
@@ -374,8 +374,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_6x2, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         var y: usize = unit_y - 1;
         while (y < unit_y + 1) : (y += 1) {
             const start = unit_x - 3 + grid.w * y;
@@ -386,8 +386,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_4x12, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         var y: usize = unit_y - 6;
         while (y < unit_y + 6) : (y += 1) {
             const start = unit_x - 2 + grid.w * y;
@@ -398,8 +398,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_12x4, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         var y: usize = unit_y - 2;
         while (y < unit_y + 2) : (y += 1) {
             const start = unit_x - 6 + grid.w * y;
@@ -410,8 +410,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_6x6, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
         // These should be 6x6 (with their corners cut off?) but
         // depending on the map and map position it seems it's either
         // exactly that or one cell too high or too low.
@@ -429,8 +429,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
 
     // These below have a strange shape
     if (mem.indexOfScalar(UnitId, &destructible_blur, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
 
         var y: usize = unit_y + 4;
         var start_x: usize = unit_x + 1;
@@ -505,8 +505,8 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_ulbr, unit.unit_type)) |_| {
-        const unit_x = @intFromFloat(usize, unit.position.x);
-        const unit_y = @intFromFloat(usize, unit.position.y);
+        const unit_x = @as(usize, @intFromFloat(unit.position.x));
+        const unit_y = @as(usize, @intFromFloat(unit.position.y));
 
         var y: usize = unit_y - 5;
         var start_x: usize = unit_x + 1;

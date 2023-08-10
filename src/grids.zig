@@ -146,8 +146,8 @@ pub const Grid = struct {
     h: usize,
 
     pub fn getValue(self: Grid, point: Point2) u8 {
-        const x: usize = @intFromFloat(usize, math.floor(point.x));
-        const y: usize = @intFromFloat(usize, math.floor(point.y));
+        const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
+        const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
 
         assert(x >= 0 and x < self.w);
         assert(y >= 0 and y < self.h);
@@ -177,14 +177,14 @@ pub const Grid = struct {
     }
 
     pub fn pointToIndex(self: Grid, point: Point2) usize {
-        const x: usize = @intFromFloat(usize, math.floor(point.x));
-        const y: usize = @intFromFloat(usize, math.floor(point.y));
+        const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
+        const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
         return x + y * self.w;
     }
 
     pub fn indexToPoint(self: Grid, index: usize) Point2 {
-        const x = @floatFromInt(f32, @mod(index, self.w));
-        const y = @floatFromInt(f32, @divFloor(index, self.w));
+        const x = @as(f32, @floatFromInt(@mod(index, self.w)));
+        const y = @as(f32, @floatFromInt(@divFloor(index, self.w)));
         return .{
             .x = x,
             .y = y,
@@ -282,10 +282,10 @@ pub fn updateReaperGrid(reaper_grid: Grid, pathing_grid: Grid, climbable_points:
 }
 
 pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usize, playable_area: Rectangle) !Grid {
-    const start_x = @intCast(usize, playable_area.p0.x);
-    const end_x = @intCast(usize, playable_area.p1.x);
-    const start_y = @intCast(usize, playable_area.p0.y);
-    const end_y = @intCast(usize, playable_area.p1.y);
+    const start_x = @as(usize, @intCast(playable_area.p0.x));
+    const end_x = @as(usize, @intCast(playable_area.p1.x));
+    const start_y = @as(usize, @intCast(playable_area.p0.y));
+    const end_y = @as(usize, @intCast(playable_area.p1.y));
 
     var data = try allocator.alloc(u8, map_width * map_height);
 
@@ -357,12 +357,12 @@ pub const InfluenceMap = struct {
     }
 
     pub fn addInfluence(self: *InfluenceMap, center: Point2, radius: f32, amount: f32, decay: Decay) void {
-        const f32_w = @floatFromInt(f32, self.w - 1);
-        const f32_h = @floatFromInt(f32, self.h - 1);
-        const bounding_rect_min_x = @intFromFloat(usize, @max(center.x - radius, 0));
-        const bounding_rect_max_x = @intFromFloat(usize, @min(center.x + radius, f32_w));
-        const bounding_rect_min_y = @intFromFloat(usize, @max(center.y - radius, 0));
-        const bounding_rect_max_y = @intFromFloat(usize, @min(center.y + radius, f32_h));
+        const f32_w = @as(f32, @floatFromInt(self.w - 1));
+        const f32_h = @as(f32, @floatFromInt(self.h - 1));
+        const bounding_rect_min_x = @as(usize, @intFromFloat(@max(center.x - radius, 0)));
+        const bounding_rect_max_x = @as(usize, @intFromFloat(@min(center.x + radius, f32_w)));
+        const bounding_rect_min_y = @as(usize, @intFromFloat(@max(center.y - radius, 0)));
+        const bounding_rect_max_y = @as(usize, @intFromFloat(@min(center.y + radius, f32_h)));
         const r_sqrd = radius * radius;
 
         var y = bounding_rect_min_y;
@@ -399,12 +399,12 @@ pub const InfluenceMap = struct {
     }
 
     pub fn findClosestSafeSpot(self: *InfluenceMap, pos: Point2, radius: f32) ?Point2 {
-        const f32_w = @floatFromInt(f32, self.w - 1);
-        const f32_h = @floatFromInt(f32, self.h - 1);
-        const bounding_rect_min_x = @intFromFloat(usize, @max(pos.x - radius, 0));
-        const bounding_rect_max_x = @intFromFloat(usize, @min(pos.x + radius, f32_w));
-        const bounding_rect_min_y = @intFromFloat(usize, @max(pos.y - radius, 0));
-        const bounding_rect_max_y = @intFromFloat(usize, @min(pos.y + radius, f32_h));
+        const f32_w = @as(f32, @floatFromInt(self.w - 1));
+        const f32_h = @as(f32, @floatFromInt(self.h - 1));
+        const bounding_rect_min_x = @as(usize, @intFromFloat(@max(pos.x - radius, 0)));
+        const bounding_rect_max_x = @as(usize, @intFromFloat(@min(pos.x + radius, f32_w)));
+        const bounding_rect_min_y = @as(usize, @intFromFloat(@max(pos.y - radius, 0)));
+        const bounding_rect_max_y = @as(usize, @intFromFloat(@min(pos.y + radius, f32_h)));
         const r_sqrd = radius * radius;
 
         var best_val: f32 = math.floatMax(f32);
@@ -456,12 +456,12 @@ pub const InfluenceMap = struct {
     /// that is pathable
     fn findClosestValidPoint(self: InfluenceMap, pos: Point2) ?Point2 {
         const radius = 6;
-        const f32_w = @floatFromInt(f32, self.w - 1);
-        const f32_h = @floatFromInt(f32, self.h - 1);
-        const bounding_rect_min_x = @intFromFloat(usize, @max(pos.x - radius, 0));
-        const bounding_rect_max_x = @intFromFloat(usize, @min(pos.x + radius, f32_w));
-        const bounding_rect_min_y = @intFromFloat(usize, @max(pos.y - radius, 0));
-        const bounding_rect_max_y = @intFromFloat(usize, @min(pos.y + radius, f32_h));
+        const f32_w = @as(f32, @floatFromInt(self.w - 1));
+        const f32_h = @as(f32, @floatFromInt(self.h - 1));
+        const bounding_rect_min_x = @as(usize, @intFromFloat(@max(pos.x - radius, 0)));
+        const bounding_rect_max_x = @as(usize, @intFromFloat(@min(pos.x + radius, f32_w)));
+        const bounding_rect_min_y = @as(usize, @intFromFloat(@max(pos.y - radius, 0)));
+        const bounding_rect_max_y = @as(usize, @intFromFloat(@min(pos.y + radius, f32_h)));
         const r_sqrd = radius * radius;
 
         var best_dist: f32 = math.floatMax(f32);
@@ -597,7 +597,7 @@ pub const InfluenceMap = struct {
 
         const large_unit_f32: f32 = if (large_unit) 1 else 0;
         const Vector = @Vector(3, f32);
-        const no_large: Vector = @splat(3, @as(f32, math.floatMax(f32)));
+        const no_large: Vector = @splat(math.floatMax(f32));
         const with_large = Vector{ 1, math.floatMax(f32), math.floatMax(f32) };
 
         var closed = try std.DynamicBitSet.initEmpty(allocator, self.w * self.h);
@@ -744,14 +744,14 @@ pub const InfluenceMap = struct {
     }
 
     pub fn pointToIndex(self: InfluenceMap, point: Point2) usize {
-        const x: usize = @intFromFloat(usize, math.floor(point.x));
-        const y: usize = @intFromFloat(usize, math.floor(point.y));
+        const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
+        const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
         return x + y * self.w;
     }
 
     pub fn indexToPoint(self: InfluenceMap, index: usize) Point2 {
-        const x = @floatFromInt(f32, @mod(index, self.w));
-        const y = @floatFromInt(f32, @divFloor(index, self.w));
+        const x = @as(f32, @floatFromInt(@mod(index, self.w)));
+        const y = @as(f32, @floatFromInt(@divFloor(index, self.w)));
         return .{
             .x = x,
             .y = y,

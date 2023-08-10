@@ -70,7 +70,7 @@ pub const WebSocketClient = struct {
         const addr = try net.Address.parseIp(host, port);
         const socket = try net.tcpConnectToAddress(addr);
 
-        const seed = @truncate(u64, @bitCast(u128, time.nanoTimestamp()));
+        const seed = @as(u64, @truncate(@as(u128, @bitCast(time.nanoTimestamp()))));
         var xoshiro = std.rand.DefaultPrng.init(seed);
         const prng = xoshiro.random();
         const req_buffer = try perm_alloc.alloc(u8, 1024 * 1000);
@@ -490,10 +490,10 @@ pub const WebSocketClient = struct {
             var payload_start: usize = 2;
 
             if (payload.len <= 125) {
-                self.storage[1] = @truncate(u8, payload.len);
+                self.storage[1] = @as(u8, @truncate(payload.len));
             } else if (payload.len <= 65535) {
                 self.storage[1] = 126;
-                mem.writeIntBig(u16, self.storage[2..4], @truncate(u16, payload.len));
+                mem.writeIntBig(u16, self.storage[2..4], @as(u16, @truncate(payload.len)));
                 payload_start += 2;
             } else {
                 self.storage[1] = 127;
