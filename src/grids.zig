@@ -518,7 +518,7 @@ pub const InfluenceMap = struct {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        var came_from = self.runPathfindVec(allocator, validated_start, validated_goal, large_unit) catch return null;
+        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
         defer came_from.deinit();
 
         const goal_index = self.pointToIndex(validated_goal);
@@ -552,7 +552,7 @@ pub const InfluenceMap = struct {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        var came_from = self.runPathfindVec(allocator, validated_start, validated_goal, large_unit) catch return null;
+        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
         defer came_from.deinit();
 
         const goal_index = self.pointToIndex(validated_goal);
@@ -573,7 +573,7 @@ pub const InfluenceMap = struct {
         return res;
     }
 
-    fn runPathfindVec(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) !std.AutoHashMap(usize, CameFrom) {
+    fn runPathfind(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) !std.AutoHashMap(usize, CameFrom) {
         var queue = std.PriorityQueue(Node, void, lessThan).init(allocator, {});
         defer queue.deinit();
         try queue.ensureTotalCapacity(250);
@@ -637,88 +637,6 @@ pub const InfluenceMap = struct {
 
             const v8 = Vector{ grid[index + w + 1], grid[index + 1], grid[index + w] };
             if (@reduce(.And, v8 < no_large)) neighbors.appendAssumeCapacity(.{ .index = index + w + 1, .movement_cost = sqrt2 });
-
-            for (neighbors.constSlice()) |nbr| {
-                if (closed.isSet(nbr.index)) continue;
-
-                const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
-                const nbr_point = self.indexToPoint(nbr.index);
-                const estimated_cost = nbr_cost + nbr_point.octileDistance(goal_floor);
-
-                try queue.add(.{
-                    .index = nbr.index,
-                    .path_len = node.path_len + 1,
-                    .cost = nbr_cost,
-                    .heuristic = estimated_cost,
-                });
-                try came_from.put(nbr.index, .{ .prev = index, .path_len = node.path_len + 1 });
-                closed.set(nbr.index);
-            }
-
-            neighbors.resize(0) catch unreachable;
-        }
-
-        return came_from;
-    }
-
-    fn runPathfind(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) !std.AutoHashMap(usize, CameFrom) {
-        var queue = std.PriorityQueue(Node, void, lessThan).init(allocator, {});
-        defer queue.deinit();
-        try queue.ensureTotalCapacity(250);
-
-        const start_floor = start.floor();
-        const start_index = self.pointToIndex(start);
-        const goal_floor = goal.floor();
-        const goal_index = self.pointToIndex(goal);
-
-        try queue.add(.{
-            .index = start_index,
-            .path_len = 0,
-            .cost = 0,
-            .heuristic = start_floor.octileDistance(goal_floor),
-        });
-
-        const grid = self.grid;
-        const w = self.w;
-
-        var neighbors = std.BoundedArray(Neighbor, 8){};
-
-        var closed = try std.DynamicBitSet.initEmpty(allocator, self.w * self.h);
-        defer closed.deinit();
-        closed.set(start_index);
-
-        var came_from = std.AutoHashMap(usize, CameFrom).init(allocator);
-
-        while (queue.removeOrNull()) |node| {
-            if (node.index == goal_index) break;
-
-            const index = node.index;
-
-            // We are assuming that we won't go out of bounds because in ingame grids the playable area is always only a portion
-            // in the middle and it's surrounded by a lot of unpathable cells
-
-            if (grid[index - w - 1] < math.floatMax(f32) and grid[index - 1] < math.floatMax(f32) and grid[index - w] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{ .index = index - w - 1, .movement_cost = sqrt2 });
-
-            if (grid[index - w] < math.floatMax(f32)) {
-                if (!large_unit or grid[index - w - 1] < math.floatMax(f32) or grid[index - w + 1] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{ .index = index - w, .movement_cost = 1 });
-            }
-            if (grid[index - w + 1] < math.floatMax(f32) and grid[index + 1] < math.floatMax(f32) and grid[index - w] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{ .index = index - w + 1, .movement_cost = sqrt2 });
-
-            if (grid[index - 1] < math.floatMax(f32)) {
-                if (!large_unit or grid[index - w - 1] < math.floatMax(f32) or grid[index + w - 1] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{ .index = index - 1, .movement_cost = 1 });
-            }
-
-            if (grid[index + 1] < math.floatMax(f32)) {
-                if (!large_unit or grid[index - w + 1] < math.floatMax(f32) or grid[index + w + 1] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{ .index = index + 1, .movement_cost = 1 });
-            }
-
-            if (grid[index + w - 1] < math.floatMax(f32) and grid[index - 1] < math.floatMax(f32) and grid[index + w] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{ .index = index + w - 1, .movement_cost = sqrt2 });
-
-            if (grid[index + w] < math.floatMax(f32)) {
-                if (!large_unit or grid[index + w - 1] < math.floatMax(f32) or grid[index + w + 1] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{ .index = index + w, .movement_cost = 1 });
-            }
-
-            if (grid[index + w + 1] < math.floatMax(f32) and grid[index + 1] < math.floatMax(f32) and grid[index + w] < math.floatMax(f32)) neighbors.appendAssumeCapacity(.{ .index = index + w + 1, .movement_cost = sqrt2 });
 
             for (neighbors.constSlice()) |nbr| {
                 if (closed.isSet(nbr.index)) continue;
