@@ -240,13 +240,59 @@ pub const WebSocketClient = struct {
         return jg_data.player_id.?;
     }
 
-    // @TODO: Implement this.
-    pub fn createGameVsHuman(self: *WebSocketClient) !void {
-        _ = self;
-        return;
+    pub fn createGameVsHuman(
+        self: *WebSocketClient,
+        map_name: []const u8,
+        realtime: bool,
+    ) !void {
+        var writer = proto.ProtoWriter{ .buffer = self.req_buffer };
+
+        // Create game
+        const bot_proto = sc2p.PlayerSetup{
+            .player_type = .participant,
+        };
+        const human_proto = sc2p.PlayerSetup{
+            .player_type = .participant,
+        };
+
+        var setups = [_]sc2p.PlayerSetup{ bot_proto, human_proto };
+        const map = sc2p.LocalMap{
+            .map_path = map_name,
+        };
+
+        const create_game = sc2p.RequestCreateGame{
+            .map = map,
+            .player_setup = setups[0..],
+            .disable_fog = false,
+            .realtime = realtime,
+        };
+
+        const create_game_req = sc2p.Request{ .create_game = create_game };
+        const create_game_payload = writer.encodeBaseStruct(create_game_req);
+
+        const create_game_res = try self.writeAndWaitForMessage(create_game_payload);
+        if (create_game_res.create_game == null or create_game_res.status == null) {
+            std.debug.print("Did not get create game response\n", .{});
+            return ClientError.BadResponse;
+        }
+
+        const cg_data = create_game_res.create_game.?;
+
+        if (cg_data.error_code) |code| {
+            std.debug.print("Create game error: {d}\n", .{@intFromEnum(code)});
+            if (cg_data.error_details) |details| {
+                std.debug.print("{s}\n", .{details});
+            }
+            return ClientError.BadResponse;
+        }
+
+        if (create_game_res.status.? != sc2p.Status.init_game) {
+            std.debug.print("Wrong status after create game: {d}\n", .{@intFromEnum(create_game_res.status.?)});
+            return ClientError.BadResponse;
+        }
     }
 
-    pub fn joinLadderGame(
+    pub fn joinMultiplayerGame(
         self: *WebSocketClient,
         bot_setup: BotSetup,
         start_port: u16,

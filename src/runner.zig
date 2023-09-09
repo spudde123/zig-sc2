@@ -17,11 +17,12 @@ const InputType = enum(u8) {
     game_port,
     start_port,
     opponent_id,
-    real_time,
+    realtime,
     computer_race,
     computer_difficulty,
     computer_build,
     map,
+    human_race,
 };
 
 const ProgramArguments = struct {
@@ -29,11 +30,13 @@ const ProgramArguments = struct {
     game_port: ?u16 = null,
     start_port: ?u16 = null,
     opponent_id: ?[]const u8 = null,
-    real_time: bool = false,
+    realtime: bool = false,
     computer_race: sc2p.Race = .random,
     computer_difficulty: sc2p.AiDifficulty = .very_hard,
     computer_build: sc2p.AiBuild = .random,
     map_file_name: []const u8 = "InsideAndOutAIE",
+    human_game: bool = false,
+    human_race: sc2p.Race = .random,
 };
 
 const race_map = std.ComptimeStringMap(sc2p.Race, .{
@@ -144,8 +147,8 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
             } else if (mem.eql(u8, argument, "--OpponentId")) {
                 current_input_type = InputType.opponent_id;
             } else if (mem.eql(u8, argument, "--RealTime")) {
-                current_input_type = InputType.real_time;
-                program_args.real_time = true;
+                current_input_type = InputType.realtime;
+                program_args.realtime = true;
             } else if (mem.eql(u8, argument, "--CompRace")) {
                 current_input_type = InputType.computer_race;
             } else if (mem.eql(u8, argument, "--CompDifficulty")) {
@@ -154,6 +157,9 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                 current_input_type = InputType.computer_build;
             } else if (mem.eql(u8, argument, "--Map")) {
                 current_input_type = InputType.map;
+            } else if (mem.eql(u8, argument, "--Human")) {
+                current_input_type = InputType.human_race;
+                program_args.human_game = true;
             } else {
                 current_input_type = InputType.none;
             }
@@ -172,8 +178,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     program_args.opponent_id = argument;
                 },
                 InputType.computer_difficulty => {
-                    const opt_difficulty = difficulty_map.get(argument);
-                    if (opt_difficulty) |difficulty| {
+                    if (difficulty_map.get(argument)) |difficulty| {
                         program_args.computer_difficulty = difficulty;
                     } else {
                         log.info("Unknown difficulty {s}\n", .{argument});
@@ -184,8 +189,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     }
                 },
                 InputType.computer_race => {
-                    const opt_race = race_map.get(argument);
-                    if (opt_race) |race| {
+                    if (race_map.get(argument)) |race| {
                         program_args.computer_race = race;
                     } else {
                         log.info("Unknown race {s}\n", .{argument});
@@ -196,8 +200,7 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     }
                 },
                 InputType.computer_build => {
-                    const opt_build = build_map.get(argument);
-                    if (opt_build) |build| {
+                    if (build_map.get(argument)) |build| {
                         program_args.computer_build = build;
                     } else {
                         log.info("Unknown build {s}\n", .{argument});
@@ -210,6 +213,17 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                 InputType.map => {
                     program_args.map_file_name = argument;
                 },
+                InputType.human_race => {
+                    if (race_map.get(argument)) |race| {
+                        program_args.human_race = race;
+                    } else {
+                        log.info("Unknown race {s}\n", .{argument});
+                        log.info("Available races:\n", .{});
+                        for (race_map.kvs) |kv| {
+                            log.info("{s}\n", .{kv.key});
+                        }
+                    }
+                },
                 else => {},
             }
             current_input_type = InputType.none;
@@ -217,6 +231,104 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
     }
 
     return program_args;
+}
+
+fn runHumanGame(
+    step_count: u32,
+    base_allocator: mem.Allocator,
+    local_run: LocalRunSetup,
+    sc2_paths: Sc2Paths,
+    map_absolute_path: []const u8,
+    bot_setup: ws.BotSetup,
+    realtime: bool,
+    start_port: u16,
+) !void {
+    var arena_instance = std.heap.ArenaAllocator.init(base_allocator);
+    // Arena allocator that is freed at the end of the game
+    const arena = arena_instance.allocator();
+    defer arena_instance.deinit();
+
+    // Fixed buffer which is reset at the end of each step
+    var step_bytes = try arena.alloc(u8, 30 * 1024 * 1024);
+    var fixed_buffer_instance = std.heap.FixedBufferAllocator.init(step_bytes);
+    const fixed_buffer = fixed_buffer_instance.allocator();
+
+    const host = "127.0.0.1";
+
+    const sc2_args = [_][]const u8{
+        sc2_paths.latest_binary,
+        "-listen",
+        host,
+        "-port",
+        try fmt.allocPrint(arena, "{d}", .{local_run.game_port}),
+        "-dataDir",
+        sc2_paths.base_folder,
+    };
+
+    var sc2_process = ChildProcess.init(sc2_args[0..], arena);
+    sc2_process.cwd = sc2_paths.working_directory;
+
+    try sc2_process.spawn();
+
+    const times_to_try = 20;
+    var attempt: u32 = 0;
+
+    var client: ws.WebSocketClient = undefined;
+    var connection_ok = false;
+    while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
+        std.debug.print("Doing ws connection loop {d}\n", .{attempt});
+        client = ws.WebSocketClient.init(host, local_run.game_port, arena, fixed_buffer) catch {
+            time.sleep(2 * time.ns_per_s);
+            continue;
+        };
+        connection_ok = true;
+    }
+
+    if (!connection_ok) {
+        log.err("Failed to connect to sc2\n", .{});
+
+        _ = try sc2_process.kill();
+        return;
+    }
+
+    defer client.deinit();
+
+    const handshake_ok = try client.completeHandshake("/sc2api");
+    if (!handshake_ok) {
+        log.err("Failed websocket handshake\n", .{});
+        _ = try sc2_process.kill();
+        return;
+    }
+
+    defer {
+        _ = client.quit() catch {
+            log.err("Unable to quit the game\n", .{});
+        };
+    }
+
+    client.createGameVsHuman(map_absolute_path, realtime) catch |err| {
+        log.err("Failed to create human game: {s}\n", .{@errorName(err)});
+        return;
+    };
+
+    _ = client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
+        log.err("Human client failed to join the game: {s}\n", .{@errorName(err)});
+        return;
+    };
+
+    var requested_game_loop: u32 = 0;
+    while (true) {
+        const obs = if (realtime) try client.getObservation(requested_game_loop) else try client.getObservation(null);
+
+        if (obs.player_result) |_| {
+            break;
+        }
+        requested_game_loop = obs.observation.?.game_loop.? + 2;
+
+        if (!realtime) try client.step(step_count);
+
+        fixed_buffer_instance.reset();
+    }
 }
 
 pub fn run(
@@ -331,8 +443,45 @@ pub fn run(
 
     const player_id: u32 = pid: {
         if (ladder_game) {
-            break :pid client.joinLadderGame(bot_setup, start_port) catch |err| {
+            break :pid client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
                 log.err("Failed to join ladder game: {s}\n", .{@errorName(err)});
+                return;
+            };
+        } else if (program_args.human_game) {
+            const strings_to_concat = [_][]const u8{ sc2_paths.map_folder, program_args.map_file_name, ".SC2Map" };
+            const map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
+            std.fs.accessAbsolute(map_absolute_path, .{}) catch {
+                log.err("Map file {s} was not found\n", .{map_absolute_path});
+                return;
+            };
+
+            // Start a separate thread for the human to play
+            // the game. That client acts as the game host
+            // because it seems only the host can manually
+            // control units.
+            var human_run_setup = local_run;
+            human_run_setup.game_port = local_run.game_port + 1;
+
+            start_port = human_run_setup.game_port + 1;
+
+            const human_thread = std.Thread.spawn(.{}, runHumanGame, .{
+                step_count,
+                base_allocator,
+                human_run_setup,
+                sc2_paths,
+                map_absolute_path,
+                .{ .name = "Human", .race = program_args.human_race },
+                program_args.realtime,
+                start_port,
+            }) catch |err| {
+                log.err("Failed to spawn human game thread: {s}\n", .{@errorName(err)});
+                return;
+            };
+
+            human_thread.detach();
+
+            break :pid client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
+                log.err("Failed to join human game with bot: {s}\n", .{@errorName(err)});
                 return;
             };
         } else {
@@ -350,7 +499,7 @@ pub fn run(
                     .build = program_args.computer_build,
                     .race = program_args.computer_race,
                 },
-                program_args.real_time,
+                program_args.realtime,
             ) catch |err| {
                 log.err("Failed to create game: {s}\n", .{@errorName(err)});
                 return;
@@ -378,7 +527,7 @@ pub fn run(
 
     var requested_game_loop: u32 = 0;
     while (true) {
-        const obs = if (program_args.real_time) try client.getObservation(requested_game_loop) else try client.getObservation(null);
+        const obs = if (program_args.realtime) try client.getObservation(requested_game_loop) else try client.getObservation(null);
 
         var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, fixed_buffer);
         // Not sure if the given game loop may be larger than what was requested
@@ -484,7 +633,7 @@ pub fn run(
             client.sendDebugRequest(debug_proto);
         }
 
-        if (!program_args.real_time) {
+        if (!program_args.realtime) {
             _ = try client.step(step_count);
         }
 
