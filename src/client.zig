@@ -57,7 +57,7 @@ pub const BotSetup = struct {
 pub const WebSocketClient = struct {
     addr: net.Address,
     socket: net.Stream,
-    prng: rand.Random,
+    prng: rand.DefaultPrng,
     perm_allocator: mem.Allocator,
     step_allocator: mem.Allocator,
     req_buffer: []u8,
@@ -71,15 +71,13 @@ pub const WebSocketClient = struct {
         const socket = try net.tcpConnectToAddress(addr);
 
         const seed = @as(u64, @truncate(@as(u128, @bitCast(time.nanoTimestamp()))));
-        var xoshiro = std.rand.DefaultPrng.init(seed);
-        const prng = xoshiro.random();
         const req_buffer = try perm_alloc.alloc(u8, 1024 * 1000);
         const storage = try perm_alloc.alloc(u8, 5 * 1024 * 1000);
 
         return WebSocketClient{
             .addr = addr,
             .socket = socket,
-            .prng = prng,
+            .prng = std.rand.DefaultPrng.init(seed),
             .perm_allocator = perm_alloc,
             .step_allocator = step_alloc,
             .req_buffer = req_buffer,
@@ -97,7 +95,7 @@ pub const WebSocketClient = struct {
         var raw_key: [handshake_key_length]u8 = undefined;
         var handshake_key: [handshake_key_length_b64]u8 = undefined;
 
-        self.prng.bytes(&raw_key);
+        self.prng.random().bytes(&raw_key);
 
         _ = base64.standard.Encoder.encode(&handshake_key, &raw_key);
 
