@@ -109,7 +109,7 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
 
     if (max_version == 0) return Sc2PathError.no_version_folders_found;
 
-    log.info("Using game version {d}\n", .{max_version});
+    log.debug("Using game version {d}\n", .{max_version});
     return Sc2Paths{
         .base_folder = base_folder,
         .map_folder = try mem.concat(allocator, u8, &map_concat),
@@ -276,7 +276,7 @@ fn runHumanGame(
     var client: ws.WebSocketClient = undefined;
     var connection_ok = false;
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
-        std.debug.print("Doing ws connection loop {d}\n", .{attempt});
+        log.debug("Doing ws connection loop {d}\n", .{attempt});
         client = ws.WebSocketClient.init(host, local_run.game_port, arena, fixed_buffer) catch {
             time.sleep(2 * time.ns_per_s);
             continue;
@@ -403,7 +403,7 @@ pub fn run(
     var client: ws.WebSocketClient = undefined;
     var connection_ok = false;
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
-        std.debug.print("Doing ws connection loop {d}\n", .{attempt});
+        log.debug("Doing ws connection loop {d}\n", .{attempt});
         client = ws.WebSocketClient.init(host, game_port, arena, fixed_buffer) catch {
             time.sleep(2 * time.ns_per_s);
             continue;

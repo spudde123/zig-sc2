@@ -110,7 +110,7 @@ pub const WebSocketClient = struct {
             total_read += n;
         }
 
-        std.debug.print("{s}\n", .{buf[0..total_read]});
+        std.log.debug("{s}\n", .{buf[0..total_read]});
 
         var split_iter = mem.split(u8, buf[0..], "\r\n");
         if (split_iter.next()) |line| {
@@ -175,22 +175,22 @@ pub const WebSocketClient = struct {
 
         const create_game_res = try self.writeAndWaitForMessage(create_game_payload);
         if (create_game_res.create_game == null or create_game_res.status == null) {
-            std.debug.print("Did not get create game response\n", .{});
+            std.log.err("Did not get create game response\n", .{});
             return ClientError.BadResponse;
         }
 
         const cg_data = create_game_res.create_game.?;
 
         if (cg_data.error_code) |code| {
-            std.debug.print("Create game error: {d}\n", .{@intFromEnum(code)});
+            std.log.err("Create game error: {d}\n", .{@intFromEnum(code)});
             if (cg_data.error_details) |details| {
-                std.debug.print("{s}\n", .{details});
+                std.log.err("{s}\n", .{details});
             }
             return ClientError.BadResponse;
         }
 
         if (create_game_res.status.? != sc2p.Status.init_game) {
-            std.debug.print("Wrong status after create game: {d}\n", .{@intFromEnum(create_game_res.status.?)});
+            std.log.err("Wrong status after create game: {d}\n", .{@intFromEnum(create_game_res.status.?)});
             return ClientError.BadResponse;
         }
 
@@ -221,16 +221,16 @@ pub const WebSocketClient = struct {
 
         var join_game_res = try self.writeAndWaitForMessage(join_game_payload);
         if (join_game_res.join_game == null) {
-            std.debug.print("Did not get join game response\n", .{});
+            std.log.err("Did not get join game response\n", .{});
             return ClientError.BadResponse;
         }
 
         const jg_data = join_game_res.join_game.?;
 
         if (jg_data.error_code) |code| {
-            std.debug.print("Join game error: {d}\n", .{code});
+            std.log.err("Join game error: {d}\n", .{code});
             if (jg_data.error_details) |details| {
-                std.debug.print("{s}\n", .{details});
+                std.log.err("{s}\n", .{details});
             }
             return ClientError.BadResponse;
         }
@@ -270,22 +270,22 @@ pub const WebSocketClient = struct {
 
         const create_game_res = try self.writeAndWaitForMessage(create_game_payload);
         if (create_game_res.create_game == null or create_game_res.status == null) {
-            std.debug.print("Did not get create game response\n", .{});
+            std.log.err("Did not get create game response\n", .{});
             return ClientError.BadResponse;
         }
 
         const cg_data = create_game_res.create_game.?;
 
         if (cg_data.error_code) |code| {
-            std.debug.print("Create game error: {d}\n", .{@intFromEnum(code)});
+            std.log.err("Create game error: {d}\n", .{@intFromEnum(code)});
             if (cg_data.error_details) |details| {
-                std.debug.print("{s}\n", .{details});
+                std.log.err("{s}\n", .{details});
             }
             return ClientError.BadResponse;
         }
 
         if (create_game_res.status.? != sc2p.Status.init_game) {
-            std.debug.print("Wrong status after create game: {d}\n", .{@intFromEnum(create_game_res.status.?)});
+            std.log.err("Wrong status after create game: {d}\n", .{@intFromEnum(create_game_res.status.?)});
             return ClientError.BadResponse;
         }
     }
@@ -332,16 +332,16 @@ pub const WebSocketClient = struct {
 
         const join_game_res = try self.writeAndWaitForMessage(join_game_payload);
         if (join_game_res.join_game == null) {
-            std.debug.print("Did not get join game response\n", .{});
+            std.log.err("Did not get join game response\n", .{});
             return ClientError.BadResponse;
         }
 
         const jg_data = join_game_res.join_game.?;
 
         if (jg_data.error_code) |code| {
-            std.debug.print("Join game error: {d}\n", .{code});
+            std.log.err("Join game error: {d}\n", .{code});
             if (jg_data.error_details) |details| {
-                std.debug.print("{s}\n", .{details});
+                std.log.err("{s}\n", .{details});
             }
             return ClientError.BadResponse;
         }
@@ -577,7 +577,7 @@ pub const WebSocketClient = struct {
 
         if (res.errors) |errors| {
             for (errors) |error_string| {
-                std.debug.print("Message error: {s}\n", .{error_string});
+                std.log.err("Message error: {s}\n", .{error_string});
             }
             return ClientError.ErrorsField;
         }
