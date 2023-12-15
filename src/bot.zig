@@ -626,7 +626,7 @@ pub const GameInfo = struct {
 
         // Placement grid is the ssame minus ramps, vision blockers
         // and lowered supply depots
-        mem.copy(u8, self.placement_grid.data, self.pathing_grid.data);
+        @memcpy(self.placement_grid.data, self.pathing_grid.data);
 
         for (self.ramps) |ramp| {
             for (ramp.points) |point| {
