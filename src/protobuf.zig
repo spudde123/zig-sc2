@@ -225,8 +225,7 @@ pub const ProtoReader = struct {
         const starting_byte: usize = self.bytes_read;
         const num_of_bytes = try self.decodeUInt64();
         const header_len = self.bytes_read - starting_byte;
-        var data = try allocator.alloc(u8, num_of_bytes);
-        mem.copy(u8, data, self.bytes[(starting_byte + header_len)..(starting_byte + header_len + num_of_bytes)]);
+        var data = try allocator.dupe(u8, self.bytes[(starting_byte + header_len)..(starting_byte + header_len + num_of_bytes)]);
         self.bytes_read += num_of_bytes;
 
         return data;
@@ -401,7 +400,7 @@ pub const ProtoWriter = struct {
 
     fn encodeBytes(self: *ProtoWriter, bytes: []const u8) void {
         self.encodeUInt64(bytes.len);
-        mem.copy(u8, self.buffer[self.cursor..(self.cursor + bytes.len)], bytes);
+        @memcpy(self.buffer[self.cursor..(self.cursor + bytes.len)], bytes);
         self.cursor += bytes.len;
     }
 

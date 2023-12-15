@@ -120,13 +120,11 @@ pub const GameInfo = struct {
         temp_alloc: mem.Allocator,
     ) !GameInfo {
         const received_map_name = proto_data.map_name.?;
-        var map_name = try allocator.alloc(u8, received_map_name.len);
-        mem.copy(u8, map_name, received_map_name);
+        var map_name = try allocator.dupe(u8, received_map_name);
 
         var copied_opponent_id: ?[]u8 = null;
         if (opponent_id) |received_opponent_id| {
-            copied_opponent_id = try allocator.alloc(u8, received_opponent_id.len);
-            mem.copy(u8, copied_opponent_id.?, received_opponent_id);
+            copied_opponent_id = try allocator.dupe(u8, received_opponent_id);
         }
 
         var enemy_requested_race: Race = Race.none;
@@ -138,8 +136,7 @@ pub const GameInfo = struct {
                 enemy_requested_race = player_info.race_requested.?;
 
                 if (player_info.player_name) |received_enemy_name| {
-                    enemy_name = try allocator.alloc(u8, received_enemy_name.len);
-                    mem.copy(u8, enemy_name.?, received_enemy_name);
+                    enemy_name = try allocator.dupe(u8, received_enemy_name);
                 }
             } else {
                 my_race = player_info.race_actual.?;
@@ -173,8 +170,7 @@ pub const GameInfo = struct {
         assert(terrain_proto.size.?.x.? == map_size.w);
         assert(terrain_proto.size.?.y.? == map_size.h);
         const terrain_proto_slice = terrain_proto.image.?;
-        var terrain_slice = try allocator.alloc(u8, terrain_proto_slice.len);
-        mem.copy(u8, terrain_slice, terrain_proto_slice);
+        var terrain_slice = try allocator.dupe(u8, terrain_proto_slice);
         const terrain_height = Grid{ .data = terrain_slice, .w = map_size.w, .h = map_size.h };
 
         const pathing_proto = raw_proto.pathing_grid.?;
@@ -605,7 +601,7 @@ pub const GameInfo = struct {
         // build so doesn't seem that critical, but
         // we could move to updating minerals and destructibles
         // only when something changes
-        mem.copy(u8, self.pathing_grid.data, self.clean_map);
+        @memcpy(self.pathing_grid.data, self.clean_map);
 
         const own_units = bot.units.values();
         const enemy_units = bot.enemy_units.values();
@@ -1635,8 +1631,7 @@ pub const Actions = struct {
     }
 
     pub fn chat(self: *Actions, channel: Channel, message: []const u8) void {
-        var msg_copy = self.temp_allocator.alloc(u8, message.len) catch return;
-        mem.copy(u8, msg_copy, message);
+        var msg_copy = self.temp_allocator.dupe(u8, message) catch return;
         self.chat_messages.append(.{ .channel = channel, .message = msg_copy }) catch return;
     }
 

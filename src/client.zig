@@ -545,10 +545,11 @@ pub const WebSocketClient = struct {
                 payload_start += 8;
             }
 
-            mem.copy(u8, self.storage[payload_start..], payload);
+            const payload_end = payload_start + payload.len;
+            @memcpy(self.storage[payload_start..payload_end], payload);
 
             const stream = self.socket.writer();
-            try stream.writeAll(self.storage[0..(payload_start + payload.len)]);
+            try stream.writeAll(self.storage[0..payload_end]);
         }
 
         var cursor: usize = 0;

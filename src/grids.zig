@@ -310,7 +310,7 @@ pub fn createReaperGrid(allocator: mem.Allocator, pathing_grid: Grid, climbable_
 }
 
 pub fn updateReaperGrid(reaper_grid: Grid, pathing_grid: Grid, climbable_points: []const usize) void {
-    mem.copy(u8, reaper_grid.data, pathing_grid.data);
+    @memcpy(reaper_grid.data, pathing_grid.data);
     for (climbable_points) |index| {
         reaper_grid.data[index] = 1;
     }
