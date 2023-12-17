@@ -3,6 +3,8 @@ const math = std.math;
 const mem = std.mem;
 const assert = std.debug.assert;
 
+const f32_max = math.floatMax(f32);
+
 pub const GridSize = struct {
     w: usize,
     h: usize,
@@ -135,7 +137,7 @@ pub const Point2 = struct {
     }
 
     pub fn findClosestPoint(self: Point2, points: []const Point2) ?Point2 {
-        var min_distance: f32 = math.floatMax(f32);
+        var min_distance: f32 = f32_max;
         var closest_point: ?Point2 = null;
         for (points) |point| {
             const dist_sqrd = self.distanceSquaredTo(point);
@@ -365,10 +367,17 @@ pub const InfluenceMap = struct {
         linear: f32,
     };
 
+    const BoundingRect = struct {
+        min_x: usize,
+        max_x: usize,
+        min_y: usize,
+        max_y: usize,
+    };
+
     pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid) !InfluenceMap {
         var grid = try allocator.alloc(f32, base_grid.data.len);
         for (base_grid.data, 0..) |val, i| {
-            grid[i] = if (val > 0) 1 else math.floatMax(f32);
+            grid[i] = if (val > 0) 1 else f32_max;
         }
         return .{
             .grid = grid,
@@ -379,7 +388,7 @@ pub const InfluenceMap = struct {
 
     pub fn reset(self: *InfluenceMap, base_grid: Grid) void {
         for (base_grid.data, 0..) |val, i| {
-            self.grid[i] = if (val > 0) 1 else math.floatMax(f32);
+            self.grid[i] = if (val > 0) 1 else f32_max;
         }
     }
 
@@ -391,20 +400,33 @@ pub const InfluenceMap = struct {
         if (self.grid.len > 0) allocator.free(self.grid);
     }
 
-    pub fn addInfluence(self: *InfluenceMap, center: Point2, radius: f32, amount: f32, decay: Decay) void {
+    fn getCircleBoundingRect(self: InfluenceMap, center: Point2, radius: f32) BoundingRect {
         const f32_w = @as(f32, @floatFromInt(self.w - 1));
         const f32_h = @as(f32, @floatFromInt(self.h - 1));
-        const bounding_rect_min_x = @as(usize, @intFromFloat(@max(center.x - radius, 0)));
-        const bounding_rect_max_x = @as(usize, @intFromFloat(@min(center.x + radius, f32_w)));
-        const bounding_rect_min_y = @as(usize, @intFromFloat(@max(center.y - radius, 0)));
-        const bounding_rect_max_y = @as(usize, @intFromFloat(@min(center.y + radius, f32_h)));
+        const min_x = @as(usize, @intFromFloat(@max(center.x - radius, 0)));
+        const max_x = @as(usize, @intFromFloat(@min(center.x + radius, f32_w)));
+        const min_y = @as(usize, @intFromFloat(@max(center.y - radius, 0)));
+        const max_y = @as(usize, @intFromFloat(@min(center.y + radius, f32_h)));
+        return .{
+            .min_x = min_x,
+            .max_x = max_x,
+            .min_y = min_y,
+            .max_y = max_y,
+        };
+    }
+
+    pub fn addInfluence(self: *InfluenceMap, center: Point2, radius: f32, amount: f32, decay: Decay) void {
+        const bounding_rect = self.getCircleBoundingRect(center, radius);
         const r_sqrd = radius * radius;
 
-        var y = bounding_rect_min_y;
-        while (y <= bounding_rect_max_y) : (y += 1) {
-            var x = bounding_rect_min_x;
-            while (x <= bounding_rect_max_x) : (x += 1) {
+        var y = bounding_rect.min_y;
+        while (y <= bounding_rect.max_y) : (y += 1) {
+            var x = bounding_rect.min_x;
+            while (x <= bounding_rect.max_x) : (x += 1) {
                 const index = x + self.w * y;
+                // If cell is not pathable let's not change it
+                if (self.grid[index] == f32_max) continue;
+
                 const point = self.indexToPoint(index).add(.{ .x = 0.5, .y = 0.5 });
                 const dist_sqrd = point.distanceSquaredTo(center);
                 if (dist_sqrd < r_sqrd) {
@@ -424,7 +446,14 @@ pub const InfluenceMap = struct {
 
     pub fn addInfluenceHollow(self: *InfluenceMap, center: Point2, radius: f32, hollow_radius: f32, amount: f32, decay: Decay) void {
         self.addInfluence(center, radius, amount, decay);
-        self.addInfluence(center, hollow_radius, -amount, .none);
+        switch (decay) {
+            .none => self.addInfluence(center, hollow_radius, -amount, .none),
+            .linear => |end_amount| {
+                const t = hollow_radius / radius;
+                const hollow_amount = (1 - t) * amount + t * end_amount;
+                self.addInfluence(center, hollow_radius, -amount, .{ .linear = -hollow_amount });
+            },
+        }
     }
 
     pub fn addInfluenceCreep(self: *InfluenceMap, creep: Grid, amount: f32) void {
@@ -433,27 +462,43 @@ pub const InfluenceMap = struct {
         }
     }
 
-    pub fn findClosestSafeSpot(self: *InfluenceMap, pos: Point2, radius: f32) ?Point2 {
-        const f32_w = @as(f32, @floatFromInt(self.w - 1));
-        const f32_h = @as(f32, @floatFromInt(self.h - 1));
-        const bounding_rect_min_x = @as(usize, @intFromFloat(@max(pos.x - radius, 0)));
-        const bounding_rect_max_x = @as(usize, @intFromFloat(@min(pos.x + radius, f32_w)));
-        const bounding_rect_min_y = @as(usize, @intFromFloat(@max(pos.y - radius, 0)));
-        const bounding_rect_max_y = @as(usize, @intFromFloat(@min(pos.y + radius, f32_h)));
+    pub fn isAreaSafe(self: InfluenceMap, pos: Point2, radius: f32, threshold: f32) bool {
+        const bounding_rect = self.getCircleBoundingRect(pos, radius);
+
         const r_sqrd = radius * radius;
 
-        var best_val: f32 = math.floatMax(f32);
-        var best_dist: f32 = math.floatMax(f32);
-        var best_point: ?Point2 = null;
-
-        var y = bounding_rect_min_y;
-        while (y <= bounding_rect_max_y) : (y += 1) {
-            var x = bounding_rect_min_x;
-            while (x <= bounding_rect_max_x) : (x += 1) {
+        var y = bounding_rect.min_y;
+        while (y <= bounding_rect.max_y) : (y += 1) {
+            var x = bounding_rect.min_x;
+            while (x <= bounding_rect.max_x) : (x += 1) {
                 const index = x + self.w * y;
                 const point = self.indexToPoint(index).add(.{ .x = 0.5, .y = 0.5 });
                 const dist_sqrd = point.distanceSquaredTo(pos);
-                if (dist_sqrd < r_sqrd and self.grid[index] <= best_val and self.grid[index] < math.floatMax(f32) and dist_sqrd < best_dist) {
+                if (dist_sqrd < r_sqrd and self.grid[index] < f32_max and self.grid[index] >= threshold) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    pub fn findClosestSafeSpot(self: InfluenceMap, pos: Point2, radius: f32) ?Point2 {
+        const bounding_rect = self.getCircleBoundingRect(pos, radius);
+        const r_sqrd = radius * radius;
+
+        var best_val: f32 = f32_max;
+        var best_dist: f32 = f32_max;
+        var best_point: ?Point2 = null;
+
+        var y = bounding_rect.min_y;
+        while (y <= bounding_rect.max_y) : (y += 1) {
+            var x = bounding_rect.min_x;
+            while (x <= bounding_rect.max_x) : (x += 1) {
+                const index = x + self.w * y;
+                const point = self.indexToPoint(index).add(.{ .x = 0.5, .y = 0.5 });
+                const dist_sqrd = point.distanceSquaredTo(pos);
+                if (dist_sqrd < r_sqrd and self.grid[index] <= best_val and self.grid[index] < f32_max and dist_sqrd < best_dist) {
                     best_val = self.grid[index];
                     best_dist = dist_sqrd;
                     best_point = point;
@@ -479,43 +524,35 @@ pub const InfluenceMap = struct {
     const CameFrom = struct {
         prev: usize,
         path_len: usize,
+        cost: f32,
     };
-
-    fn lessThan(context: void, a: Node, b: Node) math.Order {
-        _ = context;
-        return math.order(a.heuristic, b.heuristic);
-    }
 
     /// First tries to find a pathable point on the same height
     /// as the asked point. After that accepts any spot
     /// that is pathable
     fn findClosestValidPoint(self: InfluenceMap, pos: Point2) ?Point2 {
         const radius = 6;
-        const f32_w = @as(f32, @floatFromInt(self.w - 1));
-        const f32_h = @as(f32, @floatFromInt(self.h - 1));
-        const bounding_rect_min_x = @as(usize, @intFromFloat(@max(pos.x - radius, 0)));
-        const bounding_rect_max_x = @as(usize, @intFromFloat(@min(pos.x + radius, f32_w)));
-        const bounding_rect_min_y = @as(usize, @intFromFloat(@max(pos.y - radius, 0)));
-        const bounding_rect_max_y = @as(usize, @intFromFloat(@min(pos.y + radius, f32_h)));
+        const bounding_rect = self.getCircleBoundingRect(pos, radius);
+
         const r_sqrd = radius * radius;
 
-        var best_dist: f32 = math.floatMax(f32);
+        var best_dist: f32 = f32_max;
         var best_point: ?Point2 = null;
 
         const terrain_height = MapInfo.terrain_height;
 
         const height_at_start = terrain_height[self.pointToIndex(pos)];
 
-        var y = bounding_rect_min_y;
-        while (y <= bounding_rect_max_y) : (y += 1) {
-            var x = bounding_rect_min_x;
-            while (x <= bounding_rect_max_x) : (x += 1) {
+        var y = bounding_rect.min_y;
+        while (y <= bounding_rect.max_y) : (y += 1) {
+            var x = bounding_rect.min_x;
+            while (x <= bounding_rect.max_x) : (x += 1) {
                 const index = x + self.w * y;
                 const point = self.indexToPoint(index);
 
                 const height = terrain_height[index];
                 const dist_sqrd = point.distanceSquaredTo(pos);
-                if (dist_sqrd < r_sqrd and height == height_at_start and self.grid[index] < math.floatMax(f32) and dist_sqrd < best_dist) {
+                if (dist_sqrd < r_sqrd and height == height_at_start and self.grid[index] < f32_max and dist_sqrd < best_dist) {
                     best_dist = dist_sqrd;
                     best_point = point;
                 }
@@ -524,14 +561,14 @@ pub const InfluenceMap = struct {
 
         if (best_point) |p| return p;
 
-        y = bounding_rect_min_y;
-        while (y <= bounding_rect_max_y) : (y += 1) {
-            var x = bounding_rect_min_x;
-            while (x <= bounding_rect_max_x) : (x += 1) {
+        y = bounding_rect.min_y;
+        while (y <= bounding_rect.max_y) : (y += 1) {
+            var x = bounding_rect.min_x;
+            while (x <= bounding_rect.max_x) : (x += 1) {
                 const index = x + self.w * y;
                 const point = self.indexToPoint(index);
                 const dist_sqrd = point.distanceSquaredTo(pos);
-                if (dist_sqrd < r_sqrd and self.grid[index] < math.floatMax(f32) and dist_sqrd < best_dist) {
+                if (dist_sqrd < r_sqrd and self.grid[index] < f32_max and dist_sqrd < best_dist) {
                     best_dist = dist_sqrd;
                     best_point = point;
                 }
@@ -542,7 +579,7 @@ pub const InfluenceMap = struct {
 
     pub fn validateEndPoint(self: InfluenceMap, pos: Point2) ?Point2 {
         const index = self.pointToIndex(pos);
-        if (self.grid[index] < math.floatMax(f32)) return pos;
+        if (self.grid[index] < f32_max) return pos;
 
         return self.findClosestValidPoint(pos);
     }
@@ -608,10 +645,17 @@ pub const InfluenceMap = struct {
         return res;
     }
 
+    fn heuristicOrder(context: void, a: Node, b: Node) math.Order {
+        _ = context;
+        return math.order(a.heuristic, b.heuristic);
+    }
+
     fn runPathfind(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) !std.AutoHashMap(usize, CameFrom) {
-        var queue = std.PriorityQueue(Node, void, lessThan).init(allocator, {});
+        const orig_size = 256;
+
+        var queue = std.PriorityQueue(Node, void, heuristicOrder).init(allocator, {});
         defer queue.deinit();
-        try queue.ensureTotalCapacity(250);
+        try queue.ensureTotalCapacity(orig_size);
 
         const start_floor = start.floor();
         const start_index = self.pointToIndex(start);
@@ -632,19 +676,24 @@ pub const InfluenceMap = struct {
 
         const large_unit_f32: f32 = if (large_unit) 1 else 0;
         const Vector = @Vector(3, f32);
-        const no_large: Vector = @splat(math.floatMax(f32));
-        const with_large = Vector{ 1, math.floatMax(f32), math.floatMax(f32) };
+        const no_large: Vector = @splat(f32_max);
+        const with_large = Vector{ 1, f32_max, f32_max };
 
         var closed = try std.DynamicBitSet.initEmpty(allocator, self.w * self.h);
         defer closed.deinit();
-        closed.set(start_index);
 
         var came_from = std.AutoHashMap(usize, CameFrom).init(allocator);
+        try came_from.ensureTotalCapacity(orig_size);
 
         while (queue.removeOrNull()) |node| {
             if (node.index == goal_index) break;
 
             const index = node.index;
+            // If this is a node that was already visited with a lower cost
+            // This is still in the priority queue because we don't
+            // update the existing node but add a new one with a higher priority
+            if (closed.isSet(index)) continue;
+            closed.set(index);
 
             // We are assuming that we won't go out of bounds because in ingame grids the playable area is always only a portion
             // in the middle and it's surrounded by a lot of unpathable cells
@@ -653,22 +702,22 @@ pub const InfluenceMap = struct {
             if (@reduce(.And, v1 < no_large)) neighbors.appendAssumeCapacity(.{ .index = index - w - 1, .movement_cost = sqrt2 });
 
             const v2 = Vector{ large_unit_f32, grid[index - w - 1], grid[index - w + 1] };
-            if (grid[index - w] < math.floatMax(f32) and @reduce(.Or, v2 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index - w, .movement_cost = 1 });
+            if (grid[index - w] < f32_max and @reduce(.Or, v2 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index - w, .movement_cost = 1 });
 
             const v3 = Vector{ grid[index - w + 1], grid[index + 1], grid[index - w] };
             if (@reduce(.And, v3 < no_large)) neighbors.appendAssumeCapacity(.{ .index = index - w + 1, .movement_cost = sqrt2 });
 
             const v4 = Vector{ large_unit_f32, grid[index - w - 1], grid[index + w - 1] };
-            if (grid[index - 1] < math.floatMax(f32) and @reduce(.Or, v4 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index - 1, .movement_cost = 1 });
+            if (grid[index - 1] < f32_max and @reduce(.Or, v4 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index - 1, .movement_cost = 1 });
 
             const v5 = Vector{ large_unit_f32, grid[index - w + 1], grid[index + w + 1] };
-            if (grid[index + 1] < math.floatMax(f32) and @reduce(.Or, v5 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index + 1, .movement_cost = 1 });
+            if (grid[index + 1] < f32_max and @reduce(.Or, v5 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index + 1, .movement_cost = 1 });
 
             const v6 = Vector{ grid[index + w - 1], grid[index - 1], grid[index + w] };
             if (@reduce(.And, v6 < no_large)) neighbors.appendAssumeCapacity(.{ .index = index + w - 1, .movement_cost = sqrt2 });
 
             const v7 = Vector{ large_unit_f32, grid[index + w - 1], grid[index + w + 1] };
-            if (grid[index + w] < math.floatMax(f32) and @reduce(.Or, v7 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index + w, .movement_cost = 1 });
+            if (grid[index + w] < f32_max and @reduce(.Or, v7 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index + w, .movement_cost = 1 });
 
             const v8 = Vector{ grid[index + w + 1], grid[index + 1], grid[index + w] };
             if (@reduce(.And, v8 < no_large)) neighbors.appendAssumeCapacity(.{ .index = index + w + 1, .movement_cost = sqrt2 });
@@ -677,17 +726,25 @@ pub const InfluenceMap = struct {
                 if (closed.isSet(nbr.index)) continue;
 
                 const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
+
+                if (came_from.get(nbr.index)) |prev| {
+                    if (nbr_cost >= prev.cost) continue;
+                }
+
+                // We just add the updated node to the queue with a higher
+                // priority and don't update the old one because the
+                // current std lib implementation for update is a bit strange
+
                 const nbr_point = self.indexToPoint(nbr.index);
                 const estimated_cost = nbr_cost + nbr_point.octileDistance(goal_floor);
 
+                try came_from.put(nbr.index, .{ .prev = index, .path_len = node.path_len + 1, .cost = nbr_cost });
                 try queue.add(.{
                     .index = nbr.index,
                     .path_len = node.path_len + 1,
                     .cost = nbr_cost,
                     .heuristic = estimated_cost,
                 });
-                try came_from.put(nbr.index, .{ .prev = index, .path_len = node.path_len + 1 });
-                closed.set(nbr.index);
             }
 
             neighbors.resize(0) catch unreachable;
@@ -762,4 +819,9 @@ test "test_pf_basic" {
 
     const safe = map2.findClosestSafeSpot(.{ .x = 8, .y = 4 }, 6);
     try std.testing.expectEqual(safe.?, .{ .x = 4.5, .y = 1.5 });
+
+    const old_value = map2.grid[map2.pointToIndex(.{ .x = 4.5, .y = 1.5 })];
+    map2.addInfluenceHollow(.{ .x = 5.5, .y = 2.5 }, 5, 2, 10, .{ .linear = 5 });
+    const new_value = map2.grid[map2.pointToIndex(.{ .x = 4.5, .y = 1.5 })];
+    try std.testing.expectApproxEqAbs(old_value, new_value, 0.02);
 }
