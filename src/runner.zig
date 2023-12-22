@@ -321,11 +321,14 @@ fn runHumanGame(
         const obs = if (realtime) try client.getObservation(requested_game_loop) else try client.getObservation(null);
 
         if (obs.player_result) |_| {
+            _ = client.leave() catch |err| {
+                log.err("Human unable to leave game {s}\n", .{@errorName(err)});
+            };
             break;
         }
         requested_game_loop = obs.observation.?.game_loop.? + 2;
 
-        if (!realtime) try client.step(step_count);
+        if (!realtime) client.step(step_count) catch break;
 
         fixed_buffer_instance.reset();
     }
@@ -439,6 +442,12 @@ pub fn run(
         }
     }
 
+    var human_thread: ?std.Thread = null;
+    defer {
+        if (human_thread) |ht| {
+            ht.join();
+        }
+    }
     const bot_setup: ws.BotSetup = .{ .name = user_bot.name, .race = user_bot.race };
 
     const player_id: u32 = pid: {
@@ -464,7 +473,7 @@ pub fn run(
 
             start_port = human_run_setup.game_port + 1;
 
-            const human_thread = std.Thread.spawn(.{}, runHumanGame, .{
+            human_thread = std.Thread.spawn(.{}, runHumanGame, .{
                 step_count,
                 base_allocator,
                 human_run_setup,
@@ -477,8 +486,6 @@ pub fn run(
                 log.err("Failed to spawn human game thread: {s}\n", .{@errorName(err)});
                 return;
             };
-
-            human_thread.detach();
 
             break :pid client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
                 log.err("Failed to join human game with bot: {s}\n", .{@errorName(err)});
@@ -634,7 +641,10 @@ pub fn run(
         }
 
         if (!program_args.realtime) {
-            _ = try client.step(step_count);
+            _ = client.step(step_count) catch |err| {
+                log.err("Couldn't do a step request: {s}\n", .{@errorName(err)});
+                break;
+            };
         }
 
         actions.clear();
