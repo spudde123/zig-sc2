@@ -674,11 +674,6 @@ pub const InfluenceMap = struct {
 
         var neighbors = std.BoundedArray(Neighbor, 8){};
 
-        const large_unit_f32: f32 = if (large_unit) 1 else 0;
-        const Vector = @Vector(3, f32);
-        const no_large: Vector = @splat(f32_max);
-        const with_large = Vector{ 1, f32_max, f32_max };
-
         var closed = try std.DynamicBitSet.initEmpty(allocator, self.w * self.h);
         defer closed.deinit();
 
@@ -698,29 +693,29 @@ pub const InfluenceMap = struct {
             // We are assuming that we won't go out of bounds because in ingame grids the playable area is always only a portion
             // in the middle and it's surrounded by a lot of unpathable cells
 
-            const v1 = Vector{ grid[index - w - 1], grid[index - 1], grid[index - w] };
-            if (@reduce(.And, v1 < no_large)) neighbors.appendAssumeCapacity(.{ .index = index - w - 1, .movement_cost = sqrt2 });
+            const valid1 = grid[index - w - 1] < f32_max and grid[index - w] < f32_max and grid[index - 1] < f32_max;
+            if (valid1) neighbors.appendAssumeCapacity(.{ .index = index - w - 1, .movement_cost = sqrt2 });
 
-            const v2 = Vector{ large_unit_f32, grid[index - w - 1], grid[index - w + 1] };
-            if (grid[index - w] < f32_max and @reduce(.Or, v2 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index - w, .movement_cost = 1 });
+            const valid2 = !large_unit or grid[index - w - 1] < f32_max or grid[index - w + 1] < f32_max;
+            if (grid[index - w] < f32_max and valid2) neighbors.appendAssumeCapacity(.{ .index = index - w, .movement_cost = 1 });
 
-            const v3 = Vector{ grid[index - w + 1], grid[index + 1], grid[index - w] };
-            if (@reduce(.And, v3 < no_large)) neighbors.appendAssumeCapacity(.{ .index = index - w + 1, .movement_cost = sqrt2 });
+            const valid3 = grid[index - w + 1] < f32_max and grid[index - w] < f32_max and grid[index + 1] < f32_max;
+            if (valid3) neighbors.appendAssumeCapacity(.{ .index = index - w + 1, .movement_cost = sqrt2 });
 
-            const v4 = Vector{ large_unit_f32, grid[index - w - 1], grid[index + w - 1] };
-            if (grid[index - 1] < f32_max and @reduce(.Or, v4 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index - 1, .movement_cost = 1 });
+            const valid4 = !large_unit or grid[index - w - 1] < f32_max or grid[index + w - 1] < f32_max;
+            if (grid[index - 1] < f32_max and valid4) neighbors.appendAssumeCapacity(.{ .index = index - 1, .movement_cost = 1 });
 
-            const v5 = Vector{ large_unit_f32, grid[index - w + 1], grid[index + w + 1] };
-            if (grid[index + 1] < f32_max and @reduce(.Or, v5 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index + 1, .movement_cost = 1 });
+            const valid5 = !large_unit or grid[index - w + 1] < f32_max or grid[index + w + 1] < f32_max;
+            if (grid[index + 1] < f32_max and valid5) neighbors.appendAssumeCapacity(.{ .index = index + 1, .movement_cost = 1 });
 
-            const v6 = Vector{ grid[index + w - 1], grid[index - 1], grid[index + w] };
-            if (@reduce(.And, v6 < no_large)) neighbors.appendAssumeCapacity(.{ .index = index + w - 1, .movement_cost = sqrt2 });
+            const valid6 = grid[index + w - 1] < f32_max and grid[index + w] < f32_max and grid[index - 1] < f32_max;
+            if (valid6) neighbors.appendAssumeCapacity(.{ .index = index + w - 1, .movement_cost = sqrt2 });
 
-            const v7 = Vector{ large_unit_f32, grid[index + w - 1], grid[index + w + 1] };
-            if (grid[index + w] < f32_max and @reduce(.Or, v7 < with_large)) neighbors.appendAssumeCapacity(.{ .index = index + w, .movement_cost = 1 });
+            const valid7 = !large_unit or grid[index + w - 1] < f32_max or grid[index + w + 1] < f32_max;
+            if (grid[index + w] < f32_max and valid7) neighbors.appendAssumeCapacity(.{ .index = index + w, .movement_cost = 1 });
 
-            const v8 = Vector{ grid[index + w + 1], grid[index + 1], grid[index + w] };
-            if (@reduce(.And, v8 < no_large)) neighbors.appendAssumeCapacity(.{ .index = index + w + 1, .movement_cost = sqrt2 });
+            const valid8 = grid[index + w + 1] < f32_max and grid[index + w] < f32_max and grid[index + 1] < f32_max;
+            if (valid8) neighbors.appendAssumeCapacity(.{ .index = index + w + 1, .movement_cost = sqrt2 });
 
             for (neighbors.constSlice()) |nbr| {
                 if (closed.isSet(nbr.index)) continue;
