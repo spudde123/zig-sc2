@@ -77,12 +77,12 @@ const RampsAndVisionBlockers = struct {
 /// about the ongoing match
 /// which doesn't change from step to step
 pub const GameInfo = struct {
-    pathing_grid: Grid,
-    placement_grid: Grid,
+    pathing_grid: Grid(u1),
+    placement_grid: Grid(u1),
     clean_map: []u8,
-    terrain_height: Grid,
-    air_grid: Grid,
-    reaper_grid: Grid,
+    terrain_height: Grid(u8),
+    air_grid: Grid(u1),
+    reaper_grid: Grid(u1),
     climbable_points: []const usize,
 
     map_name: []const u8,
@@ -170,32 +170,25 @@ pub const GameInfo = struct {
         assert(terrain_proto.size.?.x.? == map_size.w);
         assert(terrain_proto.size.?.y.? == map_size.h);
         const terrain_proto_slice = terrain_proto.image.?;
-        var terrain_slice = try allocator.dupe(u8, terrain_proto_slice);
-        const terrain_height = Grid{ .data = terrain_slice, .w = map_size.w, .h = map_size.h };
+        const terrain_slice = try allocator.dupe(u8, terrain_proto_slice);
+        const terrain_height = Grid(u8){ .data = terrain_slice, .w = map_size.w, .h = map_size.h };
 
         const pathing_proto = raw_proto.pathing_grid.?;
         assert(pathing_proto.bits_per_pixel.? == 1);
         assert(pathing_proto.size.?.x.? == map_size.w);
         assert(pathing_proto.size.?.y.? == map_size.h);
         const pathing_proto_slice = pathing_proto.image.?;
-        var pathing_slice = try allocator.alloc(u8, @as(usize, @intCast(map_size.w * map_size.h)));
-
-        const PackedIntType = PackedIntIo(u1, .Big);
-
-        var index: usize = 0;
-        while (index < map_size.w * map_size.h) : (index += 1) {
-            pathing_slice[index] = PackedIntType.get(pathing_proto_slice, index, 0);
-        }
-        const pathing_grid = Grid{ .data = pathing_slice, .w = map_size.w, .h = map_size.h };
+        const pathing_slice = try allocator.dupe(u8, pathing_proto_slice);
+        var pathing_grid = Grid(u1){ .data = pathing_slice, .w = map_size.w, .h = map_size.h };
         // This needs to be done because the pathing grid coming from the game
         // includes rocks and minerals on top of ramps and we need a clear
         // pathing grid for our ramp generation by comparing pathing and placement
         // grids to work
         for (destructibles) |unit| {
-            grid_utils.setDestructibleToValue(pathing_grid, unit, 1);
+            grid_utils.setDestructibleToValue(&pathing_grid, unit, 1);
         }
         for (minerals) |unit| {
-            grid_utils.setMineralToValue(pathing_grid, unit, 1);
+            grid_utils.setMineralToValue(&pathing_grid, unit, 1);
         }
 
         const placement_proto = raw_proto.placement_grid.?;
@@ -203,19 +196,16 @@ pub const GameInfo = struct {
         assert(placement_proto.size.?.x.? == map_size.w);
         assert(placement_proto.size.?.y.? == map_size.h);
         const placement_proto_slice = placement_proto.image.?;
-        var placement_slice = try allocator.alloc(u8, map_size.w * map_size.h);
-        index = 0;
-        while (index < map_size.w * map_size.h) : (index += 1) {
-            placement_slice[index] = PackedIntType.get(placement_proto_slice, index, 0);
-        }
-        const placement_grid = Grid{ .data = placement_slice, .w = map_size.w, .h = map_size.h };
+        const placement_slice = try allocator.dupe(u8, placement_proto_slice);
+        const placement_grid = Grid(u1){ .data = placement_slice, .w = map_size.w, .h = map_size.h };
         // Set up a clean pathing grid that we then use as a base
         // for updates later in the game
-        var clean_slice = try allocator.alloc(u8, map_size.w * map_size.h);
-
-        index = 0;
-        while (index < map_size.w * map_size.h) : (index += 1) {
-            clean_slice[index] = @max(placement_slice[index], pathing_slice[index]);
+        const PackedIntType = PackedIntIo(u1, .Big);
+        var clean_slice = try allocator.alloc(u8, placement_slice.len);
+        var index: usize = 0;
+        while (index < clean_slice.len) : (index += 1) {
+            clean_slice[index] = placement_slice[index] | pathing_slice[index];
+            //PackedIntType.set(clean_slice, index, 0, @max(placement_slice[index], pathing_slice[index]));
         }
 
         for (geysers) |geyser| {
@@ -225,7 +215,7 @@ pub const GameInfo = struct {
             while (y < geyser_y + 2) : (y += 1) {
                 var x: usize = geyser_x - 1;
                 while (x < geyser_x + 2) : (x += 1) {
-                    clean_slice[x + map_size.w * y] = 0;
+                    PackedIntType.set(clean_slice, x + map_size.w * y, 0, 0);
                 }
             }
         }
@@ -369,13 +359,13 @@ pub const GameInfo = struct {
     }
 
     fn generateRamps(
-        pathing: Grid,
-        placement: Grid,
-        terrain_height: Grid,
+        pathing: Grid(u1),
+        placement: Grid(u1),
+        terrain_height: Grid(u8),
         perm_alloc: mem.Allocator,
         temp_alloc: mem.Allocator,
     ) !RampsAndVisionBlockers {
-        var groups = try temp_alloc.alloc(u8, pathing.data.len);
+        var groups = try temp_alloc.alloc(u8, pathing.w * pathing.h);
         @memset(groups, 0);
 
         var flood_fill_list = std.ArrayList(usize).init(temp_alloc);
@@ -386,8 +376,9 @@ pub const GameInfo = struct {
         var vbs = std.ArrayList(VisionBlocker).init(perm_alloc);
         var ramps = std.ArrayList(Ramp).init(perm_alloc);
 
-        for (pathing.data, 0..) |pathing_val, i| {
-            const placement_val = placement.data[i];
+        for (0..pathing.w * pathing.h) |i| {
+            const pathing_val = pathing.getValueIndex(i);
+            const placement_val = placement.getValueIndex(i);
             // If we find a legitimate starting point do a flood fill
             // from there
             if (pathing_val == 1 and placement_val == 0 and groups[i] == 0) {
@@ -411,8 +402,8 @@ pub const GameInfo = struct {
                         cur + pathing.w + 1,
                     };
                     for (neighbors) |neighbor| {
-                        const neighbor_pathing = pathing.data[neighbor];
-                        const neighbor_placement = placement.data[neighbor];
+                        const neighbor_pathing = pathing.getValueIndex(neighbor);
+                        const neighbor_placement = placement.getValueIndex(neighbor);
                         const neighbor_group = groups[neighbor];
                         if (neighbor_pathing == 1 and neighbor_placement == 0 and neighbor_group == 0) {
                             try current_group.append(neighbor);
@@ -536,7 +527,7 @@ pub const GameInfo = struct {
         };
     }
 
-    fn searchDepotPosition(placement: Grid, ramp_points: []const GridPoint, depot_index: usize) Point2 {
+    fn searchDepotPosition(placement: Grid(u1), ramp_points: []const GridPoint, depot_index: usize) Point2 {
         var res = Point2{ .x = 0, .y = 0 };
         var max_blocked_neighbors: u64 = 0;
 
@@ -608,20 +599,20 @@ pub const GameInfo = struct {
 
         for (own_units) |unit| {
             if (!unit.is_structure) continue;
-            grid_utils.setBuildingToValue(self.pathing_grid, unit, 0);
+            grid_utils.setBuildingToValue(&self.pathing_grid, unit, 0);
         }
 
         for (enemy_units) |unit| {
             if (!unit.is_structure) continue;
-            grid_utils.setBuildingToValue(self.pathing_grid, unit, 0);
+            grid_utils.setBuildingToValue(&self.pathing_grid, unit, 0);
         }
 
         for (bot.mineral_patches) |unit| {
-            grid_utils.setMineralToValue(self.pathing_grid, unit, 0);
+            grid_utils.setMineralToValue(&self.pathing_grid, unit, 0);
         }
 
         for (bot.destructibles) |unit| {
-            grid_utils.setDestructibleToValue(self.pathing_grid, unit, 0);
+            grid_utils.setDestructibleToValue(&self.pathing_grid, unit, 0);
         }
 
         // Placement grid is the ssame minus ramps, vision blockers
@@ -631,14 +622,14 @@ pub const GameInfo = struct {
         for (self.ramps) |ramp| {
             for (ramp.points) |point| {
                 const index = @as(usize, @intCast(point.x)) + @as(usize, @intCast(point.y)) * self.placement_grid.w;
-                self.placement_grid.data[index] = 0;
+                self.placement_grid.setValueIndex(index, 0);
             }
         }
 
         for (self.vision_blockers) |vb| {
             for (vb.points) |point| {
                 const index = @as(usize, @intCast(point.x)) + @as(usize, @intCast(point.y)) * self.placement_grid.w;
-                self.placement_grid.data[index] = 0;
+                self.placement_grid.setValueIndex(index, 0);
             }
         }
 
@@ -646,24 +637,24 @@ pub const GameInfo = struct {
             switch (unit.unit_type) {
                 .SupplyDepotLowered => {
                     const index = self.placement_grid.pointToIndex(unit.position);
-                    self.placement_grid.data[index - 1] = 0;
-                    self.placement_grid.data[index] = 0;
-                    self.placement_grid.data[index - 1 - self.placement_grid.w] = 0;
-                    self.placement_grid.data[index - self.placement_grid.w] = 0;
+                    self.placement_grid.setValueIndex(index - 1, 0);
+                    self.placement_grid.setValueIndex(index, 0);
+                    self.placement_grid.setValueIndex(index - 1 - self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index - self.placement_grid.w, 0);
                 },
                 // Siege tanks are not really this large but let's be safe
                 // so it doesn't break the placement grid stuff.
                 .SiegeTankSieged => {
                     const index = self.placement_grid.pointToIndex(unit.position);
-                    self.placement_grid.data[index - 1 + self.placement_grid.w] = 0;
-                    self.placement_grid.data[index + self.placement_grid.w] = 0;
-                    self.placement_grid.data[index + 1 + self.placement_grid.w] = 0;
-                    self.placement_grid.data[index - 1] = 0;
-                    self.placement_grid.data[index] = 0;
-                    self.placement_grid.data[index + 1] = 0;
-                    self.placement_grid.data[index - 1 - self.placement_grid.w] = 0;
-                    self.placement_grid.data[index - self.placement_grid.w] = 0;
-                    self.placement_grid.data[index + 1 - self.placement_grid.w] = 0;
+                    self.placement_grid.setValueIndex(index - 1 + self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index + self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index + 1 + self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index - 1, 0);
+                    self.placement_grid.setValueIndex(index, 0);
+                    self.placement_grid.setValueIndex(index + 1, 0);
+                    self.placement_grid.setValueIndex(index - 1 - self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index - self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index + 1 - self.placement_grid.w, 0);
                 },
                 else => continue,
             }
@@ -673,28 +664,28 @@ pub const GameInfo = struct {
             switch (unit.unit_type) {
                 .SupplyDepotLowered => {
                     const index = self.placement_grid.pointToIndex(unit.position);
-                    self.placement_grid.data[index - 1] = 0;
-                    self.placement_grid.data[index] = 0;
-                    self.placement_grid.data[index - 1 - self.placement_grid.w] = 0;
-                    self.placement_grid.data[index - self.placement_grid.w] = 0;
+                    self.placement_grid.setValueIndex(index - 1, 0);
+                    self.placement_grid.setValueIndex(index, 0);
+                    self.placement_grid.setValueIndex(index - 1 - self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index - self.placement_grid.w, 0);
                 },
                 .SiegeTankSieged => {
                     const index = self.placement_grid.pointToIndex(unit.position);
-                    self.placement_grid.data[index - 1 + self.placement_grid.w] = 0;
-                    self.placement_grid.data[index + self.placement_grid.w] = 0;
-                    self.placement_grid.data[index + 1 + self.placement_grid.w] = 0;
-                    self.placement_grid.data[index - 1] = 0;
-                    self.placement_grid.data[index] = 0;
-                    self.placement_grid.data[index + 1] = 0;
-                    self.placement_grid.data[index - 1 - self.placement_grid.w] = 0;
-                    self.placement_grid.data[index - self.placement_grid.w] = 0;
-                    self.placement_grid.data[index + 1 - self.placement_grid.w] = 0;
+                    self.placement_grid.setValueIndex(index - 1 + self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index + self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index + 1 + self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index - 1, 0);
+                    self.placement_grid.setValueIndex(index, 0);
+                    self.placement_grid.setValueIndex(index + 1, 0);
+                    self.placement_grid.setValueIndex(index - 1 - self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index - self.placement_grid.w, 0);
+                    self.placement_grid.setValueIndex(index + 1 - self.placement_grid.w, 0);
                 },
                 else => continue,
             }
         }
 
-        grids.updateReaperGrid(self.reaper_grid, self.pathing_grid, self.climbable_points);
+        grids.updateReaperGrid(&self.reaper_grid, self.pathing_grid, self.climbable_points);
     }
 
     /// This is trying to do the same as actions.findPlacement(...) but with a
@@ -798,8 +789,8 @@ pub const Bot = struct {
     pending_units: std.AutoHashMap(UnitId, usize),
     pending_upgrades: std.AutoHashMap(UpgradeId, f32),
 
-    visibility: Grid,
-    creep: Grid,
+    visibility: Grid(u8),
+    creep: Grid(u1),
 
     // Giving the previous unit structs
     // if we don't keep the data in the current frame
@@ -1145,20 +1136,11 @@ pub const Bot = struct {
         const grid_width = @as(usize, @intCast(grid_size_proto.x.?));
         const grid_height = @as(usize, @intCast(grid_size_proto.y.?));
 
-        var visibility_data = try allocator.dupe(u8, visibility_proto.image.?);
-        const visibility_grid = Grid{ .data = visibility_data, .w = grid_width, .h = grid_height };
+        const visibility_grid = Grid(u8){ .data = visibility_proto.image.?, .w = grid_width, .h = grid_height };
 
         const creep_proto = obs.map_state.?.creep.?;
         assert(creep_proto.bits_per_pixel.? == 1);
-        const creep_proto_slice = creep_proto.image.?;
-        var creep_data = try allocator.alloc(u8, grid_width * grid_height);
-        const PackedIntType = PackedIntIo(u1, .Big);
-
-        var index: usize = 0;
-        while (index < grid_width * grid_height) : (index += 1) {
-            creep_data[index] = PackedIntType.get(creep_proto_slice, index, 0);
-        }
-        const creep_grid = Grid{ .data = creep_data, .w = grid_width, .h = grid_height };
+        const creep_grid = Grid(u1){ .data = creep_proto.image.?, .w = grid_width, .h = grid_height };
 
         const effects_proto = obs.effects;
         var effects: []Effect = &[_]Effect{};

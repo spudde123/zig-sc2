@@ -177,120 +177,176 @@ pub const Point3 = struct {
     }
 };
 
-pub const Grid = struct {
-    data: []u8,
-    w: usize,
-    h: usize,
-
-    pub fn getValue(self: Grid, point: Point2) u8 {
-        const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
-        const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
-
-        assert(x >= 0 and x < self.w);
-        assert(y >= 0 and y < self.h);
-
-        return self.data[x + y * self.w];
+pub fn Grid(comptime Int: type) type {
+    comptime {
+        if (Int != u8 and Int != u1) @compileError("Grid should have u8 or u1 members");
     }
 
-    pub fn setValues(self: *Grid, indices: []const usize, value: u8) void {
-        for (indices) |index| {
-            self.data[index] = value;
+    return struct {
+        const Self = @This();
+        pub const PackedInt = std.packed_int_array.PackedIntIo(Int, .Big);
+
+        data: []u8,
+        w: usize,
+        h: usize,
+
+        pub fn getValue(self: Self, point: Point2) Int {
+            const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
+            const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
+
+            assert(x >= 0 and x < self.w);
+            assert(y >= 0 and y < self.h);
+            switch (Int) {
+                u8 => return self.data[x + y * self.w],
+                u1 => PackedInt.get(self.data, x + y * self.w, 0),
+                else => @compileError("Grid should have u8 or u1 members"),
+            }
         }
-    }
 
-    pub fn allEqual(self: Grid, indices: []const usize, value: u8) bool {
-        for (indices) |index| {
-            if (self.data[index] != value) return false;
+        pub fn setValue(self: *Self, point: Point2, value: Int) void {
+            const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
+            const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
+
+            assert(x >= 0 and x < self.w);
+            assert(y >= 0 and y < self.h);
+            switch (Int) {
+                u8 => self.data[x + y * self.w] = value,
+                u1 => PackedInt.set(self.data, x + y * self.w, 0, value),
+                else => @compileError("Grid should have u8 or u1 members"),
+            }
         }
-        return true;
-    }
 
-    pub fn count(self: Grid, indices: []const usize) u64 {
-        var total: u64 = 0;
-        for (indices) |index| {
-            total += @as(u64, self.data[index]);
+        pub fn getValueIndex(self: Self, index: usize) Int {
+            switch (Int) {
+                u8 => return self.data[index],
+                u1 => return PackedInt.get(self.data, index, 0),
+                else => @compileError("Grid should have u8 or u1 members"),
+            }
         }
-        return total;
-    }
 
-    pub fn pointToIndex(self: Grid, point: Point2) usize {
-        const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
-        const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
-        return x + y * self.w;
-    }
+        pub fn setValueIndex(self: *Self, index: usize, value: Int) void {
+            switch (Int) {
+                u8 => self.data[index] = value,
+                u1 => PackedInt.set(self.data, index, 0, value),
+                else => @compileError("Grid should have u8 or u1 members"),
+            }
+        }
 
-    pub fn indexToPoint(self: Grid, index: usize) Point2 {
-        const x = @as(f32, @floatFromInt(@mod(index, self.w)));
-        const y = @as(f32, @floatFromInt(@divFloor(index, self.w)));
-        return .{
-            .x = x,
-            .y = y,
-        };
-    }
-};
+        pub fn setValuesIndices(self: *Self, indices: []const usize, value: Int) void {
+            for (indices) |index| {
+                switch (Int) {
+                    u8 => self.data[index] = value,
+                    u1 => PackedInt.set(self.data, index, 0, value),
+                    else => @compileError("Grid should have u8 or u1 members"),
+                }
+            }
+        }
+
+        pub fn allEqual(self: Self, indices: []const usize, value: Int) bool {
+            for (indices) |index| {
+                switch (Int) {
+                    u8 => if (self.data[index] != value) return false,
+                    u1 => if (PackedInt.get(self.data, index, 0) != value) return false,
+                    else => @compileError("Grid should have u8 or u1 members"),
+                }
+            }
+            return true;
+        }
+
+        pub fn count(self: Self, indices: []const usize) u64 {
+            var total: u64 = 0;
+            for (indices) |index| {
+                switch (Int) {
+                    u8 => total += self.data[index],
+                    u1 => total += PackedInt.get(self.data, index, 0),
+                    else => @compileError("Grid should have u8 or u1 members"),
+                }
+            }
+            return total;
+        }
+
+        pub fn pointToIndex(self: Self, point: Point2) usize {
+            const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
+            const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
+            return x + y * self.w;
+        }
+
+        pub fn indexToPoint(self: Self, index: usize) Point2 {
+            const x = @as(f32, @floatFromInt(@mod(index, self.w)));
+            const y = @as(f32, @floatFromInt(@divFloor(index, self.w)));
+            return .{
+                .x = x,
+                .y = y,
+            };
+        }
+    };
+}
 
 /// Tries to find the cliff edges reapers can path through.
 /// Not tested on all ladder maps but looks to be working..
 /// Berlingrad for example has a platform with a unusual shape
 /// in the pathing and terrain height arrays
-pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid, terrain: Grid) ![]usize {
+pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid(u1), terrain: Grid(u8)) ![]usize {
     var list = std.ArrayList(usize).init(allocator);
     const w = pathing.w;
     const h = pathing.h;
     const level_diff = 16;
 
-    for (pathing.data, 0..) |val, i| {
-        const x = @mod(i, w);
-        const y = i / w;
-        // Edges of the map are pointless regardless
-        // and we avoid the need for checking index validity later
-        if (x < 2 or y < 2 or x > w - 3 or y > h - 3 or val > 0) continue;
+    for (0..h) |y| {
+        for (0..w) |x| {
+            const i = x + w * y;
+            const val = pathing.getValueIndex(i);
 
-        const cur_terrain = terrain.data[x + y * w];
+            // Edges of the map are pointless regardless
+            // and we avoid the need for checking index validity later
+            if (x < 2 or y < 2 or x > w - 3 or y > h - 3 or val > 0) continue;
 
-        // First looking at vertical or horizontal jumps
-        const up_val = pathing.data[x + (y - 1) * w];
-        const up_terrain = terrain.data[x + (y - 1) * w];
+            const cur_terrain = terrain.data[i];
 
-        const down_val = pathing.data[x + (y + 1) * w];
-        const down_terrain = terrain.data[x + (y + 1) * w];
-        const vert_diff = if (up_terrain > down_terrain) up_terrain - down_terrain else down_terrain - up_terrain;
+            // First looking at vertical or horizontal jumps
+            const up_val = pathing.getValueIndex(x + (y - 1) * w);
+            const up_terrain = terrain.data[x + (y - 1) * w];
 
-        const left_val = pathing.data[x - 1 + y * w];
-        const left_terrain = terrain.data[x - 1 + y * w];
+            const down_val = pathing.getValueIndex(x + (y + 1) * w);
+            const down_terrain = terrain.data[x + (y + 1) * w];
+            const vert_diff = if (up_terrain > down_terrain) up_terrain - down_terrain else down_terrain - up_terrain;
 
-        const right_val = pathing.data[x + 1 + y * w];
-        const right_terrain = terrain.data[x + 1 + y * w];
-        const horiz_diff = if (left_terrain > right_terrain) left_terrain - right_terrain else right_terrain - left_terrain;
+            const left_val = pathing.getValueIndex(x - 1 + y * w);
+            const left_terrain = terrain.data[x - 1 + y * w];
 
-        if (up_val == 1 and down_val == 1 and vert_diff == level_diff) try list.append(i);
-        if (left_val == 1 and right_val == 1 and horiz_diff == level_diff) try list.append(i);
+            const right_val = pathing.getValueIndex(x + 1 + y * w);
+            const right_terrain = terrain.data[x + 1 + y * w];
+            const horiz_diff = if (left_terrain > right_terrain) left_terrain - right_terrain else right_terrain - left_terrain;
 
-        // And then diagonal jumps
-        const diag_moves = [_]usize{ w + 1, w - 1 };
-        for (diag_moves) |diag_move| {
-            const val1 = pathing.data[i - 2 * diag_move];
-            const val2 = pathing.data[i - diag_move];
-            const val3 = pathing.data[i + diag_move];
-            const val4 = pathing.data[i + 2 * diag_move];
+            if (up_val == 1 and down_val == 1 and vert_diff == level_diff) try list.append(i);
+            if (left_val == 1 and right_val == 1 and horiz_diff == level_diff) try list.append(i);
 
-            const terrain2 = terrain.data[i - diag_move];
-            const terrain3 = terrain.data[i + diag_move];
-            const total_diff = if (terrain2 > terrain3) terrain2 - terrain3 else terrain3 - terrain2;
-            const diff2 = if (cur_terrain > terrain2) cur_terrain - terrain2 else terrain2 - cur_terrain;
-            const diff3 = if (cur_terrain > terrain3) cur_terrain - terrain3 else terrain3 - cur_terrain;
+            // And then diagonal jumps
+            const diag_moves = [_]usize{ w + 1, w - 1 };
+            for (diag_moves) |diag_move| {
+                const val1 = pathing.getValueIndex(i - 2 * diag_move);
+                const val2 = pathing.getValueIndex(i - diag_move);
+                const val3 = pathing.getValueIndex(i + diag_move);
+                const val4 = pathing.getValueIndex(i + 2 * diag_move);
 
-            const terrain_valid_double = total_diff == 2 * level_diff and diff2 == level_diff and diff3 == level_diff;
-            const pathing_valid_double = (val2 > 0 and val4 > 0) or (val1 > 0 and val3 > 0);
+                const terrain2 = terrain.data[i - diag_move];
+                const terrain3 = terrain.data[i + diag_move];
+                const total_diff = if (terrain2 > terrain3) terrain2 - terrain3 else terrain3 - terrain2;
+                const diff2 = if (cur_terrain > terrain2) cur_terrain - terrain2 else terrain2 - cur_terrain;
+                const diff3 = if (cur_terrain > terrain3) cur_terrain - terrain3 else terrain3 - cur_terrain;
 
-            if (terrain_valid_double and pathing_valid_double) {
-                try list.append(i - diag_move);
-                try list.append(i);
-                try list.append(i + diag_move);
-            }
+                const terrain_valid_double = total_diff == 2 * level_diff and diff2 == level_diff and diff3 == level_diff;
+                const pathing_valid_double = (val2 > 0 and val4 > 0) or (val1 > 0 and val3 > 0);
 
-            if (total_diff == level_diff and val2 == 1 and val3 == 1) {
-                try list.append(i);
+                if (terrain_valid_double and pathing_valid_double) {
+                    try list.append(i - diag_move);
+                    try list.append(i);
+                    try list.append(i + diag_move);
+                }
+
+                if (total_diff == level_diff and val2 == 1 and val3 == 1) {
+                    try list.append(i);
+                }
             }
         }
     }
@@ -298,33 +354,35 @@ pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid, terrain: Gri
     return list.toOwnedSlice() catch &[_]usize{};
 }
 
-pub fn createReaperGrid(allocator: mem.Allocator, pathing_grid: Grid, climbable_points: []const usize) !Grid {
-    var data = try allocator.dupe(u8, pathing_grid.data);
-
-    for (climbable_points) |index| {
-        data[index] = 1;
-    }
-    return .{
+pub fn createReaperGrid(allocator: mem.Allocator, pathing_grid: Grid(u1), climbable_points: []const usize) !Grid(u1) {
+    const data = try allocator.dupe(u8, pathing_grid.data);
+    var reaper_grid = Grid(u1){
         .data = data,
         .w = pathing_grid.w,
         .h = pathing_grid.h,
     };
+    reaper_grid.setValuesIndices(climbable_points, 1);
+    return reaper_grid;
 }
 
-pub fn updateReaperGrid(reaper_grid: Grid, pathing_grid: Grid, climbable_points: []const usize) void {
+pub fn updateReaperGrid(reaper_grid: *Grid(u1), pathing_grid: Grid(u1), climbable_points: []const usize) void {
     @memcpy(reaper_grid.data, pathing_grid.data);
-    for (climbable_points) |index| {
-        reaper_grid.data[index] = 1;
-    }
+    reaper_grid.setValuesIndices(climbable_points, 1);
 }
 
-pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usize, playable_area: Rectangle) !Grid {
+pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usize, playable_area: Rectangle) !Grid(u1) {
     const start_x = @as(usize, @intCast(playable_area.p0.x));
     const end_x = @as(usize, @intCast(playable_area.p1.x));
     const start_y = @as(usize, @intCast(playable_area.p0.y));
     const end_y = @as(usize, @intCast(playable_area.p1.y));
 
-    var data = try allocator.alloc(u8, map_width * map_height);
+    const req_bytes = std.PackedIntSlice(u1).bytesRequired(map_width * map_height);
+    var data = try allocator.alloc(u8, req_bytes);
+    var air_grid = Grid(u1){
+        .data = data,
+        .w = map_width,
+        .h = map_height,
+    };
 
     var y: usize = 0;
     while (y < map_height) : (y += 1) {
@@ -332,10 +390,10 @@ pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usi
         while (x < map_width) : (x += 1) {
             const index = x + map_width * y;
             const playable = x >= start_x and x <= end_x and y >= start_y and y <= end_y;
-            data[index] = if (playable) 1 else 0;
+            air_grid.setValueIndex(index, if (playable) 1 else 0);
         }
     }
-    return .{ .data = data, .w = map_width, .h = map_height };
+    return air_grid;
 }
 
 pub const PathfindResult = struct {
@@ -372,10 +430,10 @@ pub const InfluenceMap = struct {
         max_y: usize,
     };
 
-    pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid) !InfluenceMap {
-        var grid = try allocator.alloc(f32, base_grid.data.len);
-        for (base_grid.data, 0..) |val, i| {
-            grid[i] = if (val > 0) 1 else f32_max;
+    pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid(u1)) !InfluenceMap {
+        var grid = try allocator.alloc(f32, base_grid.h * base_grid.w);
+        for (grid, 0..) |*val, i| {
+            val.* = if (base_grid.getValueIndex(i) > 0) 1 else f32_max;
         }
         return .{
             .grid = grid,
@@ -384,9 +442,9 @@ pub const InfluenceMap = struct {
         };
     }
 
-    pub fn reset(self: *InfluenceMap, base_grid: Grid) void {
-        for (base_grid.data, 0..) |val, i| {
-            self.grid[i] = if (val > 0) 1 else f32_max;
+    pub fn reset(self: *InfluenceMap, base_grid: Grid(u1)) void {
+        for (self.grid, 0..) |*val, i| {
+            val.* = if (base_grid.getValueIndex(i) > 0) 1 else f32_max;
         }
     }
 
@@ -454,9 +512,12 @@ pub const InfluenceMap = struct {
         }
     }
 
-    pub fn addInfluenceCreep(self: *InfluenceMap, creep: Grid, amount: f32) void {
-        for (creep.data, 0..) |val, i| {
-            if (val > 0) self.grid[i] += amount;
+    pub fn addInfluenceCreep(self: *InfluenceMap, creep: Grid(u1), amount: f32) void {
+        for (0..creep.h) |y| {
+            for (0..creep.w) |x| {
+                const index = x + creep.w * y;
+                if (creep.getValueIndex(index) > 0) self.grid[index] += amount;
+            }
         }
     }
 
@@ -769,15 +830,19 @@ test "test_pf_basic" {
     const size = 12;
 
     var allocator = std.testing.allocator;
-    var data = try allocator.alloc(u8, size * size);
+    const bytes_req = std.PackedIntSlice(u1).bytesRequired(size * size);
+    var data = try allocator.alloc(u8, bytes_req);
     defer allocator.free(data);
 
     @memset(data, 0);
+    var grid = Grid(u1){ .data = data, .w = size, .h = size };
+
     var row: usize = 1;
     while (row < size - 1) : (row += 1) {
-        @memset(data[1 + row * size .. (row + 1) * size - 1], 1);
+        for (1 + row * size..(row + 1) * size - 1) |i| {
+            grid.setValueIndex(i, 1);
+        }
     }
-    var grid = Grid{ .data = data, .w = size, .h = size };
 
     var terrain_data = try allocator.alloc(u8, size * size);
     defer allocator.free(terrain_data);
@@ -800,7 +865,7 @@ test "test_pf_basic" {
     try std.testing.expectEqual(dir.?.next_point, path.?[4]);
 
     const wall_indices = [_]usize{ 2 * size + 2, 3 * size + 2, 4 * size + 2, 5 * size + 2, 6 * size + 2, 7 * size + 2, 8 * size + 2, 2 * size + 3, 2 * size + 4, 2 * size + 5, 2 * size + 6 };
-    grid.setValues(&wall_indices, 0);
+    grid.setValuesIndices(&wall_indices, 0);
 
     var map2 = try InfluenceMap.fromGrid(allocator, grid);
     defer map2.deinit(allocator);

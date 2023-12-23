@@ -184,7 +184,7 @@ pub fn getBuildableSize(unit_type: UnitId) GridSize {
     return .{ .w = 1, .h = 1 };
 }
 
-pub fn findPlacement(placement_grid: Grid, unit: UnitId, near: Point2, max_distance: f32) ?Point2 {
+pub fn findPlacement(placement_grid: Grid(u1), unit: UnitId, near: Point2, max_distance: f32) ?Point2 {
     std.debug.assert(max_distance >= 1 and max_distance <= 30);
     const size = getBuildableSize(unit);
     var pos = near.floor();
@@ -232,7 +232,7 @@ pub fn findPlacement(placement_grid: Grid, unit: UnitId, near: Point2, max_dista
     return null;
 }
 
-fn queryPlacementSize(placement_grid: Grid, size: GridSize, pos: Point2) bool {
+fn queryPlacementSize(placement_grid: Grid(u1), size: GridSize, pos: Point2) bool {
     const pos_x = @as(usize, @intFromFloat(pos.x));
     const start_x = pos_x - @divFloor(size.w, 2);
 
@@ -243,12 +243,14 @@ fn queryPlacementSize(placement_grid: Grid, size: GridSize, pos: Point2) bool {
     while (y < end_y) : (y += 1) {
         const start = start_x + y * placement_grid.w;
         const end = start + size.w;
-        if (!mem.allEqual(u8, placement_grid.data[start..end], 1)) return false;
+        for (start..end) |i| {
+            if (placement_grid.getValueIndex(i) != 1) return false;
+        }
     }
     return true;
 }
 
-pub fn queryPlacement(placement_grid: Grid, unit: UnitId, pos: Point2) ?Point2 {
+pub fn queryPlacement(placement_grid: Grid(u1), unit: UnitId, pos: Point2) ?Point2 {
     const size = getBuildableSize(unit);
     // Doing this adjustment because when we build according to the grid we are
     // keeping we seem to have problems if we start placing buildings not exactly
@@ -260,13 +262,13 @@ pub fn queryPlacement(placement_grid: Grid, unit: UnitId, pos: Point2) ?Point2 {
     if (queryPlacementSize(placement_grid, size, adjusted_pos)) return adjusted_pos else return null;
 }
 
-pub fn setBuildingToValue(grid: Grid, unit: Unit, value: u8) void {
+pub fn setBuildingToValue(grid: *Grid(u1), unit: Unit, value: u1) void {
     const index = grid.pointToIndex(unit.position);
     if (mem.indexOfScalar(UnitId, &buildings_2x2, unit.unit_type)) |_| {
-        grid.data[index - 1] = value;
-        grid.data[index] = value;
-        grid.data[index - 1 - grid.w] = value;
-        grid.data[index - grid.w] = value;
+        grid.setValueIndex(index - 1, value);
+        grid.setValueIndex(index, value);
+        grid.setValueIndex(index - 1 - grid.w, value);
+        grid.setValueIndex(index - grid.w, value);
         return;
     }
 
@@ -277,7 +279,9 @@ pub fn setBuildingToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 2) : (y += 1) {
             const start = unit_x - 1 + grid.w * y;
             const end = unit_x + 2 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
@@ -293,35 +297,37 @@ pub fn setBuildingToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 3) : (y += 1) {
             const start = unit_x - 2 + grid.w * y;
             const end = unit_x + 3 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
 
     // If we have a 1x1 sized building (sensor tower?)
-    grid.data[index] = value;
+    grid.setValueIndex(index, value);
 }
 
-pub fn setMineralToValue(grid: Grid, unit: Unit, value: u8) void {
+pub fn setMineralToValue(grid: *Grid(u1), unit: Unit, value: u1) void {
     const index = grid.pointToIndex(unit.position);
-    grid.data[index - 1] = value;
-    grid.data[index] = value;
+    grid.setValueIndex(index - 1, value);
+    grid.setValueIndex(index, value);
 }
 
-pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
+pub fn setDestructibleToValue(grid: *Grid(u1), unit: Unit, value: u1) void {
     if (mem.indexOfScalar(UnitId, &destructible_2x1, unit.unit_type)) |_| {
         const index = grid.pointToIndex(unit.position);
-        grid.data[index - 1] = value;
-        grid.data[index] = value;
+        grid.setValueIndex(index - 1, value);
+        grid.setValueIndex(index, value);
         return;
     }
 
     if (mem.indexOfScalar(UnitId, &destructible_2x2, unit.unit_type)) |_| {
         const index = grid.pointToIndex(unit.position);
-        grid.data[index - 1] = value;
-        grid.data[index] = value;
-        grid.data[index - 1 - grid.w] = value;
-        grid.data[index - grid.w] = value;
+        grid.setValueIndex(index - 1, value);
+        grid.setValueIndex(index, value);
+        grid.setValueIndex(index - 1 - grid.w, value);
+        grid.setValueIndex(index - grid.w, value);
         return;
     }
 
@@ -332,7 +338,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 2) : (y += 1) {
             const start = unit_x - 2 + grid.w * y;
             const end = unit_x + 2 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
@@ -344,7 +352,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 2) : (y += 1) {
             const start = unit_x - 1 + grid.w * y;
             const end = unit_x + 1 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
@@ -356,7 +366,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 1) : (y += 1) {
             const start = unit_x - 2 + grid.w * y;
             const end = unit_x + 2 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
@@ -368,7 +380,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 3) : (y += 1) {
             const start = unit_x - 1 + grid.w * y;
             const end = unit_x + 1 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
@@ -380,7 +394,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 1) : (y += 1) {
             const start = unit_x - 3 + grid.w * y;
             const end = unit_x + 3 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
@@ -392,7 +408,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 6) : (y += 1) {
             const start = unit_x - 2 + grid.w * y;
             const end = unit_x + 2 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
@@ -404,7 +422,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 2) : (y += 1) {
             const start = unit_x - 6 + grid.w * y;
             const end = unit_x + 6 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
@@ -422,7 +442,9 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         while (y < unit_y + 2) : (y += 1) {
             const start = unit_x - 3 + grid.w * y;
             const end = unit_x + 3 + grid.w * y;
-            @memset(grid.data[start..end], value);
+            for (start..end) |i| {
+                grid.setValueIndex(i, value);
+            }
         }
         return;
     }
@@ -437,70 +459,90 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         var row_len: usize = 3;
         var start: usize = start_x + grid.w * y;
         var end: usize = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y + 3;
         start_x = unit_x;
         row_len = 4;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y + 2;
         start_x = unit_x - 1;
         row_len = 6;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y + 1;
         start_x = unit_x - 2;
         row_len = 7;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y;
         start_x = unit_x - 3;
         row_len = 7;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y - 1;
         start_x = unit_x - 4;
         row_len = 7;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y - 2;
         start_x = unit_x - 5;
         row_len = 7;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y - 3;
         start_x = unit_x - 5;
         row_len = 6;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y - 4;
         start_x = unit_x - 4;
         row_len = 4;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y - 5;
         start_x = unit_x - 3;
         row_len = 2;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
         return;
     }
 
@@ -513,70 +555,90 @@ pub fn setDestructibleToValue(grid: Grid, unit: Unit, value: u8) void {
         var row_len: usize = 3;
         var start: usize = start_x + grid.w * y;
         var end: usize = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y - 4;
         start_x = unit_x;
         row_len = 4;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y - 3;
         start_x = unit_x - 1;
         row_len = 6;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y - 2;
         start_x = unit_x - 2;
         row_len = 7;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y - 1;
         start_x = unit_x - 3;
         row_len = 7;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y;
         start_x = unit_x - 4;
         row_len = 7;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y + 1;
         start_x = unit_x - 5;
         row_len = 7;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y + 2;
         start_x = unit_x - 5;
         row_len = 6;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y + 3;
         start_x = unit_x - 4;
         row_len = 4;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
 
         y = unit_y + 4;
         start_x = unit_x - 3;
         row_len = 2;
         start = start_x + grid.w * y;
         end = start + row_len;
-        @memset(grid.data[start..end], value);
+        for (start..end) |i| {
+            grid.setValueIndex(i, value);
+        }
         return;
     }
 }
