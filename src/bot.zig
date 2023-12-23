@@ -200,14 +200,14 @@ pub const GameInfo = struct {
         const placement_grid = Grid(u1){ .data = placement_slice, .w = map_size.w, .h = map_size.h };
         // Set up a clean pathing grid that we then use as a base
         // for updates later in the game
-        const PackedIntType = PackedIntIo(u1, .Big);
         var clean_slice = try allocator.alloc(u8, placement_slice.len);
         var index: usize = 0;
         while (index < clean_slice.len) : (index += 1) {
+            // Taking the max of placement of pathing grid for each cell
             clean_slice[index] = placement_slice[index] | pathing_slice[index];
-            //PackedIntType.set(clean_slice, index, 0, @max(placement_slice[index], pathing_slice[index]));
         }
 
+        const PackedIntType = PackedIntIo(u1, .Big);
         for (geysers) |geyser| {
             const geyser_x = @as(usize, @intFromFloat(geyser.position.x));
             const geyser_y = @as(usize, @intFromFloat(geyser.position.y));
