@@ -352,9 +352,7 @@ pub const InfluenceMap = struct {
 
     // This needs to be set to the proper terrain height slice
     // before calling any pathfinding functions
-    pub const MapInfo = struct {
-        pub var terrain_height: []const u8 = &[_]u8{};
-    };
+    pub var terrain_height: []const u8 = &[_]u8{};
 
     pub const DecayTag = enum {
         none,
@@ -531,6 +529,9 @@ pub const InfluenceMap = struct {
     /// as the asked point. After that accepts any spot
     /// that is pathable
     fn findClosestValidPoint(self: InfluenceMap, pos: Point2) ?Point2 {
+        // Terrain height has to be set from outside
+        // to the correct slice
+        assert(terrain_height.len > 0);
         const radius = 6;
         const bounding_rect = self.getCircleBoundingRect(pos, radius);
 
@@ -538,8 +539,6 @@ pub const InfluenceMap = struct {
 
         var best_dist: f32 = f32_max;
         var best_point: ?Point2 = null;
-
-        const terrain_height = MapInfo.terrain_height;
 
         const height_at_start = terrain_height[self.pointToIndex(pos)];
 
@@ -784,7 +783,7 @@ test "test_pf_basic" {
     defer allocator.free(terrain_data);
 
     @memset(terrain_data, 10);
-    InfluenceMap.MapInfo.terrain_height = terrain_data;
+    InfluenceMap.terrain_height = terrain_data;
 
     var map = try InfluenceMap.fromGrid(allocator, grid);
     defer map.deinit(allocator);
