@@ -222,10 +222,8 @@ pub const ProtoReader = struct {
     }
 
     fn decodeBytes(self: *ProtoReader, allocator: mem.Allocator) ![]u8 {
-        const starting_byte: usize = self.bytes_read;
         const num_of_bytes = try self.decodeUInt64();
-        const header_len = self.bytes_read - starting_byte;
-        var data = try allocator.dupe(u8, self.bytes[(starting_byte + header_len)..(starting_byte + header_len + num_of_bytes)]);
+        var data = try allocator.dupe(u8, self.bytes[self.bytes_read..(self.bytes_read + num_of_bytes)]);
         self.bytes_read += num_of_bytes;
 
         return data;
