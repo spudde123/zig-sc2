@@ -43,53 +43,49 @@ pub fn main() !void {
     defer stableid_file.close();
 
     const file_contents = try stableid_file.readToEndAlloc(arena, 10000 * 1024);
-    //const stream = json.TokenStream.init(file_contents);
-    var parser = json.Parser.init(arena, false);
-    defer parser.deinit();
-    const tree = try parser.parse(file_contents);
+    var tree = try json.parseFromSlice(json.Value, arena, file_contents, .{});
+    defer tree.deinit();
 
     // Fix ability data
     var ability_index: usize = 0;
-    var ability_obj = tree.root.Object.get("Abilities").?;
-
+    var ability_obj = tree.value.object.get("Abilities").?;
     var key_map = std.StringHashMap(bool).init(arena);
     defer key_map.deinit();
 
-    while (ability_index < ability_obj.Array.items.len) : (ability_index += 1) {
-        var ability = ability_obj.Array.items[ability_index];
-        const remap_id = ability.Object.get("remapid");
-        const name = ability.Object.get("name");
-        const friendly_name = ability.Object.get("friendlyname");
-        const button_name = ability.Object.get("buttonname");
-        //const index = ability.Object.get("index");
+    while (ability_index < ability_obj.array.items.len) : (ability_index += 1) {
+        var ability = ability_obj.array.items[ability_index];
+        const remap_id = ability.object.get("remapid");
+        const name = ability.object.get("name");
+        const friendly_name = ability.object.get("friendlyname");
+        const button_name = ability.object.get("buttonname");
 
         var button_name_exists = false;
         if (button_name) |button| {
-            if (button.String.len > 0) button_name_exists = true;
+            if (button.string.len > 0) button_name_exists = true;
         }
 
         if (!button_name_exists and remap_id == null) {
-            try ability.Object.put("name", json.Value{ .String = "" });
+            try ability.object.put("name", json.Value{ .string = "" });
             continue;
         }
 
         if (friendly_name) |friendly| {
-            const new_friendly_size = mem.replacementSize(u8, friendly.String, " ", "_");
+            const new_friendly_size = mem.replacementSize(u8, friendly.string, " ", "_");
             var new_friendly_string = try arena.alloc(u8, new_friendly_size);
-            _ = mem.replace(u8, friendly.String, " ", "_", new_friendly_string);
-            try ability.Object.put("name", json.Value{ .String = new_friendly_string });
+            _ = mem.replace(u8, friendly.string, " ", "_", new_friendly_string);
+            try ability.object.put("name", json.Value{ .string = new_friendly_string });
         } else {
             const name_string = name.?;
             const button_string = button_name.?;
-            const new_name = try mem.concat(arena, u8, &[_][]const u8{ name_string.String, "_", button_string.String });
-            try ability.Object.put("name", json.Value{ .String = new_name });
+            const new_name = try mem.concat(arena, u8, &[_][]const u8{ name_string.string, "_", button_string.string });
+            try ability.object.put("name", json.Value{ .string = new_name });
         }
 
-        const updated_name = ability.Object.get("name").?;
-        if (key_map.contains(updated_name.String)) {
-            try ability.Object.put("name", json.Value{ .String = "" });
+        const updated_name = ability.object.get("name").?;
+        if (key_map.contains(updated_name.string)) {
+            try ability.object.put("name", json.Value{ .string = "" });
         } else {
-            try key_map.put(updated_name.String, true);
+            try key_map.put(updated_name.string, true);
         }
     }
 
@@ -107,18 +103,17 @@ pub fn main() !void {
 
         const writer = file.writer();
         _ = try writer.write("// Generated with util/generate_ids.zig\n");
-        try writer.print("pub const {s} = enum(u32) ", .{enum_name});
-        _ = try writer.write("{\n");
+        try writer.print("pub const {s} = enum(u32) {{\n", .{enum_name});
 
-        const obj = tree.root.Object.get(title).?;
+        const obj = tree.value.object.get(title).?;
 
-        for (obj.Array.items) |item| {
-            const id = item.Object.get("id").?;
-            const name = item.Object.get("name").?;
+        for (obj.array.items) |item| {
+            const id = item.object.get("id").?;
+            const name = item.object.get("name").?;
 
-            const gap_size = mem.replacementSize(u8, name.String, "@", "");
+            const gap_size = mem.replacementSize(u8, name.string, "@", "");
             var gap_name = try arena.alloc(u8, gap_size);
-            _ = mem.replace(u8, name.String, "@", "", gap_name);
+            _ = mem.replace(u8, name.string, "@", "", gap_name);
 
             const no_gap_size = mem.replacementSize(u8, gap_name, " ", "");
             var new_name = try arena.alloc(u8, no_gap_size);
@@ -128,14 +123,13 @@ pub fn main() !void {
 
             new_name[0] = std.ascii.toUpper(new_name[0]);
 
-            if (std.ascii.isDigit(name.String[0])) {
-                try writer.print("    _{s} = {d},\n", .{ new_name, id.Integer });
+            if (std.ascii.isDigit(name.string[0])) {
+                try writer.print("    _{s} = {d},\n", .{ new_name, id.integer });
             } else {
-                try writer.print("    {s} = {d},\n", .{ new_name, id.Integer });
+                try writer.print("    {s} = {d},\n", .{ new_name, id.integer });
             }
         }
-        std.debug.print("{d}\n", .{obj.Array.items.len});
-        _ = try writer.write("    _,\n");
-        _ = try writer.write("};\n");
+        std.debug.print("{d}\n", .{obj.array.items.len});
+        _ = try writer.write("    _,\n};\n");
     }
 }
