@@ -1853,8 +1853,10 @@ pub const Actions = struct {
 
     pub fn findPlacementForAbility(self: *Actions, ability: AbilityId, near: Point2, max_distance: f32) ?Point2 {
         assert(max_distance >= 1 and max_distance <= 30);
-        const ability_int = @as(i32, @intCast(@intFromEnum(ability)));
 
+        if (self.queryPlacementForAbility(ability, near)) return near;
+
+        const ability_int = @as(i32, @intCast(@intFromEnum(ability)));
         var options: [256]sc2p.RequestQueryBuildingPlacement = undefined;
         var outer_dist: f32 = 1;
         while (outer_dist <= max_distance) : (outer_dist += 1) {

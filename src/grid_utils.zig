@@ -191,6 +191,8 @@ pub fn findPlacement(placement_grid: Grid(u1), unit: UnitId, near: Point2, max_d
     if (@mod(size.w, 2) == 1) pos.x += 0.5;
     if (@mod(size.h, 2) == 1) pos.y += 0.5;
 
+    if (queryPlacementSize(placement_grid, size, pos)) return pos;
+
     var options: [256]Point2 = undefined;
     var outer_dist: f32 = 1;
     while (outer_dist <= max_distance) : (outer_dist += 1) {
