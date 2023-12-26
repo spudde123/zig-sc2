@@ -435,9 +435,12 @@ pub fn run(
     }
 
     defer {
-        if (sc2_process) |_| {
+        if (sc2_process) |*sc2| {
             _ = client.quit() catch {
                 log.err("Unable to quit the game\n", .{});
+                _ = sc2.kill() catch {
+                    log.err("Unable to kill the game\n", .{});
+                };
             };
         }
     }
