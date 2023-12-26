@@ -80,7 +80,7 @@ pub const LocalRunSetup = struct {
         .windows => "C:/Program Files (x86)/StarCraft II",
         .macos => "/Applications/StarCraft II",
         .linux => "~/StarCraftII",
-        else => unreachable,
+        else => @compileError("OS not supported"),
     },
     game_port: u16 = 5001,
 };
@@ -116,13 +116,13 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
         .working_directory = switch (builtin.os.tag) {
             .windows => try mem.concat(allocator, u8, &support64_concat),
             .macos, .linux => null,
-            else => unreachable,
+            else => @compileError("OS not supported"),
         },
         .latest_binary = switch (builtin.os.tag) {
             .windows => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{ versions_path, max_version }),
             .macos => try fmt.allocPrint(allocator, "{s}Base{d}/SC2.app/Contents/MacOS/SC2", .{ versions_path, max_version }),
             .linux => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64", .{ versions_path, max_version }),
-            else => unreachable,
+            else => @compileError("OS not supported"),
         },
     };
 }

@@ -49,9 +49,6 @@ pub const ProtoReader = struct {
         const field_nums_tuple = @field(T, "field_nums");
         // Make a tuple to store arraylists for the fields
         // where we need to generate slices of unknown length.
-        // Using a zero bit type for the other tuple members
-        // seemed to cause a crash during compilation?
-        // Seems fixed in 10.1
         const TupleType = comptime t: {
             var tuple_types: [field_nums_tuple.len]type = undefined;
             inline for (field_nums_tuple, 0..) |field_info, i| {
@@ -133,7 +130,7 @@ pub const ProtoReader = struct {
                                                 const enum_int = try self.decodeUInt64();
                                                 try list_tuple[i].append(allocator, @as(ptr.child, @enumFromInt(enum_int)));
                                             },
-                                            else => unreachable,
+                                            else => @compileError("Unsupported type in repeated field"),
                                         }
                                     },
                                 }
@@ -150,7 +147,7 @@ pub const ProtoReader = struct {
                         .Float => |float| {
                             if (float.bits == 32) {
                                 obj_field.* = try self.decodeFloat();
-                            } else unreachable;
+                            } else @compileError("64 bit floats not supported");
                         },
                         .Bool => {
                             const num = try self.decodeUInt64();
@@ -166,7 +163,7 @@ pub const ProtoReader = struct {
                             const enum_int = try self.decodeUInt64();
                             obj_field.* = @as(child_type, @enumFromInt(enum_int));
                         },
-                        else => unreachable,
+                        else => @compileError("Unsupported field type"),
                     }
                 }
             }
@@ -312,7 +309,7 @@ pub const ProtoWriter = struct {
                                         }
                                     }
                                 },
-                                else => unreachable,
+                                else => @compileError("Unsupported type in repeated field"),
                             }
                         }
                     },
@@ -331,7 +328,7 @@ pub const ProtoWriter = struct {
                             const field_header = ProtoHeader{ .wire_type = ._32bit, .field_number = field_num };
                             self.encodeProtoHeader(field_header);
                             self.encodeFloat(data);
-                        } else unreachable;
+                        } else @compileError("64bit floats not supported");
                     },
                     .Bool => {
                         const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
@@ -349,7 +346,7 @@ pub const ProtoWriter = struct {
                         self.encodeProtoHeader(field_header);
                         self.encodeUInt64(0);
                     },
-                    else => unreachable,
+                    else => @compileError("Unsupported field type"),
                 }
             }
         }
