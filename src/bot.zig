@@ -796,6 +796,10 @@ pub const Bot = struct {
     // if we don't keep the data in the current frame
     // anymore. Otherwise the tag is enough.
     dead_units: []Unit,
+    // These are own units that we don't see on the map or as our own anymore.
+    // So should include SCV's inside refineries, potentially
+    // units captured by neural parasite
+    disappeared_units: []Unit,
     units_created: []u64,
     damaged_units: []u64,
     construction_complete: []u64,
@@ -848,32 +852,28 @@ pub const Bot = struct {
                 const position = Point2{ .x = proto_pos.x.?, .y = proto_pos.y.? };
                 const z: f32 = proto_pos.z.?;
 
-                var buff_ids: std.ArrayList(BuffId) = undefined;
+                var buff_ids = std.ArrayList(BuffId).init(allocator);
 
                 if (unit.buff_ids) |buffs| {
-                    buff_ids = try std.ArrayList(BuffId).initCapacity(allocator, buffs.len);
+                    try buff_ids.ensureTotalCapacity(buffs.len);
                     for (buffs) |buff| {
                         buff_ids.appendAssumeCapacity(@as(BuffId, @enumFromInt(buff)));
                     }
-                } else {
-                    buff_ids = try std.ArrayList(BuffId).initCapacity(allocator, 0);
                 }
 
-                var passenger_tags: std.ArrayList(u64) = undefined;
+                var passenger_tags = std.ArrayList(u64).init(allocator);
 
                 if (unit.passengers) |passengers| {
-                    passenger_tags = try std.ArrayList(u64).initCapacity(allocator, passengers.len);
+                    try passenger_tags.ensureTotalCapacity(passengers.len);
                     for (passengers) |passenger| {
                         passenger_tags.appendAssumeCapacity(passenger.tag.?);
                     }
-                } else {
-                    passenger_tags = try std.ArrayList(u64).initCapacity(allocator, 0);
                 }
 
-                var orders: std.ArrayList(UnitOrder) = undefined;
+                var orders = std.ArrayList(UnitOrder).init(allocator);
 
                 if (unit.orders) |orders_proto| {
-                    orders = try std.ArrayList(UnitOrder).initCapacity(allocator, orders_proto.len);
+                    try orders.ensureTotalCapacity(orders_proto.len);
                     for (orders_proto) |order_proto| {
                         const target: OrderTarget = tg: {
                             if (order_proto.target_world_space_pos) |pos_target| {
@@ -898,13 +898,11 @@ pub const Bot = struct {
                         };
                         orders.appendAssumeCapacity(order);
                     }
-                } else {
-                    orders = try std.ArrayList(UnitOrder).initCapacity(allocator, 0);
                 }
 
-                var rally_targets: std.ArrayList(RallyTarget) = undefined;
+                var rally_targets = std.ArrayList(RallyTarget).init(allocator);
                 if (unit.rally_targets) |proto_rally_targets| {
-                    rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, proto_rally_targets.len);
+                    try rally_targets.ensureTotalCapacity(proto_rally_targets.len);
 
                     for (proto_rally_targets) |proto_target| {
                         const proto_point = proto_target.point.?;
@@ -914,8 +912,6 @@ pub const Bot = struct {
                         };
                         rally_targets.appendAssumeCapacity(rally_target);
                     }
-                } else {
-                    rally_targets = try std.ArrayList(RallyTarget).initCapacity(allocator, 0);
                 }
 
                 const unit_type = @as(UnitId, @enumFromInt(unit.unit_type.?));
@@ -1194,11 +1190,14 @@ pub const Bot = struct {
             enemy_iter.len -= 1;
         }
 
+        var disappeared_units = std.ArrayList(Unit).init(allocator);
         var units_iter = prev_units.iterator();
         while (units_iter.next()) |unit_val| {
             if (unit_val.value_ptr.prev_seen_loop == game_loop) continue;
             if (mem.indexOfScalar(u64, dead_unit_tags, unit_val.value_ptr.tag)) |_| {
                 try dead_units.append(unit_val.value_ptr.*);
+            } else {
+                try disappeared_units.append(unit_val.value_ptr.*);
             }
             prev_units.swapRemoveAt(units_iter.index - 1);
             units_iter.index -= 1;
@@ -1231,6 +1230,7 @@ pub const Bot = struct {
             .visibility = visibility_grid,
             .creep = creep_grid,
             .dead_units = dead_units.items,
+            .disappeared_units = disappeared_units.items,
             .units_created = units_created.items,
             .damaged_units = damaged_units.items,
             .construction_complete = construction_complete.items,
