@@ -61,6 +61,7 @@ pub const WebSocketClient = struct {
     perm_allocator: mem.Allocator,
     step_allocator: mem.Allocator,
     storage: []u8,
+    status: sc2p.Status = .default,
 
     /// perm_alloc should not be freed from the outside while client is in use
     /// while the client is in use.
@@ -526,6 +527,10 @@ pub const WebSocketClient = struct {
                 std.log.err("Message error: {s}\n", .{error_string});
             }
             return ClientError.ErrorsField;
+        }
+
+        if (res.status) |status| {
+            self.status = status;
         }
 
         return res;

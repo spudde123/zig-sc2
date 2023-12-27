@@ -23,6 +23,7 @@ const InputType = enum(u8) {
     computer_build,
     map,
     human_race,
+    sc2_path,
 };
 
 const ProgramArguments = struct {
@@ -37,6 +38,7 @@ const ProgramArguments = struct {
     map_file_name: []const u8 = "InsideAndOutAIE",
     human_game: bool = false,
     human_race: sc2p.Race = .random,
+    sc2_path: ?[]const u8 = null,
 };
 
 const race_map = std.ComptimeStringMap(sc2p.Race, .{
@@ -75,14 +77,11 @@ const Sc2Paths = struct {
     working_directory: ?[]const u8,
 };
 
-pub const LocalRunSetup = struct {
-    sc2_base_folder: []const u8 = switch (builtin.os.tag) {
-        .windows => "C:/Program Files (x86)/StarCraft II",
-        .macos => "/Applications/StarCraft II",
-        .linux => "~/StarCraftII",
-        else => @compileError("OS not supported"),
-    },
-    game_port: u16 = 5001,
+const standard_sc2_base_folder: []const u8 = switch (builtin.os.tag) {
+    .windows => "C:/Program Files (x86)/StarCraft II",
+    .macos => "/Applications/StarCraft II",
+    .linux => "~/StarCraftII",
+    else => @compileError("OS not supported"),
 };
 
 const Sc2PathError = error{
@@ -94,7 +93,10 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
     const support64_concat = [_][]const u8{ base_folder, "/Support64/" };
     const versions_concat = [_][]const u8{ base_folder, "/Versions/" };
     const versions_path = try mem.concat(allocator, u8, &versions_concat);
-    var dir = try fs.openIterableDirAbsolute(versions_path, .{});
+    var dir = fs.openIterableDirAbsolute(versions_path, .{}) catch {
+        log.err("Couldn't open versions folder {s}\n", .{versions_path});
+        return Sc2PathError.no_version_folders_found;
+    };
     defer dir.close();
 
     var iter = dir.iterate();
@@ -160,6 +162,8 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
             } else if (mem.eql(u8, argument, "--Human")) {
                 current_input_type = InputType.human_race;
                 program_args.human_game = true;
+            } else if (mem.eql(u8, argument, "--SC2")) {
+                current_input_type = InputType.sc2_path;
             } else {
                 current_input_type = InputType.none;
             }
@@ -224,6 +228,9 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                         }
                     }
                 },
+                InputType.sc2_path => {
+                    program_args.sc2_path = argument;
+                },
                 else => {},
             }
             current_input_type = InputType.none;
@@ -236,11 +243,11 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
 fn runHumanGame(
     step_count: u32,
     base_allocator: mem.Allocator,
-    local_run: LocalRunSetup,
     sc2_paths: Sc2Paths,
     map_absolute_path: []const u8,
     bot_setup: ws.BotSetup,
     realtime: bool,
+    game_port: u16,
     start_port: u16,
 ) !void {
     var arena_instance = std.heap.ArenaAllocator.init(base_allocator);
@@ -260,7 +267,7 @@ fn runHumanGame(
         "-listen",
         host,
         "-port",
-        try fmt.allocPrint(arena, "{d}", .{local_run.game_port}),
+        try fmt.allocPrint(arena, "{d}", .{game_port}),
         "-dataDir",
         sc2_paths.base_folder,
     };
@@ -277,7 +284,7 @@ fn runHumanGame(
     var connection_ok = false;
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
         log.debug("Doing ws connection loop {d}\n", .{attempt});
-        client = ws.WebSocketClient.init(host, local_run.game_port, arena, fixed_buffer) catch {
+        client = ws.WebSocketClient.init(host, game_port, arena, fixed_buffer) catch {
             time.sleep(2 * time.ns_per_s);
             continue;
         };
@@ -326,7 +333,7 @@ fn runHumanGame(
             };
             break;
         }
-        requested_game_loop = obs.observation.?.game_loop.? + 2;
+        requested_game_loop = obs.observation.?.game_loop.? + step_count;
 
         if (!realtime) client.step(step_count) catch break;
 
@@ -338,7 +345,6 @@ pub fn run(
     user_bot: anytype,
     step_count: u32,
     base_allocator: mem.Allocator,
-    local_run: LocalRunSetup,
 ) !void {
     // Step_count 1 may cause problems from
     // what i've heard with unit orders
@@ -359,28 +365,17 @@ pub fn run(
 
     const program_args = readArguments(arena);
 
-    var ladder_game = false;
-    var host: []const u8 = "127.0.0.1";
-    var game_port: u16 = local_run.game_port;
-    var start_port: u16 = 5002;
+    const sc2_base_folder = program_args.sc2_path orelse standard_sc2_base_folder;
+    const ladder_game = program_args.ladder_server != null;
+    const host: []const u8 = program_args.ladder_server orelse "127.0.0.1";
+    const game_port: u16 = program_args.game_port orelse 5001;
+    const start_port: u16 = program_args.start_port orelse game_port + 2;
+
     var sc2_process: ?ChildProcess = null;
     var sc2_paths: Sc2Paths = undefined;
 
-    if (program_args.ladder_server) |ladder_server| {
-        ladder_game = true;
-        host = ladder_server;
-
-        start_port = program_args.start_port orelse {
-            log.err("Start port is missing\n", .{});
-            return;
-        };
-
-        game_port = program_args.game_port orelse {
-            log.err("Game port is missing\n", .{});
-            return;
-        };
-    } else {
-        sc2_paths = getSc2Paths(local_run.sc2_base_folder, arena) catch {
+    if (!ladder_game) {
+        sc2_paths = getSc2Paths(sc2_base_folder, arena) catch {
             log.err("Couldn't form SC2 paths\n", .{});
             return;
         };
@@ -471,19 +466,15 @@ pub fn run(
             // the game. That client acts as the game host
             // because it seems only the host can manually
             // control units.
-            var human_run_setup = local_run;
-            human_run_setup.game_port = local_run.game_port + 1;
-
-            start_port = human_run_setup.game_port + 1;
 
             human_thread = std.Thread.spawn(.{}, runHumanGame, .{
                 step_count,
                 base_allocator,
-                human_run_setup,
                 sc2_paths,
                 map_absolute_path,
                 .{ .name = "Human", .race = program_args.human_race },
                 program_args.realtime,
+                game_port + 1,
                 start_port,
             }) catch |err| {
                 log.err("Failed to spawn human game thread: {s}\n", .{@errorName(err)});
@@ -736,5 +727,5 @@ test "runner_test_basic" {
 
     var test_bot = TestBot{ .name = "tester", .race = .terran };
 
-    try run(&test_bot, 2, std.testing.allocator, .{});
+    try run(&test_bot, 2, std.testing.allocator);
 }
