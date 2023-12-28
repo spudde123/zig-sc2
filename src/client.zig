@@ -71,7 +71,7 @@ pub const WebSocketClient = struct {
         const socket = try net.tcpConnectToAddress(addr);
 
         const seed = @as(u64, @truncate(@as(u128, @bitCast(time.nanoTimestamp()))));
-        const storage = try perm_alloc.alloc(u8, 5 * 1024 * 1000);
+        const storage = try perm_alloc.alloc(u8, 5 * 1024 * 1024);
 
         return WebSocketClient{
             .addr = addr,
@@ -536,7 +536,7 @@ pub const WebSocketClient = struct {
         return res;
     }
 
-    fn messageReceived(self: *WebSocketClient, cursor: usize) bool {
+    fn messageReceived(self: WebSocketClient, cursor: usize) bool {
         if (cursor < 2) return false;
         const payload_desc = self.storage[1];
         var payload_start: usize = 2;

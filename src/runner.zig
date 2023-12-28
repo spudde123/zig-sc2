@@ -255,10 +255,9 @@ fn runHumanGame(
     const arena = arena_instance.allocator();
     defer arena_instance.deinit();
 
-    // Fixed buffer which is reset at the end of each step
-    var step_bytes = try arena.alloc(u8, 30 * 1024 * 1024);
-    var fixed_buffer_instance = std.heap.FixedBufferAllocator.init(step_bytes);
-    const fixed_buffer = fixed_buffer_instance.allocator();
+    var step_arena_instance = std.heap.ArenaAllocator.init(base_allocator);
+    defer step_arena_instance.deinit();
+    const step_arena = step_arena_instance.allocator();
 
     const host = "127.0.0.1";
 
@@ -284,7 +283,7 @@ fn runHumanGame(
     var connection_ok = false;
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
         log.debug("Doing ws connection loop {d}\n", .{attempt});
-        client = ws.WebSocketClient.init(host, game_port, arena, fixed_buffer) catch {
+        client = ws.WebSocketClient.init(host, game_port, arena, step_arena) catch {
             time.sleep(2 * time.ns_per_s);
             continue;
         };
@@ -337,7 +336,7 @@ fn runHumanGame(
 
         if (!realtime) client.step(step_count) catch break;
 
-        fixed_buffer_instance.reset();
+        _ = step_arena_instance.reset(.retain_capacity);
     }
 }
 
@@ -358,10 +357,15 @@ pub fn run(
     const arena = arena_instance.allocator();
     defer arena_instance.deinit();
 
-    // Fixed buffer which is reset at the end of each step
-    var step_bytes = try arena.alloc(u8, 30 * 1024 * 1024);
-    var fixed_buffer_instance = std.heap.FixedBufferAllocator.init(step_bytes);
-    const fixed_buffer = fixed_buffer_instance.allocator();
+    // Arena which is reset at the end of each step.
+    // Do a first allocation to grow the arena in size
+    // to 10MB so we hopefully don't need to grow it many
+    // times during the game
+    var step_arena_instance = std.heap.ArenaAllocator.init(base_allocator);
+    defer step_arena_instance.deinit();
+    const step_arena = step_arena_instance.allocator();
+    _ = try step_arena.alloc(u8, 1024 * 1024 * 10);
+    _ = step_arena_instance.reset(.retain_capacity);
 
     const program_args = readArguments(arena);
 
@@ -402,7 +406,7 @@ pub fn run(
     var connection_ok = false;
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
         log.debug("Doing ws connection loop {d}\n", .{attempt});
-        client = ws.WebSocketClient.init(host, game_port, arena, fixed_buffer) catch {
+        client = ws.WebSocketClient.init(host, game_port, arena, step_arena) catch {
             time.sleep(2 * time.ns_per_s);
             continue;
         };
@@ -518,7 +522,7 @@ pub fn run(
     };
 
     const game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
-    var actions = try bot_data.Actions.init(game_data, &client, arena, fixed_buffer);
+    var actions = try bot_data.Actions.init(game_data, &client, arena, step_arena);
 
     var own_units = std.AutoArrayHashMap(u64, bot_data.Unit).init(arena);
     try own_units.ensureTotalCapacity(200);
@@ -528,9 +532,11 @@ pub fn run(
 
     var requested_game_loop: u32 = 0;
     while (true) {
+        defer _ = step_arena_instance.reset(.retain_capacity);
+
         const obs = if (program_args.realtime) try client.getObservation(requested_game_loop) else try client.getObservation(null);
 
-        var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, fixed_buffer);
+        var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, step_arena);
         // Not sure if the given game loop may be larger than what was requested
         // if the bot takes too long to make the step.
         // Regardless doesn't hurt to sync it
@@ -554,7 +560,7 @@ pub fn run(
         const all_own_unit_tags = bot.units.keys();
         if (all_own_unit_tags.len > 0) {
             if (client.getAvailableAbilities(all_own_unit_tags, true)) |abilities_proto| {
-                bot.setUnitAbilitiesFromProto(abilities_proto, fixed_buffer);
+                bot.setUnitAbilitiesFromProto(abilities_proto, step_arena);
             }
         }
 
@@ -586,7 +592,7 @@ pub fn run(
                 bot.vespene_geysers,
                 bot.destructibles,
                 arena,
-                fixed_buffer,
+                step_arena,
             );
             bot_data.grids.InfluenceMap.terrain_height = game_info.terrain_height.data;
             game_info.updateGrids(bot);
@@ -642,7 +648,6 @@ pub fn run(
         }
 
         actions.clear();
-        fixed_buffer_instance.reset();
     }
 }
 

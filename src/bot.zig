@@ -1333,7 +1333,11 @@ pub const Actions = struct {
         channel: Channel,
     };
 
+    /// This is an arena allocator that is reset at the end of every
+    /// step. Feel free to use this also in bot code for anything
+    /// that requires short lived allocations during a step.
     temp_allocator: mem.Allocator,
+    /// Exposes some game data about units, upgrades and so on.
     game_data: GameData,
     order_list: std.ArrayList(BotAction),
     chat_messages: std.ArrayList(ChatAction),
@@ -1342,11 +1346,9 @@ pub const Actions = struct {
     debug_boxes: std.ArrayList(sc2p.DebugBox),
     debug_spheres: std.ArrayList(sc2p.DebugSphere),
     debug_create_unit: std.ArrayList(sc2p.DebugCreateUnit),
-    // Couldn't use an EnumSet due to the enum being non-exhaustive
-    // And even if we make it exhaustive it was a problem seemingly
-    // due to the size of the underlying enum
-    combinable_abilities: std.AutoHashMap(AbilityId, void),
     leave_game: bool = false,
+
+    combinable_abilities: std.AutoHashMap(AbilityId, void),
     client: *ws.WebSocketClient,
 
     pub fn init(game_data: GameData, client: *ws.WebSocketClient, perm_allocator: mem.Allocator, temp_allocator: mem.Allocator) !Actions {
