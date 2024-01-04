@@ -349,7 +349,6 @@ pub const WebSocketClient = struct {
     pub fn getGameInfo(self: *WebSocketClient) !sc2p.ResponseGameInfo {
         const request = sc2p.Request{ .game_info = {} };
         const res = try self.writeAndWaitForMessage(request);
-
         return res.game_info orelse ClientError.BadResponse;
     }
 
@@ -360,11 +359,7 @@ pub const WebSocketClient = struct {
         };
         const request = sc2p.Request{ .game_data = data_request };
         const res = try self.writeAndWaitForMessage(request);
-
-        if (res.game_data) |game_data| {
-            return game_data;
-        }
-        return ClientError.BadResponse;
+        return res.game_data orelse ClientError.BadResponse;
     }
 
     pub fn sendActions(self: *WebSocketClient, action_proto: sc2p.RequestAction) !void {
