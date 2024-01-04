@@ -8,7 +8,7 @@ const Grid = grids.Grid;
 const Point2 = grids.Point2;
 const GridSize = grids.GridSize;
 
-const buildings_2x2 = [_]UnitId{
+pub const buildings_2x2 = [_]UnitId{
     .SupplyDepot,
     .Pylon,
     .DarkShrine,
@@ -29,7 +29,7 @@ const buildings_2x2 = [_]UnitId{
     .SpineCrawler,
 };
 
-const buildings_3x3 = [_]UnitId{
+pub const buildings_3x3 = [_]UnitId{
     .Gateway,
     .WarpGate,
     .CyberneticsCore,
@@ -65,7 +65,7 @@ const buildings_3x3 = [_]UnitId{
     .RefineryRich,
 };
 
-const buildings_5x5 = [_]UnitId{
+pub const buildings_5x5 = [_]UnitId{
     .Nexus,
     .Hatchery,
     .Hive,
@@ -75,16 +75,16 @@ const buildings_5x5 = [_]UnitId{
     .PlanetaryFortress,
 };
 
-const destructible_2x1 = [_]UnitId{
+pub const destructible_2x1 = [_]UnitId{
     .MineralField450,
 };
 
-const destructible_2x2 = [_]UnitId{
+pub const destructible_2x2 = [_]UnitId{
     .Rocks2x2NonConjoined,
     .Debris2x2NonConjoined,
 };
 
-const destructible_4x4 = [_]UnitId{
+pub const destructible_4x4 = [_]UnitId{
     .DestructibleCityDebris4x4,
     .DestructibleDebris4x4,
     .DestructibleIce4x4,
@@ -92,35 +92,35 @@ const destructible_4x4 = [_]UnitId{
     .DestructibleRockEx14x4,
 };
 
-const destructible_4x2 = [_]UnitId{
+pub const destructible_4x2 = [_]UnitId{
     .DestructibleCityDebris2x4Horizontal,
     .DestructibleIce2x4Horizontal,
     .DestructibleRock2x4Horizontal,
     .DestructibleRockEx12x4Horizontal,
 };
 
-const destructible_2x4 = [_]UnitId{
+pub const destructible_2x4 = [_]UnitId{
     .DestructibleCityDebris2x4Vertical,
     .DestructibleIce2x4Vertical,
     .DestructibleRock2x4Vertical,
     .DestructibleRockEx12x4Vertical,
 };
 
-const destructible_6x2 = [_]UnitId{
+pub const destructible_6x2 = [_]UnitId{
     .DestructibleCityDebris2x6Horizontal,
     .DestructibleIce2x6Horizontal,
     .DestructibleRock2x6Horizontal,
     .DestructibleRockEx12x6Horizontal,
 };
 
-const destructible_2x6 = [_]UnitId{
+pub const destructible_2x6 = [_]UnitId{
     .DestructibleCityDebris2x6Vertical,
     .DestructibleIce2x6Vertical,
     .DestructibleRock2x6Vertical,
     .DestructibleRockEx12x6Vertical,
 };
 
-const destructible_4x12 = [_]UnitId{
+pub const destructible_4x12 = [_]UnitId{
     .DestructibleRockEx1VerticalHuge,
     .DestructibleIceVerticalHuge,
     // What map includes this, should be the same size
@@ -128,13 +128,13 @@ const destructible_4x12 = [_]UnitId{
     .DestructibleRampVerticalHuge,
 };
 
-const destructible_12x4 = [_]UnitId{
+pub const destructible_12x4 = [_]UnitId{
     .DestructibleRockEx1HorizontalHuge,
     .DestructibleIceHorizontalHuge,
     .DestructibleRampHorizontalHuge,
 };
 
-const destructible_6x6 = [_]UnitId{
+pub const destructible_6x6 = [_]UnitId{
     .DestructibleCityDebris6x6,
     .DestructibleDebris6x6,
     .DestructibleIce6x6,
@@ -144,7 +144,7 @@ const destructible_6x6 = [_]UnitId{
     .DestructibleExpeditionGate6x6,
 };
 
-const destructible_blur = [_]UnitId{
+pub const destructible_blur = [_]UnitId{
     .DestructibleCityDebrisHugeDiagonalBLUR,
     .DestructibleDebrisRampDiagonalHugeBLUR,
     .DestructibleIceDiagonalHugeBLUR,
@@ -152,7 +152,7 @@ const destructible_blur = [_]UnitId{
     .DestructibleRampDiagonalHugeBLUR,
 };
 
-const destructible_ulbr = [_]UnitId{
+pub const destructible_ulbr = [_]UnitId{
     .DestructibleCityDebrisHugeDiagonalULBR,
     .DestructibleDebrisRampDiagonalHugeULBR,
     .DestructibleIceDiagonalHugeULBR,
@@ -184,6 +184,12 @@ pub fn getBuildableSize(unit_type: UnitId) GridSize {
     return .{ .w = 1, .h = 1 };
 }
 
+/// This is trying to do the same as actions.findPlacement(...) but with a
+/// placement grid that we keep up to date and we don't have to make a slow call
+/// to the sc2 client when we try to find placements.
+/// It doesn't work the same way at least with gas buildings and
+/// townhalls because of the placement restrictions so we should directly
+/// place those by consulting the geysers and expansion locations.
 pub fn findPlacement(placement_grid: Grid(u1), unit: UnitId, near: Point2, max_distance: f32) ?Point2 {
     std.debug.assert(max_distance >= 1 and max_distance <= 30);
     const size = getBuildableSize(unit);
@@ -252,6 +258,10 @@ fn queryPlacementSize(placement_grid: Grid(u1), size: GridSize, pos: Point2) boo
     return true;
 }
 
+/// Trying to do the same as actions.queryPlacement(...) but without
+/// making a call to the sc2 client. It may adjust the location
+/// slightly to align it properly with the grid we are keeping so
+/// use the output point to build if it's a success
 pub fn queryPlacement(placement_grid: Grid(u1), unit: UnitId, pos: Point2) ?Point2 {
     const size = getBuildableSize(unit);
     // Doing this adjustment because when we build according to the grid we are

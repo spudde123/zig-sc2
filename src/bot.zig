@@ -8,7 +8,7 @@ const PackedIntIo = std.packed_int_array.PackedIntIo;
 
 const ws = @import("client.zig");
 const sc2p = @import("sc2proto.zig");
-const grid_utils = @import("grid_utils.zig");
+pub const grid_utils = @import("grid_utils.zig");
 pub const unit_group = @import("units.zig");
 pub const grids = @import("grids.zig");
 
@@ -686,24 +686,6 @@ pub const GameInfo = struct {
         }
 
         grids.updateReaperGrid(&self.reaper_grid, self.pathing_grid, self.climbable_points);
-    }
-
-    /// This is trying to do the same as actions.findPlacement(...) but with a
-    /// placement grid that we keep up to date and we don't have to make a slow call
-    /// to the sc2 client when we try to find placements.
-    /// It doesn't work the same way at least with gas buildings and
-    /// townhalls because of the placement restrictions so we should directly
-    /// place those by consulting the geysers and expansion locations.
-    pub fn findPlacement(self: GameInfo, unit_type: UnitId, near: Point2, max_distance: f32) ?Point2 {
-        return grid_utils.findPlacement(self.placement_grid, unit_type, near, max_distance);
-    }
-
-    /// Trying to do the same as actions.queryPlacement(...) but without
-    /// making a call to the sc2 client. It may adjust the location
-    /// slightly to align it properly with the grid we are keeping so
-    /// use the output point to build if it's a success
-    pub fn queryPlacement(self: GameInfo, unit_type: UnitId, pos: Point2) ?Point2 {
-        return grid_utils.queryPlacement(self.placement_grid, unit_type, pos);
     }
 
     pub fn getTerrainZ(self: GameInfo, pos: Point2) f32 {
