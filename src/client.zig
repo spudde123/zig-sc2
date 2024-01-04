@@ -109,7 +109,7 @@ pub const WebSocketClient = struct {
 
         std.log.debug("{s}\n", .{buf[0..total_read]});
 
-        var split_iter = mem.split(u8, buf[0..], "\r\n");
+        var split_iter = mem.tokenizeSequence(u8, buf[0..], "\r\n");
         if (split_iter.next()) |line| {
             if (!mem.startsWith(u8, line, "HTTP/1.1 101")) {
                 return false;
@@ -127,7 +127,6 @@ pub const WebSocketClient = struct {
                 if (checkHandshakeKey(handshake_key[0..handshake_key_length_b64], received_key)) {
                     key_ok = true;
                 }
-
                 break;
             }
         }
@@ -343,23 +342,15 @@ pub const WebSocketClient = struct {
             .observation = obs_req,
         };
 
-        var res = try self.writeAndWaitForMessage(base_req);
-
-        if (res.observation) |obs| {
-            return obs;
-        }
-        return ClientError.BadResponse;
+        const res = try self.writeAndWaitForMessage(base_req);
+        return res.observation orelse ClientError.BadResponse;
     }
 
     pub fn getGameInfo(self: *WebSocketClient) !sc2p.ResponseGameInfo {
         const request = sc2p.Request{ .game_info = {} };
         const res = try self.writeAndWaitForMessage(request);
 
-        if (res.game_info) |game_info| {
-            return game_info;
-        } else {
-            return ClientError.BadResponse;
-        }
+        return res.game_info orelse ClientError.BadResponse;
     }
 
     pub fn getGameData(self: *WebSocketClient) !sc2p.ResponseData {
@@ -372,9 +363,8 @@ pub const WebSocketClient = struct {
 
         if (res.game_data) |game_data| {
             return game_data;
-        } else {
-            return ClientError.BadResponse;
         }
+        return ClientError.BadResponse;
     }
 
     pub fn sendActions(self: *WebSocketClient, action_proto: sc2p.RequestAction) !void {

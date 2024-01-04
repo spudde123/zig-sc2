@@ -249,7 +249,7 @@ pub const GameInfo = struct {
             .reaper_grid = reaper_grid,
             .air_grid = air_grid,
             .climbable_points = climbable_points,
-            .expansion_locations = generateExpansionLocations(minerals, geysers, allocator),
+            .expansion_locations = try generateExpansionLocations(minerals, geysers, allocator),
             .vision_blockers = ramps_and_vbs.vbs,
             .ramps = ramps_and_vbs.ramps,
         };
@@ -259,14 +259,14 @@ pub const GameInfo = struct {
         minerals: []Unit,
         geysers: []Unit,
         allocator: mem.Allocator,
-    ) []Point2 {
+    ) ![]Point2 {
         const ResourceData = struct {
             tag: u64,
             pos: Point2,
             is_geyser: bool,
         };
 
-        var resources = std.ArrayList(ResourceData).initCapacity(allocator, minerals.len + geysers.len) catch return &[_]Point2{};
+        var resources = try std.ArrayList(ResourceData).initCapacity(allocator, minerals.len + geysers.len);
         defer resources.deinit();
         for (minerals) |patch| {
             // Don't use minerals that mainly block pathways and
@@ -309,10 +309,10 @@ pub const GameInfo = struct {
             var new_group = ResourceGroup{};
             new_group.count = 1;
             new_group.resources[0] = cur;
-            groups.append(new_group) catch return &[_]Point2{};
+            try groups.append(new_group);
         }
 
-        var result = allocator.alloc(Point2, groups.items.len) catch return &[_]Point2{};
+        var result = try allocator.alloc(Point2, groups.items.len);
         for (groups.items, 0..) |group, group_index| {
             var center = Point2{ .x = 0, .y = 0 };
             for (group.resources[0..group.count]) |resource| {
@@ -522,8 +522,8 @@ pub const GameInfo = struct {
         }
 
         return RampsAndVisionBlockers{
-            .vbs = vbs.toOwnedSlice() catch &[_]VisionBlocker{},
-            .ramps = ramps.toOwnedSlice() catch &[_]Ramp{},
+            .vbs = try vbs.toOwnedSlice(),
+            .ramps = try ramps.toOwnedSlice(),
         };
     }
 
@@ -1644,13 +1644,19 @@ pub const Actions = struct {
         // Hashing based on the ActionData, value is the index in the next array list
         var action_hashmap = std.AutoHashMap(ActionData.HashableActionData, usize).init(self.temp_allocator);
         var raw_unit_commands = std.ArrayList(sc2p.ActionRawUnitCommand).init(self.temp_allocator);
-        var unit_lists = std.ArrayList(std.ArrayList(u64)).initCapacity(self.temp_allocator, self.order_list.items.len) catch return null;
+        var unit_lists = std.ArrayList(std.ArrayList(u64)).initCapacity(self.temp_allocator, self.order_list.items.len) catch {
+            log.err("Dropping actions due to allocation failure\n", .{});
+            return null;
+        };
 
         for (self.order_list.items) |order| {
             const hashable = order.data.toHashable();
 
             if (action_hashmap.get(hashable)) |index| {
-                unit_lists.items[index].append(order.unit) catch break;
+                unit_lists.items[index].append(order.unit) catch {
+                    log.err("Dropping actions due to allocation failure\n", .{});
+                    break;
+                };
             } else {
                 var unit_command = sc2p.ActionRawUnitCommand{
                     .ability_id = @as(i32, @intCast(@intFromEnum(order.data.ability_id))),
@@ -1672,10 +1678,15 @@ pub const Actions = struct {
                 var new_list = std.ArrayList(u64).initCapacity(self.temp_allocator, 1) catch break;
                 new_list.appendAssumeCapacity(order.unit);
                 unit_lists.appendAssumeCapacity(new_list);
-                raw_unit_commands.append(unit_command) catch break;
-
+                raw_unit_commands.append(unit_command) catch {
+                    log.err("Dropping actions due to allocation failure\n", .{});
+                    break;
+                };
                 if (self.combinable_abilities.contains(order.data.ability_id)) {
-                    action_hashmap.put(hashable, raw_unit_commands.items.len - 1) catch break;
+                    action_hashmap.put(hashable, raw_unit_commands.items.len - 1) catch {
+                        log.err("Dropping actions due to allocation failure\n", .{});
+                        break;
+                    };
                 }
             }
         }
@@ -1822,14 +1833,20 @@ pub const Actions = struct {
             const command = sc2p.DebugCommand{
                 .draw = debug_draw,
             };
-            command_list.append(command) catch return null;
+            command_list.append(command) catch {
+                log.err("Dropping debug commands due to allocation failure\n", .{});
+                return null;
+            };
         }
 
         for (self.debug_create_unit.items) |debug_create_unit| {
             const command = sc2p.DebugCommand{
                 .create_unit = debug_create_unit,
             };
-            command_list.append(command) catch return null;
+            command_list.append(command) catch {
+                log.err("Dropping debug commands due to allocation failure\n", .{});
+                return null;
+            };
         }
 
         if (command_list.items.len == 0) return null;

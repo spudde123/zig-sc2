@@ -351,7 +351,7 @@ pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid(u1), terrain:
         }
     }
 
-    return list.toOwnedSlice() catch &[_]usize{};
+    return try list.toOwnedSlice();
 }
 
 pub fn createReaperGrid(allocator: mem.Allocator, pathing_grid: Grid(u1), climbable_points: []const usize) !Grid(u1) {
@@ -650,7 +650,10 @@ pub const InfluenceMap = struct {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
+        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch |err| {
+            std.log.err("Pathfind error: {}\n", .{err});
+            return null;
+        };
         defer came_from.deinit();
 
         const goal_index = self.pointToIndex(validated_goal);

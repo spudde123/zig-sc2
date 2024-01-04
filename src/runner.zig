@@ -299,8 +299,7 @@ fn runHumanGame(
 
     defer client.deinit();
 
-    const handshake_ok = try client.completeHandshake("/sc2api");
-    if (!handshake_ok) {
+    if (!try client.completeHandshake("/sc2api")) {
         log.err("Failed websocket handshake\n", .{});
         _ = try sc2_process.kill();
         return;
@@ -424,8 +423,7 @@ pub fn run(
 
     defer client.deinit();
 
-    const handshake_ok = try client.completeHandshake("/sc2api");
-    if (!handshake_ok) {
+    if (!try client.completeHandshake("/sc2api")) {
         log.err("Failed websocket handshake\n", .{});
         if (sc2_process) |*sc2| {
             _ = try sc2.kill();

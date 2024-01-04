@@ -217,14 +217,14 @@ pub fn filter(
     allocator: mem.Allocator,
     context: anytype,
     comptime filterFn: fn (context: @TypeOf(context), unit: Unit) bool,
-) []Unit {
+) ![]Unit {
     var list = std.ArrayList(Unit).init(allocator);
     for (units) |unit| {
         if (filterFn(context, unit)) {
-            list.append(unit) catch continue;
+            try list.append(unit);
         }
     }
-    return list.toOwnedSlice() catch &[_]Unit{};
+    return try list.toOwnedSlice();
 }
 
 pub fn amountOfType(
@@ -255,28 +255,28 @@ pub fn ofType(
     units: []Unit,
     unit_type: UnitId,
     allocator: mem.Allocator,
-) []Unit {
+) ![]Unit {
     var list = std.ArrayList(Unit).init(allocator);
     for (units) |unit| {
         if (unit.unit_type == unit_type) {
-            list.append(unit) catch continue;
+            try list.append(unit);
         }
     }
-    return list.toOwnedSlice() catch &[_]Unit{};
+    return try list.toOwnedSlice();
 }
 
 pub fn ofTypes(
     units: []Unit,
     unit_types: []const UnitId,
     allocator: mem.Allocator,
-) []Unit {
+) ![]Unit {
     var list = std.ArrayList(Unit).init(allocator);
     for (units) |unit| {
         if (mem.indexOf(UnitId, unit_types, unit.unit_type)) |_| {
-            list.append(unit) catch continue;
+            try list.append(unit);
         }
     }
-    return list.toOwnedSlice() catch &[_]Unit{};
+    return try list.toOwnedSlice();
 }
 
 fn unitTypeMatches(context: UnitId, unit: Unit) bool {
