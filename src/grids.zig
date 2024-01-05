@@ -402,7 +402,7 @@ pub const PathfindResult = struct {
 };
 
 pub const InfluenceMap = struct {
-    grid: []f32 = &[_]f32{},
+    grid: []f32 = &.{},
     w: usize = 0,
     h: usize = 0,
 
@@ -410,7 +410,7 @@ pub const InfluenceMap = struct {
 
     // This needs to be set to the proper terrain height slice
     // before calling any pathfinding functions
-    pub var terrain_height: []const u8 = &[_]u8{};
+    pub var terrain_height: []const u8 = &.{};
 
     pub const DecayTag = enum {
         none,

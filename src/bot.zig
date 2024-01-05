@@ -743,8 +743,8 @@ pub const GameInfo = struct {
 /// iterate through them quickly and
 /// quickly identify units with their tags
 pub const Bot = struct {
-    units: std.AutoArrayHashMap(u64, Unit),
-    enemy_units: std.AutoArrayHashMap(u64, Unit),
+    units: *const std.AutoArrayHashMap(u64, Unit),
+    enemy_units: *const std.AutoArrayHashMap(u64, Unit),
     placeholders: []Unit,
     destructibles: []Unit,
     mineral_patches: []Unit,
@@ -953,7 +953,7 @@ pub const Bot = struct {
                     .buff_duration_remain = unit.buff_duration_remain orelse 0,
                     .buff_duration_max = unit.buff_duration_max orelse 0,
                     .rally_targets = rally_targets.items,
-                    .available_abilities = &[_]AbilityId{},
+                    .available_abilities = &.{},
                 };
 
                 if (u.display_type == DisplayType.placeholder) {
@@ -1095,7 +1095,7 @@ pub const Bot = struct {
             }
         }
 
-        var power_sources: []PowerSource = &[_]PowerSource{};
+        var power_sources: []PowerSource = &.{};
         if (obs.player.?.power_sources) |power_slice| {
             power_sources = try allocator.alloc(PowerSource, power_slice.len);
             for (power_slice, 0..) |item, i| {
@@ -1121,7 +1121,7 @@ pub const Bot = struct {
         const creep_grid = Grid(u1){ .data = creep_proto.image.?, .w = grid_width, .h = grid_height };
 
         const effects_proto = obs.effects;
-        var effects: []Effect = &[_]Effect{};
+        var effects: []Effect = &.{};
         if (effects_proto) |effect_proto_slice| {
             effects = try allocator.alloc(Effect, effect_proto_slice.len);
             for (effect_proto_slice, 0..) |effect_proto, effect_index| {
@@ -1138,7 +1138,7 @@ pub const Bot = struct {
             }
         }
 
-        var sensor_towers: []SensorTower = &[_]SensorTower{};
+        var sensor_towers: []SensorTower = &.{};
         if (obs.radars) |sensor_towers_proto| {
             sensor_towers = try allocator.alloc(SensorTower, sensor_towers_proto.len);
             for (sensor_towers_proto, 0..) |tower_proto, tower_index| {
@@ -1149,7 +1149,7 @@ pub const Bot = struct {
             }
         }
 
-        var dead_unit_tags: []u64 = &[_]u64{};
+        var dead_unit_tags: []u64 = &.{};
         if (obs.event) |events_proto| {
             if (events_proto.dead_units) |dead_unit_slice| {
                 dead_unit_tags = dead_unit_slice;
@@ -1187,8 +1187,8 @@ pub const Bot = struct {
         }
 
         return Bot{
-            .units = prev_units.*,
-            .enemy_units = prev_enemy.*,
+            .units = prev_units,
+            .enemy_units = prev_enemy,
             .placeholders = placeholders.items,
             .destructibles = destructibles.items,
             .vespene_geysers = vespene_geysers.items,
