@@ -120,7 +120,7 @@ pub const GameInfo = struct {
         temp_alloc: mem.Allocator,
     ) !GameInfo {
         const received_map_name = proto_data.map_name.?;
-        var map_name = try allocator.dupe(u8, received_map_name);
+        const map_name = try allocator.dupe(u8, received_map_name);
 
         var copied_opponent_id: ?[]u8 = null;
         if (opponent_id) |received_opponent_id| {
@@ -207,7 +207,7 @@ pub const GameInfo = struct {
             clean_slice[index] = placement_slice[index] | pathing_slice[index];
         }
 
-        const PackedIntType = PackedIntIo(u1, .Big);
+        const PackedIntType = PackedIntIo(u1, .big);
         for (geysers) |geyser| {
             const geyser_x = @as(usize, @intFromFloat(geyser.position.x));
             const geyser_y = @as(usize, @intFromFloat(geyser.position.y));
@@ -220,9 +220,9 @@ pub const GameInfo = struct {
             }
         }
 
-        var climbable_points = try grids.findClimbablePoints(allocator, pathing_grid, terrain_height);
-        var air_grid = try grids.createAirGrid(allocator, pathing_grid.w, pathing_grid.h, playable_area);
-        var reaper_grid = try grids.createReaperGrid(allocator, pathing_grid, climbable_points);
+        const climbable_points = try grids.findClimbablePoints(allocator, pathing_grid, terrain_height);
+        const air_grid = try grids.createAirGrid(allocator, pathing_grid.w, pathing_grid.h, playable_area);
+        const reaper_grid = try grids.createReaperGrid(allocator, pathing_grid, climbable_points);
         const ramps_and_vbs = try generateRamps(
             pathing_grid,
             placement_grid,
@@ -332,7 +332,7 @@ pub const GameInfo = struct {
                     const offset_len_sqrd = y_offset * y_offset + x_offset * x_offset;
                     if (offset_len_sqrd <= 16 or offset_len_sqrd > 64) continue;
 
-                    var point = Point2{
+                    const point = Point2{
                         .x = center.x + x_offset,
                         .y = center.y + y_offset,
                     };
@@ -561,7 +561,7 @@ pub const GameInfo = struct {
                 current_index + grid_width,
                 current_index + grid_width + 1,
             };
-            var edge = [_]usize{
+            const edge = [_]usize{
                 current_index - grid_width - 1,
                 current_index - grid_width,
                 current_index - grid_width + 1,
@@ -965,7 +965,7 @@ pub const Bot = struct {
                 // to a map so we can see how many we are producing
                 switch (u.alliance) {
                     .self, .ally => {
-                        var prev = try prev_units.getOrPut(u.tag);
+                        const prev = try prev_units.getOrPut(u.tag);
                         if (!prev.found_existing) {
                             try units_created.append(u.tag);
                         } else {
@@ -1023,7 +1023,7 @@ pub const Bot = struct {
                         }
                     },
                     .enemy => {
-                        var prev = try prev_enemy.getOrPut(u.tag);
+                        const prev = try prev_enemy.getOrPut(u.tag);
                         prev.value_ptr.* = u;
                         if (!prev.found_existing) {
                             try enemies_entered_vision.append(u.tag);
@@ -1597,7 +1597,7 @@ pub const Actions = struct {
     }
 
     pub fn chat(self: *Actions, channel: Channel, message: []const u8) void {
-        var msg_copy = self.temp_allocator.dupe(u8, message) catch return;
+        const msg_copy = self.temp_allocator.dupe(u8, message) catch return;
         self.chat_messages.append(.{ .channel = channel, .message = msg_copy }) catch return;
     }
 
@@ -1698,7 +1698,7 @@ pub const Actions = struct {
             .y = pos.y,
             .z = pos.z,
         };
-        var proto = sc2p.DebugText{
+        const proto = sc2p.DebugText{
             .color = color_proto,
             .text = text,
             .world_pos = pos_proto,

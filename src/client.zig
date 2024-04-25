@@ -120,7 +120,7 @@ pub const WebSocketClient = struct {
 
         var key_ok = false;
         while (split_iter.next()) |line| {
-            var line_lowered = try self.step_allocator.alloc(u8, line.len);
+            const line_lowered = try self.step_allocator.alloc(u8, line.len);
             _ = ascii.lowerString(line_lowered, line);
             if (mem.startsWith(u8, line_lowered, string_to_find)) {
                 const received_key = line[string_to_find.len..line.len];
@@ -468,12 +468,12 @@ pub const WebSocketClient = struct {
                 pre_payload += 2;
                 msg -= pre_payload;
                 msg[1] = 126;
-                mem.writeIntBig(u16, msg[2..4], @as(u16, @truncate(payload.len)));
+                mem.writeInt(u16, msg[2..4], @as(u16, @truncate(payload.len)), .big);
             } else {
                 pre_payload += 8;
                 msg -= pre_payload;
                 msg[1] = 127;
-                mem.writeIntBig(u64, msg[2..10], payload.len);
+                mem.writeInt(u64, msg[2..10], payload.len, .big);
             }
             msg[0] = @intFromEnum(OpCode.binary);
             msg[0] |= 0x80;
@@ -497,10 +497,10 @@ pub const WebSocketClient = struct {
         var payload_length = @as(u64, payload_desc);
 
         if (payload_desc == 126) {
-            payload_length = mem.readIntBig(u16, self.storage[2..4]);
+            payload_length = mem.readInt(u16, self.storage[2..4], .big);
             payload_start += 2;
         } else if (payload_desc == 127) {
-            payload_length = mem.readIntBig(u64, self.storage[2..10]);
+            payload_length = mem.readInt(u64, self.storage[2..10], .big);
             payload_start += 8;
         }
 
@@ -529,11 +529,11 @@ pub const WebSocketClient = struct {
 
         if (payload_desc == 126) {
             if (cursor < 4) return false;
-            payload_length = mem.readIntBig(u16, self.storage[2..4]);
+            payload_length = mem.readInt(u16, self.storage[2..4], .big);
             payload_start += 2;
         } else if (payload_desc == 127) {
             if (cursor < 10) return false;
-            payload_length = mem.readIntBig(u64, self.storage[2..10]);
+            payload_length = mem.readInt(u64, self.storage[2..10], .big);
             payload_start += 8;
         }
 

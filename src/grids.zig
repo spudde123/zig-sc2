@@ -131,8 +131,8 @@ pub const Point2 = struct {
     }
 
     pub fn octileDistance(self: Point2, other: Point2) f32 {
-        const x_diff = math.fabs(self.x - other.x);
-        const y_diff = math.fabs(self.y - other.y);
+        const x_diff = @abs(self.x - other.x);
+        const y_diff = @abs(self.y - other.y);
         return @max(x_diff, y_diff) + (math.sqrt2 - 1) * @min(x_diff, y_diff);
     }
 
@@ -184,7 +184,7 @@ pub fn Grid(comptime Int: type) type {
 
     return struct {
         const Self = @This();
-        pub const PackedInt = std.packed_int_array.PackedIntIo(Int, .Big);
+        pub const PackedInt = std.packed_int_array.PackedIntIo(Int, .big);
 
         data: []u8,
         w: usize,
@@ -377,7 +377,7 @@ pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usi
     const end_y = @as(usize, @intCast(playable_area.p1.y));
 
     const req_bytes = std.PackedIntSlice(u1).bytesRequired(map_width * map_height);
-    var data = try allocator.alloc(u8, req_bytes);
+    const data = try allocator.alloc(u8, req_bytes);
     var air_grid = Grid(u1){
         .data = data,
         .w = map_width,
@@ -431,7 +431,7 @@ pub const InfluenceMap = struct {
     };
 
     pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid(u1)) !InfluenceMap {
-        var grid = try allocator.alloc(f32, base_grid.h * base_grid.w);
+        const grid = try allocator.alloc(f32, base_grid.h * base_grid.w);
         for (grid, 0..) |*val, i| {
             val.* = if (base_grid.getValueIndex(i) > 0) 1 else f32_max;
         }
@@ -834,7 +834,7 @@ test "test_pf_basic" {
 
     var allocator = std.testing.allocator;
     const bytes_req = std.PackedIntSlice(u1).bytesRequired(size * size);
-    var data = try allocator.alloc(u8, bytes_req);
+    const data = try allocator.alloc(u8, bytes_req);
     defer allocator.free(data);
 
     @memset(data, 0);
@@ -847,7 +847,7 @@ test "test_pf_basic" {
         }
     }
 
-    var terrain_data = try allocator.alloc(u8, size * size);
+    const terrain_data = try allocator.alloc(u8, size * size);
     defer allocator.free(terrain_data);
 
     @memset(terrain_data, 10);

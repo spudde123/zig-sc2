@@ -34,7 +34,7 @@ pub const ProtoReader = struct {
     bytes: []u8,
 
     fn decodeProtoHeader(self: *ProtoReader) !ProtoHeader {
-        var header = try self.decodeUInt64();
+        const header = try self.decodeUInt64();
 
         return ProtoHeader{
             .wire_type = @as(WireType, @enumFromInt(header & 7)),
@@ -51,7 +51,7 @@ pub const ProtoReader = struct {
         // where we need to generate slices of unknown length.
         const TupleType = comptime t: {
             var tuple_types: [field_nums_tuple.len]type = undefined;
-            inline for (field_nums_tuple, 0..) |field_info, i| {
+            for (field_nums_tuple, 0..) |field_info, i| {
                 const field_name = field_info[0];
                 const info = @typeInfo(@TypeOf(@field(res, field_name)));
                 const child_type = info.Optional.child;
@@ -66,7 +66,7 @@ pub const ProtoReader = struct {
 
         var list_tuple: TupleType = comptime l: {
             var tuple: TupleType = undefined;
-            inline for (field_nums_tuple, 0..) |field_info, i| {
+            for (field_nums_tuple, 0..) |field_info, i| {
                 const field_name = field_info[0];
                 const info = @typeInfo(@TypeOf(@field(res, field_name)));
                 const child_type = info.Optional.child;
@@ -79,7 +79,7 @@ pub const ProtoReader = struct {
             break :l tuple;
         };
 
-        var start: usize = self.bytes_read;
+        const start: usize = self.bytes_read;
 
         while (self.bytes_read - start < size) {
             const header = try self.decodeProtoHeader();
@@ -91,7 +91,7 @@ pub const ProtoReader = struct {
 
                 if (header.field_number == field_num) {
                     recognized_field = true;
-                    var obj_field = &@field(res, field_name);
+                    const obj_field = &@field(res, field_name);
                     const info = @typeInfo(@TypeOf(obj_field.*));
                     const child_type = info.Optional.child;
                     const child_info = @typeInfo(child_type);
@@ -107,7 +107,7 @@ pub const ProtoReader = struct {
                             } else {
                                 switch (ptr.child) {
                                     []const u8 => {
-                                        var string = try self.decodeBytes(allocator);
+                                        const string = try self.decodeBytes(allocator);
                                         try list_tuple[i].append(allocator, string);
                                     },
                                     u32, u64 => {
@@ -220,14 +220,14 @@ pub const ProtoReader = struct {
 
     fn decodeBytes(self: *ProtoReader, allocator: mem.Allocator) ![]u8 {
         const num_of_bytes = try self.decodeUInt64();
-        var data = try allocator.dupe(u8, self.bytes[self.bytes_read..(self.bytes_read + num_of_bytes)]);
+        const data = try allocator.dupe(u8, self.bytes[self.bytes_read..(self.bytes_read + num_of_bytes)]);
         self.bytes_read += num_of_bytes;
 
         return data;
     }
 
     fn decodeFloat(self: *ProtoReader) ParseError!f32 {
-        const float_bits = mem.readIntSliceLittle(u32, self.bytes[self.bytes_read..(self.bytes_read + 4)]);
+        const float_bits = mem.readInt(u32, self.bytes[self.bytes_read..][0..4], .little);
         self.bytes_read += 4;
         return @as(f32, @bitCast(float_bits));
     }
@@ -400,8 +400,8 @@ pub const ProtoWriter = struct {
     }
 
     fn encodeFloat(self: *ProtoWriter, data: f32) void {
-        var result = self.buffer[self.cursor..(self.cursor + 4)];
-        mem.writeIntSliceLittle(u32, result, @as(u32, @bitCast(data)));
+        const result = self.buffer[self.cursor..][0..4];
+        mem.writeInt(u32, result, @as(u32, @bitCast(data)), .little);
         self.cursor += 4;
     }
 };
@@ -422,12 +422,12 @@ fn varIntByteLength(data: u64) usize {
 test "protobuf_floats" {
     var buffer: [256]u8 = undefined;
 
-    var data: f32 = 9.81;
+    const data: f32 = 9.81;
     var writer = ProtoWriter{ .buffer = buffer[0..] };
     writer.encodeFloat(data);
 
     var reader = ProtoReader{ .bytes = buffer[0..writer.cursor] };
-    var decoded_data = try reader.decodeFloat();
+    const decoded_data = try reader.decodeFloat();
 
     try std.testing.expectEqual(data, decoded_data);
 }
@@ -446,7 +446,7 @@ test "protobuf_bytes" {
 
     var reader = ProtoReader{ .bytes = buffer[0..] };
 
-    var decoded = try reader.decodeBytes(std.testing.allocator);
+    const decoded = try reader.decodeBytes(std.testing.allocator);
     try std.testing.expectEqualSlices(u8, decoded, comparison[1..]);
     try std.testing.expectEqual(reader.bytes_read, 8);
     std.testing.allocator.free(decoded);
@@ -465,7 +465,7 @@ test "protobuf_varint" {
     uint = try reader.decodeUInt64();
     try std.testing.expectEqual(uint, 150);
 
-    var header = try reader.decodeProtoHeader();
+    const header = try reader.decodeProtoHeader();
     std.debug.print("Type: {d}, Field: {d}\n", .{ header.wire_type, header.field_number });
 
     var buf1: [1000]u8 = undefined;
@@ -511,8 +511,8 @@ test "protobuf_struct" {
         c: ?Test1 = null,
     };
 
-    var t1 = Test1{ .a = 150 };
-    var t2 = Test2{ .c = t1 };
+    const t1 = Test1{ .a = 150 };
+    const t2 = Test2{ .c = t1 };
 
     const encoding = writer.encodeBaseStruct(t2);
     const comparison1 = [_]u8{ 0b00011010, 0b00000011, 0b00001000, 0b10010110, 0b00000001 };
@@ -570,7 +570,7 @@ test "protobuf_struct" {
         n: ?[]u8 = null,
     };
 
-    var t3 = Test3{
+    const t3 = Test3{
         .a = true,
         .b = 4.5,
         .c = -1,
@@ -578,7 +578,7 @@ test "protobuf_struct" {
         .e = "testing",
     };
 
-    var t5 = Test5{
+    const t5 = Test5{
         .a = 6,
         .b = 7.5,
     };
@@ -589,7 +589,7 @@ test "protobuf_struct" {
 
     var tag_array = [_]u64{ 32, 66, 128, 256, 1000 };
     var bytes_array = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
-    var t4 = Test4{
+    const t4 = Test4{
         .f = 1.5,
         .g = "testing",
         .h = t3,
@@ -609,7 +609,7 @@ test "protobuf_struct" {
     std.debug.print("\n", .{});
 
     var reader = ProtoReader{ .bytes = res[1..5] };
-    var first_float = try reader.decodeFloat();
+    const first_float = try reader.decodeFloat();
     std.debug.print("{d}\n", .{first_float});
 
     var reader2 = ProtoReader{ .bytes = res };

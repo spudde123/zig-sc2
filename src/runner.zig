@@ -93,7 +93,7 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
     const support64_concat = [_][]const u8{ base_folder, "/Support64/" };
     const versions_concat = [_][]const u8{ base_folder, "/Versions/" };
     const versions_path = try mem.concat(allocator, u8, &versions_concat);
-    var dir = fs.openIterableDirAbsolute(versions_path, .{}) catch {
+    var dir = fs.openDirAbsolute(versions_path, .{ .iterate = true }) catch {
         log.err("Couldn't open versions folder {s}\n", .{versions_path});
         return Sc2PathError.no_version_folders_found;
     };
@@ -656,15 +656,15 @@ fn createReplayName(
     map: []const u8,
 ) ?[]const u8 {
     const no_gap_bot_size = mem.replacementSize(u8, bot_name, " ", "");
-    var new_bot_name = allocator.alloc(u8, no_gap_bot_size) catch return null;
+    const new_bot_name = allocator.alloc(u8, no_gap_bot_size) catch return null;
     _ = mem.replace(u8, bot_name, " ", "", new_bot_name);
 
     const no_gap_opp_size = mem.replacementSize(u8, opponent, " ", "");
-    var new_opponent_name = allocator.alloc(u8, no_gap_opp_size) catch return null;
+    const new_opponent_name = allocator.alloc(u8, no_gap_opp_size) catch return null;
     _ = mem.replace(u8, opponent, " ", "", new_opponent_name);
 
     const no_gap_map_size = mem.replacementSize(u8, map, " ", "");
-    var new_map_name = allocator.alloc(u8, no_gap_map_size) catch return null;
+    const new_map_name = allocator.alloc(u8, no_gap_map_size) catch return null;
     _ = mem.replace(u8, map, " ", "", new_map_name);
 
     const replay_name = fmt.allocPrint(allocator, "./replays/{s}_{s}_{s}_{d}.SC2Replay", .{
