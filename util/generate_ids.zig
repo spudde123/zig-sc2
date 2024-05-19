@@ -48,7 +48,7 @@ pub fn main() !void {
 
     // Fix ability data
     var ability_index: usize = 0;
-    var ability_obj = tree.value.object.get("Abilities").?;
+    const ability_obj = tree.value.object.get("Abilities").?;
     var key_map = std.StringHashMap(bool).init(arena);
     defer key_map.deinit();
 
@@ -71,7 +71,7 @@ pub fn main() !void {
 
         if (friendly_name) |friendly| {
             const new_friendly_size = mem.replacementSize(u8, friendly.string, " ", "_");
-            var new_friendly_string = try arena.alloc(u8, new_friendly_size);
+            const new_friendly_string = try arena.alloc(u8, new_friendly_size);
             _ = mem.replace(u8, friendly.string, " ", "_", new_friendly_string);
             try ability.object.put("name", json.Value{ .string = new_friendly_string });
         } else {
@@ -112,7 +112,7 @@ pub fn main() !void {
             const name = item.object.get("name").?;
 
             const gap_size = mem.replacementSize(u8, name.string, "@", "");
-            var gap_name = try arena.alloc(u8, gap_size);
+            const gap_name = try arena.alloc(u8, gap_size);
             _ = mem.replace(u8, name.string, "@", "", gap_name);
 
             const no_gap_size = mem.replacementSize(u8, gap_name, " ", "");
