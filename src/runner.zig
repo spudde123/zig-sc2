@@ -1,7 +1,7 @@
 const std = @import("std");
 const mem = std.mem;
 const fmt = std.fmt;
-const ChildProcess = std.ChildProcess;
+const ChildProcess = std.process.Child;
 const time = std.time;
 const log = std.log;
 const fs = std.fs;
@@ -41,14 +41,14 @@ const ProgramArguments = struct {
     sc2_path: ?[]const u8 = null,
 };
 
-const race_map = std.ComptimeStringMap(sc2p.Race, .{
+const race_map = std.StaticStringMap(sc2p.Race).initComptime(.{
     .{ "terran", .terran },
     .{ "zerg", .zerg },
     .{ "protoss", .protoss },
     .{ "random", .random },
 });
 
-const difficulty_map = std.ComptimeStringMap(sc2p.AiDifficulty, .{
+const difficulty_map = std.StaticStringMap(sc2p.AiDifficulty).initComptime(.{
     .{ "very_easy", .very_easy },
     .{ "easy", .easy },
     .{ "medium", .medium },
@@ -61,7 +61,7 @@ const difficulty_map = std.ComptimeStringMap(sc2p.AiDifficulty, .{
     .{ "cheat_insane", .cheat_insane },
 });
 
-const build_map = std.ComptimeStringMap(sc2p.AiBuild, .{
+const build_map = std.StaticStringMap(sc2p.AiBuild).initComptime(.{
     .{ "random", .random },
     .{ "rush", .rush },
     .{ "timing", .timing },
@@ -187,8 +187,8 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     } else {
                         log.info("Unknown difficulty {s}\n", .{argument});
                         log.info("Available difficulties:\n", .{});
-                        for (difficulty_map.kvs) |kv| {
-                            log.info("{s}\n", .{kv.key});
+                        for (difficulty_map.keys()) |key| {
+                            log.info("{s}\n", .{key});
                         }
                     }
                 },
@@ -198,8 +198,8 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     } else {
                         log.info("Unknown race {s}\n", .{argument});
                         log.info("Available races:\n", .{});
-                        for (race_map.kvs) |kv| {
-                            log.info("{s}\n", .{kv.key});
+                        for (race_map.keys()) |key| {
+                            log.info("{s}\n", .{key});
                         }
                     }
                 },
@@ -209,8 +209,8 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     } else {
                         log.info("Unknown build {s}\n", .{argument});
                         log.info("Available builds:\n", .{});
-                        for (build_map.kvs) |kv| {
-                            log.info("{s}\n", .{kv.key});
+                        for (build_map.keys()) |key| {
+                            log.info("{s}\n", .{key});
                         }
                     }
                 },
@@ -223,8 +223,8 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     } else {
                         log.info("Unknown race {s}\n", .{argument});
                         log.info("Available races:\n", .{});
-                        for (race_map.kvs) |kv| {
-                            log.info("{s}\n", .{kv.key});
+                        for (race_map.keys()) |key| {
+                            log.info("{s}\n", .{key});
                         }
                     }
                 },
