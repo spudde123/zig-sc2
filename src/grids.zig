@@ -184,7 +184,6 @@ pub fn Grid(comptime Int: type) type {
 
     return struct {
         const Self = @This();
-        pub const PackedInt = std.packed_int_array.PackedIntIo(Int, .big);
 
         data: []u8,
         w: usize,
@@ -198,7 +197,7 @@ pub fn Grid(comptime Int: type) type {
             assert(y >= 0 and y < self.h);
             switch (Int) {
                 u8 => return self.data[x + y * self.w],
-                u1 => PackedInt.get(self.data, x + y * self.w, 0),
+                u1 => mem.readPackedInt(u1, self.data, x + y * self.w, .big),
                 else => @compileError("Grid should have u8 or u1 members"),
             }
         }
@@ -211,7 +210,7 @@ pub fn Grid(comptime Int: type) type {
             assert(y >= 0 and y < self.h);
             switch (Int) {
                 u8 => self.data[x + y * self.w] = value,
-                u1 => PackedInt.set(self.data, x + y * self.w, 0, value),
+                u1 => mem.writePackedInt(u1, self.data, x + y * self.w, value, .big),
                 else => @compileError("Grid should have u8 or u1 members"),
             }
         }
@@ -219,7 +218,7 @@ pub fn Grid(comptime Int: type) type {
         pub fn getValueIndex(self: Self, index: usize) Int {
             switch (Int) {
                 u8 => return self.data[index],
-                u1 => return PackedInt.get(self.data, index, 0),
+                u1 => return mem.readPackedInt(u1, self.data, index, .big),
                 else => @compileError("Grid should have u8 or u1 members"),
             }
         }
@@ -227,18 +226,14 @@ pub fn Grid(comptime Int: type) type {
         pub fn setValueIndex(self: *Self, index: usize, value: Int) void {
             switch (Int) {
                 u8 => self.data[index] = value,
-                u1 => PackedInt.set(self.data, index, 0, value),
+                u1 => mem.writePackedInt(u1, self.data, index, value, .big),
                 else => @compileError("Grid should have u8 or u1 members"),
             }
         }
 
         pub fn setValuesIndices(self: *Self, indices: []const usize, value: Int) void {
             for (indices) |index| {
-                switch (Int) {
-                    u8 => self.data[index] = value,
-                    u1 => PackedInt.set(self.data, index, 0, value),
-                    else => @compileError("Grid should have u8 or u1 members"),
-                }
+                setValueIndex(self, index, value);
             }
         }
 
@@ -246,7 +241,7 @@ pub fn Grid(comptime Int: type) type {
             for (indices) |index| {
                 switch (Int) {
                     u8 => if (self.data[index] != value) return false,
-                    u1 => if (PackedInt.get(self.data, index, 0) != value) return false,
+                    u1 => if (mem.readPackedInt(u1, self.data, index, .big) != value) return false,
                     else => @compileError("Grid should have u8 or u1 members"),
                 }
             }
@@ -258,7 +253,7 @@ pub fn Grid(comptime Int: type) type {
             for (indices) |index| {
                 switch (Int) {
                     u8 => total += self.data[index],
-                    u1 => total += PackedInt.get(self.data, index, 0),
+                    u1 => total += mem.readPackedInt(u1, self.data, index, .big),
                     else => @compileError("Grid should have u8 or u1 members"),
                 }
             }
@@ -370,13 +365,20 @@ pub fn updateReaperGrid(reaper_grid: *Grid(u1), pathing_grid: Grid(u1), climbabl
     reaper_grid.setValuesIndices(climbable_points, 1);
 }
 
+fn bytesRequired(comptime Int: type, count: usize) usize {
+    const bits_per_int = @bitSizeOf(Int);
+    const total_bits = bits_per_int * count;
+    const total_bytes = (total_bits + 7) / 8;
+    return total_bytes;
+}
+
 pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usize, playable_area: Rectangle) !Grid(u1) {
     const start_x = @as(usize, @intCast(playable_area.p0.x));
     const end_x = @as(usize, @intCast(playable_area.p1.x));
     const start_y = @as(usize, @intCast(playable_area.p0.y));
     const end_y = @as(usize, @intCast(playable_area.p1.y));
 
-    const req_bytes = std.PackedIntSlice(u1).bytesRequired(map_width * map_height);
+    const req_bytes = bytesRequired(u1, map_width * map_height);
     const data = try allocator.alloc(u8, req_bytes);
     var air_grid = Grid(u1){
         .data = data,
@@ -833,7 +835,7 @@ test "test_pf_basic" {
     const size = 12;
 
     var allocator = std.testing.allocator;
-    const bytes_req = std.PackedIntSlice(u1).bytesRequired(size * size);
+    const bytes_req = bytesRequired(u1, size * size);
     const data = try allocator.alloc(u8, bytes_req);
     defer allocator.free(data);
 
@@ -880,7 +882,7 @@ test "test_pf_basic" {
     try std.testing.expectEqual(dir3.path_len, 17);
 
     const safe = map2.findClosestSafeSpot(.{ .x = 8, .y = 4 }, 6);
-    try std.testing.expectEqual(safe.?, .{ .x = 4.5, .y = 1.5 });
+    try std.testing.expectEqual(safe.?, Point2{ .x = 4.5, .y = 1.5 });
 
     const old_value = map2.grid[map2.pointToIndex(.{ .x = 4.5, .y = 1.5 })];
     map2.addInfluenceHollow(.{ .x = 5.5, .y = 2.5 }, 5, 2, 10, .{ .linear = 5 });

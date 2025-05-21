@@ -4,7 +4,7 @@ const net = std.net;
 const base64 = std.base64;
 const ascii = std.ascii;
 const math = std.math;
-const rand = std.rand;
+const rand = std.Random;
 const time = std.time;
 const mem = std.mem;
 const fs = std.fs;
@@ -76,7 +76,7 @@ pub const WebSocketClient = struct {
         return WebSocketClient{
             .addr = addr,
             .socket = socket,
-            .prng = std.rand.DefaultPrng.init(seed),
+            .prng = rand.DefaultPrng.init(seed),
             .perm_allocator = perm_alloc,
             .step_allocator = step_alloc,
             .storage = storage,

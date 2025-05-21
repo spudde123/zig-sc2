@@ -54,10 +54,10 @@ pub const ProtoReader = struct {
             for (field_nums_tuple, 0..) |field_info, i| {
                 const field_name = field_info[0];
                 const info = @typeInfo(@TypeOf(@field(res, field_name)));
-                const child_type = info.Optional.child;
+                const child_type = info.optional.child;
                 const child_info = @typeInfo(child_type);
                 tuple_types[i] = switch (child_info) {
-                    .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child),
+                    .pointer => |ptr| std.ArrayListUnmanaged(ptr.child),
                     else => void,
                 };
             }
@@ -69,10 +69,10 @@ pub const ProtoReader = struct {
             for (field_nums_tuple, 0..) |field_info, i| {
                 const field_name = field_info[0];
                 const info = @typeInfo(@TypeOf(@field(res, field_name)));
-                const child_type = info.Optional.child;
+                const child_type = info.optional.child;
                 const child_info = @typeInfo(child_type);
                 tuple[i] = switch (child_info) {
-                    .Pointer => |ptr| std.ArrayListUnmanaged(ptr.child){},
+                    .pointer => |ptr| std.ArrayListUnmanaged(ptr.child){},
                     else => {},
                 };
             }
@@ -93,15 +93,15 @@ pub const ProtoReader = struct {
                     recognized_field = true;
                     const obj_field = &@field(res, field_name);
                     const info = @typeInfo(@TypeOf(obj_field.*));
-                    const child_type = info.Optional.child;
+                    const child_type = info.optional.child;
                     const child_info = @typeInfo(child_type);
 
                     switch (child_info) {
-                        .Struct => {
+                        .@"struct" => {
                             const struct_encoding_size = try self.decodeUInt64();
                             obj_field.* = try self.decodeStruct(struct_encoding_size, child_type, allocator);
                         },
-                        .Pointer => |ptr| {
+                        .pointer => |ptr| {
                             if (ptr.child == u8) {
                                 obj_field.* = try self.decodeBytes(allocator);
                             } else {
@@ -121,12 +121,12 @@ pub const ProtoReader = struct {
                                     else => {
                                         const element_info = @typeInfo(ptr.child);
                                         switch (element_info) {
-                                            .Struct => {
+                                            .@"struct" => {
                                                 const struct_encoding_size = try self.decodeUInt64();
                                                 const struct_to_add = try self.decodeStruct(struct_encoding_size, ptr.child, allocator);
                                                 try list_tuple[i].append(allocator, struct_to_add);
                                             },
-                                            .Enum => {
+                                            .@"enum" => {
                                                 const enum_int = try self.decodeUInt64();
                                                 try list_tuple[i].append(allocator, @as(ptr.child, @enumFromInt(enum_int)));
                                             },
@@ -137,29 +137,29 @@ pub const ProtoReader = struct {
                                 obj_field.* = list_tuple[i].items;
                             }
                         },
-                        .Int => |int| {
+                        .int => |int| {
                             if (int.signedness == .unsigned) {
                                 obj_field.* = @as(child_type, @intCast(try self.decodeUInt64()));
                             } else {
                                 obj_field.* = @as(child_type, @intCast(try self.decodeInt64()));
                             }
                         },
-                        .Float => |float| {
+                        .float => |float| {
                             if (float.bits == 32) {
                                 obj_field.* = try self.decodeFloat();
                             } else @compileError("64 bit floats not supported");
                         },
-                        .Bool => {
+                        .bool => {
                             const num = try self.decodeUInt64();
                             obj_field.* = num > 0;
                         },
-                        .Void => {
+                        .void => {
                             // This only comes up when a message has an empty embedded message
                             // so we move forward by reading the zero size
                             _ = try self.decodeUInt64();
                             obj_field.* = {};
                         },
-                        .Enum => {
+                        .@"enum" => {
                             const enum_int = try self.decodeUInt64();
                             obj_field.* = @as(child_type, @enumFromInt(enum_int));
                         },
@@ -268,12 +268,12 @@ pub const ProtoWriter = struct {
             if (obj_field) |data| {
                 const info = @typeInfo(@TypeOf(data));
                 switch (info) {
-                    .Struct => {
+                    .@"struct" => {
                         const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
                         self.encodeProtoHeader(field_header);
                         _ = self.encodeElementStruct(data);
                     },
-                    .Pointer => |ptr| {
+                    .pointer => |ptr| {
                         if (ptr.child == u8) {
                             const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
 
@@ -289,7 +289,7 @@ pub const ProtoWriter = struct {
                         } else {
                             const child_info = @typeInfo(ptr.child);
                             switch (child_info) {
-                                .Struct => {
+                                .@"struct" => {
                                     const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
 
                                     for (data) |d| {
@@ -297,7 +297,7 @@ pub const ProtoWriter = struct {
                                         _ = self.encodeElementStruct(d);
                                     }
                                 },
-                                .Int => |int| {
+                                .int => |int| {
                                     const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
 
                                     for (data) |integer_val| {
@@ -313,7 +313,7 @@ pub const ProtoWriter = struct {
                             }
                         }
                     },
-                    .Int => |int| {
+                    .int => |int| {
                         const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
                         self.encodeProtoHeader(field_header);
 
@@ -323,24 +323,24 @@ pub const ProtoWriter = struct {
                             self.encodeInt64(@as(i64, data));
                         }
                     },
-                    .Float => |float| {
+                    .float => |float| {
                         if (float.bits == 32) {
                             const field_header = ProtoHeader{ .wire_type = ._32bit, .field_number = field_num };
                             self.encodeProtoHeader(field_header);
                             self.encodeFloat(data);
                         } else @compileError("64bit floats not supported");
                     },
-                    .Bool => {
+                    .bool => {
                         const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
                         self.encodeProtoHeader(field_header);
                         self.encodeUInt64(@as(u64, @intFromBool(data)));
                     },
-                    .Enum => {
+                    .@"enum" => {
                         const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
                         self.encodeProtoHeader(field_header);
                         self.encodeUInt64(@as(u64, @intFromEnum(data)));
                     },
-                    .Void => {
+                    .void => {
                         // This only comes up when the proto file has an empty embedded message
                         const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
                         self.encodeProtoHeader(field_header);

@@ -474,7 +474,7 @@ pub fn run(
                 base_allocator,
                 sc2_paths,
                 map_absolute_path,
-                .{ .name = "Human", .race = program_args.human_race },
+                ws.BotSetup{ .name = "Human", .race = program_args.human_race },
                 program_args.realtime,
                 game_port + 1,
                 start_port,

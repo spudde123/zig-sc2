@@ -205,22 +205,22 @@ pub fn findPlacement(placement_grid: Grid(u1), unit: UnitId, near: Point2, max_d
         var option_count: usize = 0;
         var inner_dist: f32 = -outer_dist;
         while (inner_dist <= outer_dist) : (inner_dist += 1) {
-            const pos1 = .{ .x = pos.x + inner_dist, .y = pos.y + outer_dist };
+            const pos1 = Point2{ .x = pos.x + inner_dist, .y = pos.y + outer_dist };
             if (queryPlacementSize(placement_grid, size, pos1)) {
                 options[option_count] = pos1;
                 option_count += 1;
             }
-            const pos2 = .{ .x = pos.x + inner_dist, .y = pos.y - outer_dist };
+            const pos2 = Point2{ .x = pos.x + inner_dist, .y = pos.y - outer_dist };
             if (queryPlacementSize(placement_grid, size, pos2)) {
                 options[option_count] = pos2;
                 option_count += 1;
             }
-            const pos3 = .{ .x = pos.x + outer_dist, .y = pos.y + inner_dist };
+            const pos3 = Point2{ .x = pos.x + outer_dist, .y = pos.y + inner_dist };
             if (queryPlacementSize(placement_grid, size, pos3)) {
                 options[option_count] = pos3;
                 option_count += 1;
             }
-            const pos4 = .{ .x = pos.x - outer_dist, .y = pos.y + inner_dist };
+            const pos4 = Point2{ .x = pos.x - outer_dist, .y = pos.y + inner_dist };
             if (queryPlacementSize(placement_grid, size, pos4)) {
                 options[option_count] = pos4;
                 option_count += 1;

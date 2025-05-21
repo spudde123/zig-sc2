@@ -4,7 +4,6 @@ const assert = std.debug.assert;
 const mem = std.mem;
 const log = std.log;
 const math = std.math;
-const PackedIntIo = std.packed_int_array.PackedIntIo;
 
 const ws = @import("client.zig");
 const sc2p = @import("sc2proto.zig");
@@ -207,7 +206,6 @@ pub const GameInfo = struct {
             clean_slice[index] = placement_slice[index] | pathing_slice[index];
         }
 
-        const PackedIntType = PackedIntIo(u1, .big);
         for (geysers) |geyser| {
             const geyser_x = @as(usize, @intFromFloat(geyser.position.x));
             const geyser_y = @as(usize, @intFromFloat(geyser.position.y));
@@ -215,7 +213,7 @@ pub const GameInfo = struct {
             while (y < geyser_y + 2) : (y += 1) {
                 var x: usize = geyser_x - 1;
                 while (x < geyser_x + 2) : (x += 1) {
-                    PackedIntType.set(clean_slice, x + map_size.w * y, 0, 0);
+                    mem.writePackedInt(u1, clean_slice, 0, 0, .big);
                 }
             }
         }
@@ -390,7 +388,7 @@ pub const GameInfo = struct {
                 try current_group.append(i);
 
                 while (flood_fill_list.items.len > 0) {
-                    const cur = flood_fill_list.pop();
+                    const cur = flood_fill_list.pop().?;
                     const neighbors = [_]usize{
                         cur + 1,
                         cur - 1,
