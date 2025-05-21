@@ -213,7 +213,7 @@ pub const GameInfo = struct {
             while (y < geyser_y + 2) : (y += 1) {
                 var x: usize = geyser_x - 1;
                 while (x < geyser_x + 2) : (x += 1) {
-                    mem.writePackedInt(u1, clean_slice, 0, 0, .big);
+                    grids.PackedBits.write(clean_slice, x + map_size.w * y, 0);
                 }
             }
         }
@@ -387,8 +387,7 @@ pub const GameInfo = struct {
                 try current_group.resize(0);
                 try current_group.append(i);
 
-                while (flood_fill_list.items.len > 0) {
-                    const cur = flood_fill_list.pop().?;
+                while (flood_fill_list.pop()) |cur| {
                     const neighbors = [_]usize{
                         cur + 1,
                         cur - 1,
