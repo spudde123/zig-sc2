@@ -5,6 +5,28 @@ const assert = std.debug.assert;
 
 const f32_max = math.floatMax(f32);
 
+pub const PackedBits = struct {
+    pub fn read(data: []const u8, index: usize) u1 {
+        const byte_index = index / 8;
+        const bit_offset: u3 = @intCast(index % 8);
+        return @intCast((data[byte_index] >> (7 - bit_offset)) & 1);
+    }
+
+    pub fn write(data: []u8, index: usize, value: u1) void {
+        const byte_index = index / 8;
+        const bit_offset: u3 = @intCast(index % 8);
+        if (value == 1) {
+            data[byte_index] |= @as(u8, 1) << (7 - bit_offset);
+        } else {
+            data[byte_index] &= ~(@as(u8, 1) << (7 - bit_offset));
+        }
+    }
+
+    pub fn bytesRequired(count: usize) usize {
+        return (count + 7) / 8;
+    }
+};
+
 pub const GridSize = struct {
     w: usize,
     h: usize,
@@ -176,27 +198,6 @@ pub const Point3 = struct {
         };
     }
 };
-
-pub fn PackedInt(comptime Int: type) type {
-    const bit_size = @bitSizeOf(Int);
-    return struct {
-        pub fn read(data: []const u8, index: usize) Int {
-            return mem.readPackedInt(Int, data, bit_size * index, .big);
-        }
-
-        pub fn write(data: []u8, index: usize, value: Int) void {
-            mem.writePackedInt(Int, data, bit_size * index, value, .big);
-        }
-
-        pub fn bytesRequired(count: usize) usize {
-            const total_bits = bit_size * count;
-            const total_bytes = (total_bits + 7) / 8;
-            return total_bytes;
-        }
-    };
-}
-
-pub const PackedBits = PackedInt(u1);
 
 pub fn Grid(comptime Int: type) type {
     comptime {
@@ -902,4 +903,32 @@ test "test_pf_basic" {
     map2.addInfluenceHollow(.{ .x = 5.5, .y = 2.5 }, 5, 2, 10, .{ .linear = 5 });
     const new_value = map2.grid[map2.pointToIndex(.{ .x = 4.5, .y = 1.5 })];
     try std.testing.expectApproxEqAbs(old_value, new_value, 0.02);
+}
+
+test "packed_bits" {
+    var test_data = [_]u8{0} ** 10;
+
+    PackedBits.write(&test_data, 0, 1);
+    try std.testing.expectEqual(@as(u8, 0b10000000), test_data[0]);
+
+    const bit_value = PackedBits.read(&test_data, 0);
+    try std.testing.expectEqual(@as(u1, 1), bit_value);
+
+    PackedBits.write(&test_data, 3, 1);
+    try std.testing.expectEqual(@as(u8, 0b10010000), test_data[0]);
+
+    const second_bit = PackedBits.read(&test_data, 3);
+    try std.testing.expectEqual(@as(u1, 1), second_bit);
+
+    PackedBits.write(&test_data, 0, 0);
+    try std.testing.expectEqual(@as(u8, 0b00010000), test_data[0]);
+
+    const zeroed_bit = PackedBits.read(&test_data, 0);
+    try std.testing.expectEqual(@as(u1, 0), zeroed_bit);
+
+    PackedBits.write(&test_data, 9, 1);
+    try std.testing.expectEqual(@as(u8, 0b01000000), test_data[1]);
+
+    const later_bit = PackedBits.read(&test_data, 9);
+    try std.testing.expectEqual(@as(u1, 1), later_bit);
 }
