@@ -667,14 +667,15 @@ pub const InfluenceMap = struct {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch |err| {
+        const came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch |err| {
             std.log.err("Pathfind error: {}\n", .{err});
             return null;
         };
-        defer came_from.deinit();
+        defer allocator.free(came_from);
 
         const goal_index = self.pointToIndex(validated_goal);
-        var cur = came_from.get(goal_index);
+        var cur = came_from[goal_index];
+        // No path
         if (cur == null) return null;
 
         const path_len = cur.?.path_len;
@@ -689,7 +690,7 @@ pub const InfluenceMap = struct {
         // Give the 5th point from the beginning as direction
         var i: usize = path_len;
         while (i > point_to_take) : (i -= 1) {
-            cur = came_from.get(cur.?.prev);
+            cur = came_from[cur.?.prev];
         }
 
         return .{
@@ -704,11 +705,11 @@ pub const InfluenceMap = struct {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        var came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
-        defer came_from.deinit();
+        const came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
+        defer allocator.free(came_from);
 
         const goal_index = self.pointToIndex(validated_goal);
-        var cur = came_from.get(goal_index);
+        var cur = came_from[goal_index];
         // No path
         if (cur == null) return null;
 
@@ -718,7 +719,7 @@ pub const InfluenceMap = struct {
         while (cur) |node| {
             res[index - 1] = self.indexToPoint(node.prev).add(.{ .x = 0.5, .y = 0.5 });
             if (index == 1) break;
-            cur = came_from.get(node.prev);
+            cur = came_from[node.prev];
             index -= 1;
         }
 
@@ -730,7 +731,7 @@ pub const InfluenceMap = struct {
         return math.order(a.heuristic, b.heuristic);
     }
 
-    fn runPathfind(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) !std.AutoHashMap(usize, CameFrom) {
+    fn runPathfind(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) ![]?CameFrom {
         const orig_size = 256;
 
         var queue = std.PriorityQueue(Node, void, heuristicOrder).init(allocator, {});
@@ -757,8 +758,8 @@ pub const InfluenceMap = struct {
         var closed = try std.DynamicBitSet.initEmpty(allocator, self.w * self.h);
         defer closed.deinit();
 
-        var came_from = std.AutoHashMap(usize, CameFrom).init(allocator);
-        try came_from.ensureTotalCapacity(orig_size);
+        var came_from = try allocator.alloc(?CameFrom, grid.len);
+        @memset(came_from, null);
 
         while (queue.removeOrNull()) |node| {
             if (node.index == goal_index) break;
@@ -802,7 +803,7 @@ pub const InfluenceMap = struct {
 
                 const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
 
-                if (came_from.get(nbr.index)) |prev| {
+                if (came_from[nbr.index]) |prev| {
                     if (nbr_cost >= prev.cost) continue;
                 }
 
@@ -813,7 +814,7 @@ pub const InfluenceMap = struct {
                 const nbr_point = self.indexToPoint(nbr.index);
                 const estimated_cost = nbr_cost + nbr_point.octileDistance(goal_floor);
 
-                try came_from.put(nbr.index, .{ .prev = index, .path_len = node.path_len + 1, .cost = nbr_cost });
+                came_from[nbr.index] = .{ .prev = index, .path_len = node.path_len + 1, .cost = nbr_cost };
                 try queue.add(.{
                     .index = nbr.index,
                     .path_len = node.path_len + 1,
