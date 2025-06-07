@@ -278,7 +278,7 @@ pub const GameInfo = struct {
         }
 
         const ResourceGroup = struct {
-            resources: [16]ResourceData = undefined,
+            resources: [32]ResourceData = undefined,
             count: usize = 0,
         };
 
