@@ -416,6 +416,26 @@ pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usi
 pub const PathfindResult = struct {
     path_len: usize,
     next_point: Point2,
+    cost: f32,
+};
+
+pub const PathfindPath = struct {
+    path_cost: f32,
+    path: []Point2,
+    allocator: mem.Allocator,
+
+    pub fn deinit(self: *PathfindPath) void {
+        self.allocator.free(self.path);
+    }
+};
+
+pub const DijkstraResult = struct {
+    dirs: []?PathfindResult,
+    allocator: mem.Allocator,
+
+    pub fn deinit(self: *DijkstraResult) void {
+        self.allocator.free(self.dirs);
+    }
 };
 
 pub const InfluenceMap = struct {
@@ -677,7 +697,7 @@ pub const InfluenceMap = struct {
         var cur = came_from[goal_index];
         // No path
         if (cur == null) return null;
-
+        const final_cost = cur.?.cost;
         const path_len = cur.?.path_len;
         const point_to_take = 5;
 
@@ -685,6 +705,7 @@ pub const InfluenceMap = struct {
             return .{
                 .path_len = path_len,
                 .next_point = validated_goal.add(.{ .x = 0.5, .y = 0.5 }),
+                .cost = final_cost,
             };
         }
         // Give the 5th point from the beginning as direction
@@ -696,12 +717,13 @@ pub const InfluenceMap = struct {
         return .{
             .path_len = path_len,
             .next_point = self.indexToPoint(cur.?.prev).add(.{ .x = 0.5, .y = 0.5 }),
+            .cost = final_cost,
         };
     }
 
-    /// Returns the entire path we took from start to goal. Caller needs to free the slice, or just
+    /// Returns the entire path we took from start to goal. Caller needs to call free the memory by calling deinit, or just
     /// use an arena or a fixed buffer for the step
-    pub fn pathfindPath(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) ?[]Point2 {
+    pub fn pathfindPath(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) ?PathfindPath {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
@@ -715,7 +737,7 @@ pub const InfluenceMap = struct {
 
         var index = cur.?.path_len;
         var res = allocator.alloc(Point2, index) catch return null;
-
+        const final_cost = cur.?.cost;
         while (cur) |node| {
             res[index - 1] = self.indexToPoint(node.prev).add(.{ .x = 0.5, .y = 0.5 });
             if (index == 1) break;
@@ -723,12 +745,21 @@ pub const InfluenceMap = struct {
             index -= 1;
         }
 
-        return res;
+        return .{
+            .path_cost = final_cost,
+            .path = res,
+            .allocator = allocator,
+        };
     }
 
     fn heuristicOrder(context: void, a: Node, b: Node) math.Order {
         _ = context;
         return math.order(a.heuristic, b.heuristic);
+    }
+
+    fn costOrder(context: void, a: Node, b: Node) math.Order {
+        _ = context;
+        return math.order(a.cost, b.cost);
     }
 
     fn runPathfind(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) ![]?CameFrom {
@@ -829,6 +860,147 @@ pub const InfluenceMap = struct {
         return came_from;
     }
 
+    /// Runs Dijkstra's algorithm to find the shortest path from start to any of the goals
+    /// Returns the result with the path length, next point to take and the cost of the path
+    /// Caller needs to call deinit on the result to free the memory or use an arena or a fixed buffer for the step
+    pub fn runDijkstra(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goals: []const Point2, large_unit: bool) !DijkstraResult {
+        const validated_start = self.validateEndPoint(start) orelse return error.InvalidStartPoint;
+        const start_index = self.pointToIndex(validated_start);
+        var goal_indices = try allocator.alloc(usize, goals.len);
+        defer allocator.free(goal_indices);
+        for (goals, 0..) |goal, i| {
+            const validated_goal = self.validateEndPoint(goal) orelse goal;
+            goal_indices[i] = self.pointToIndex(validated_goal);
+        }
+
+        const orig_size = 256;
+
+        var queue = std.PriorityQueue(Node, void, costOrder).init(allocator, {});
+        defer queue.deinit();
+        try queue.ensureTotalCapacity(orig_size);
+
+        try queue.add(.{
+            .index = start_index,
+            .path_len = 0,
+            .cost = 0,
+            .heuristic = 0,
+        });
+
+        const grid = self.grid;
+        const w = self.w;
+
+        var neighbors = std.BoundedArray(Neighbor, 8){};
+
+        var closed = try std.DynamicBitSet.initEmpty(allocator, self.w * self.h);
+        defer closed.deinit();
+
+        var came_from = try allocator.alloc(?CameFrom, grid.len);
+        defer allocator.free(came_from);
+        @memset(came_from, null);
+
+        var goals_found: usize = 0;
+        while (queue.removeOrNull()) |node| {
+            const index = node.index;
+            // If this is a node that was already visited with a lower cost
+            // This is still in the priority queue because we don't
+            // update the existing node but add a new one with a higher priority
+            if (closed.isSet(index)) continue;
+            if (mem.indexOfScalar(usize, goal_indices, index)) |_| {
+                goals_found += 1;
+                if (goals_found == goal_indices.len) break;
+            }
+            closed.set(index);
+
+            // We are assuming that we won't go out of bounds because in ingame grids the playable area is always only a portion
+            // in the middle and it's surrounded by a lot of unpathable cells
+
+            const valid1 = grid[index - w - 1] < f32_max and grid[index - w] < f32_max and grid[index - 1] < f32_max;
+            if (valid1) neighbors.appendAssumeCapacity(.{ .index = index - w - 1, .movement_cost = sqrt2 });
+
+            const valid2 = !large_unit or grid[index - w - 1] < f32_max or grid[index - w + 1] < f32_max;
+            if (grid[index - w] < f32_max and valid2) neighbors.appendAssumeCapacity(.{ .index = index - w, .movement_cost = 1 });
+
+            const valid3 = grid[index - w + 1] < f32_max and grid[index - w] < f32_max and grid[index + 1] < f32_max;
+            if (valid3) neighbors.appendAssumeCapacity(.{ .index = index - w + 1, .movement_cost = sqrt2 });
+
+            const valid4 = !large_unit or grid[index - w - 1] < f32_max or grid[index + w - 1] < f32_max;
+            if (grid[index - 1] < f32_max and valid4) neighbors.appendAssumeCapacity(.{ .index = index - 1, .movement_cost = 1 });
+
+            const valid5 = !large_unit or grid[index - w + 1] < f32_max or grid[index + w + 1] < f32_max;
+            if (grid[index + 1] < f32_max and valid5) neighbors.appendAssumeCapacity(.{ .index = index + 1, .movement_cost = 1 });
+
+            const valid6 = grid[index + w - 1] < f32_max and grid[index + w] < f32_max and grid[index - 1] < f32_max;
+            if (valid6) neighbors.appendAssumeCapacity(.{ .index = index + w - 1, .movement_cost = sqrt2 });
+
+            const valid7 = !large_unit or grid[index + w - 1] < f32_max or grid[index + w + 1] < f32_max;
+            if (grid[index + w] < f32_max and valid7) neighbors.appendAssumeCapacity(.{ .index = index + w, .movement_cost = 1 });
+
+            const valid8 = grid[index + w + 1] < f32_max and grid[index + w] < f32_max and grid[index + 1] < f32_max;
+            if (valid8) neighbors.appendAssumeCapacity(.{ .index = index + w + 1, .movement_cost = sqrt2 });
+
+            for (neighbors.constSlice()) |nbr| {
+                if (closed.isSet(nbr.index)) continue;
+
+                const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
+
+                if (came_from[nbr.index]) |prev| {
+                    if (nbr_cost >= prev.cost) continue;
+                }
+
+                // We just add the updated node to the queue with a higher
+                // priority and don't update the old one because the
+                // current std lib implementation for update is a bit strange
+
+                came_from[nbr.index] = .{ .prev = index, .path_len = node.path_len + 1, .cost = nbr_cost };
+                try queue.add(.{
+                    .index = nbr.index,
+                    .path_len = node.path_len + 1,
+                    .cost = nbr_cost,
+                    .heuristic = 0,
+                });
+            }
+
+            neighbors.resize(0) catch unreachable;
+        }
+
+        var res = try allocator.alloc(?PathfindResult, goal_indices.len);
+        for (goal_indices, 0..) |goal_index, g| {
+            var cur = came_from[goal_index];
+            // No path
+            if (cur == null) {
+                res[g] = null;
+                continue;
+            }
+            const final_cost = cur.?.cost;
+            const path_len = cur.?.path_len;
+            const point_to_take = 5;
+
+            if (path_len <= point_to_take) {
+                res[g] = .{
+                    .path_len = path_len,
+                    .next_point = self.indexToPoint(goal_index).add(.{ .x = 0.5, .y = 0.5 }),
+                    .cost = final_cost,
+                };
+                continue;
+            }
+            // Give the 5th point from the beginning as direction
+            var i: usize = path_len;
+            while (i > point_to_take) : (i -= 1) {
+                cur = came_from[cur.?.prev];
+            }
+
+            res[g] = .{
+                .path_len = path_len,
+                .next_point = self.indexToPoint(cur.?.prev).add(.{ .x = 0.5, .y = 0.5 }),
+                .cost = final_cost,
+            };
+        }
+        return .{
+            .dirs = res,
+            .allocator = allocator,
+        };
+    }
+
     pub fn pointToIndex(self: InfluenceMap, point: Point2) usize {
         const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
         const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
@@ -877,13 +1049,13 @@ test "test_pf_basic" {
     const start: Point2 = .{ .x = 1.5, .y = 1.5 };
     const goal: Point2 = .{ .x = 10.5, .y = 10.5 };
 
-    const path = map.pathfindPath(allocator, start, goal, false);
-    defer allocator.free(path.?);
+    var path_res = map.pathfindPath(allocator, start, goal, false);
+    defer path_res.?.deinit();
 
     const dir = map.pathfindDirection(allocator, start, goal, false);
-    try std.testing.expectEqual(path.?.len, 9);
-    try std.testing.expectEqual(dir.?.path_len, path.?.len);
-    try std.testing.expectEqual(dir.?.next_point, path.?[4]);
+    try std.testing.expectEqual(path_res.?.path.len, 9);
+    try std.testing.expectEqual(dir.?.path_len, path_res.?.path.len);
+    try std.testing.expectEqual(dir.?.next_point, path_res.?.path[4]);
 
     const wall_indices = [_]usize{ 2 * size + 2, 3 * size + 2, 4 * size + 2, 5 * size + 2, 6 * size + 2, 7 * size + 2, 8 * size + 2, 2 * size + 3, 2 * size + 4, 2 * size + 5, 2 * size + 6 };
     grid.setValuesIndices(&wall_indices, 0);
