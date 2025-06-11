@@ -72,6 +72,31 @@ const RampsAndVisionBlockers = struct {
     ramps: []Ramp,
 };
 
+pub const BaseType = enum {
+    normal,
+    rich,
+    lab,
+    purifier,
+    purifier_rich,
+    battle_station,
+    mineral_field_opaque,
+    extra,
+};
+
+pub fn getBaseType(mineral_type: UnitId) BaseType {
+    return switch (mineral_type) {
+        .RichMineralField, .RichMineralField750 => .rich,
+        .MineralField, .MineralField750 => .normal,
+        .MineralField450 => .extra,
+        .LabMineralField, .LabMineralField750 => .lab,
+        .PurifierRichMineralField, .PurifierRichMineralField750 => .purifier_rich,
+        .PurifierMineralField, .PurifierMineralField750 => .purifier,
+        .BattleStationMineralField, .BattleStationMineralField750 => .battle_station,
+        .MineralFieldOpaque, .MineralFieldOpaque900 => .mineral_field_opaque,
+        else => unreachable,
+    };
+}
+
 /// Includes various information
 /// about the ongoing match
 /// which doesn't change from step to step
@@ -250,31 +275,6 @@ pub const GameInfo = struct {
             .expansion_locations = try generateExpansionLocations(minerals, geysers, terrain_height, allocator),
             .vision_blockers = ramps_and_vbs.vbs,
             .ramps = ramps_and_vbs.ramps,
-        };
-    }
-
-    const BaseType = enum {
-        normal,
-        rich,
-        lab,
-        purifier,
-        purifier_rich,
-        battle_station,
-        mineral_field_opaque,
-        extra,
-    };
-
-    fn getBaseType(mineral_type: UnitId) BaseType {
-        return switch (mineral_type) {
-            .RichMineralField, .RichMineralField750 => .rich,
-            .MineralField, .MineralField750 => .normal,
-            .MineralField450 => .extra,
-            .LabMineralField, .LabMineralField750 => .lab,
-            .PurifierRichMineralField, .PurifierRichMineralField750 => .purifier_rich,
-            .PurifierMineralField, .PurifierMineralField750 => .purifier,
-            .BattleStationMineralField, .BattleStationMineralField750 => .battle_station,
-            .MineralFieldOpaque, .MineralFieldOpaque900 => .mineral_field_opaque,
-            else => unreachable,
         };
     }
 
