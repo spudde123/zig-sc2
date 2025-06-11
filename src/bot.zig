@@ -247,21 +247,48 @@ pub const GameInfo = struct {
             .reaper_grid = reaper_grid,
             .air_grid = air_grid,
             .climbable_points = climbable_points,
-            .expansion_locations = try generateExpansionLocations(minerals, geysers, allocator),
+            .expansion_locations = try generateExpansionLocations(minerals, geysers, terrain_height, allocator),
             .vision_blockers = ramps_and_vbs.vbs,
             .ramps = ramps_and_vbs.ramps,
+        };
+    }
+
+    const BaseType = enum {
+        normal,
+        rich,
+        lab,
+        purifier,
+        purifier_rich,
+        battle_station,
+        mineral_field_opaque,
+        extra,
+    };
+
+    fn getBaseType(mineral_type: UnitId) BaseType {
+        return switch (mineral_type) {
+            .RichMineralField, .RichMineralField750 => .rich,
+            .MineralField, .MineralField750 => .normal,
+            .MineralField450 => .extra,
+            .LabMineralField, .LabMineralField750 => .lab,
+            .PurifierRichMineralField, .PurifierRichMineralField750 => .purifier_rich,
+            .PurifierMineralField, .PurifierMineralField750 => .purifier,
+            .BattleStationMineralField, .BattleStationMineralField750 => .battle_station,
+            .MineralFieldOpaque, .MineralFieldOpaque900 => .mineral_field_opaque,
+            else => unreachable,
         };
     }
 
     fn generateExpansionLocations(
         minerals: []Unit,
         geysers: []Unit,
+        terrain_height: Grid(u8),
         allocator: mem.Allocator,
     ) ![]Point2 {
         const ResourceData = struct {
             tag: u64,
             pos: Point2,
             is_geyser: bool,
+            unit_type: UnitId,
         };
 
         var resources = try std.ArrayList(ResourceData).initCapacity(allocator, minerals.len + geysers.len);
@@ -270,55 +297,54 @@ pub const GameInfo = struct {
             // Don't use minerals that mainly block pathways and
             // are not meant for bases
             if (patch.unit_type != UnitId.MineralField450) {
-                resources.appendAssumeCapacity(.{ .tag = patch.tag, .pos = patch.position, .is_geyser = false });
+                resources.appendAssumeCapacity(.{ .tag = patch.tag, .pos = patch.position, .is_geyser = false, .unit_type = patch.unit_type });
             }
         }
         for (geysers) |geyser| {
-            resources.appendAssumeCapacity(.{ .tag = geyser.tag, .pos = geyser.position, .is_geyser = true });
+            resources.appendAssumeCapacity(.{ .tag = geyser.tag, .pos = geyser.position, .is_geyser = true, .unit_type = geyser.unit_type });
         }
 
-        const ResourceGroup = struct {
-            resources: [32]ResourceData = undefined,
-            count: usize = 0,
-        };
+        const ResourceGroup = std.BoundedArray(ResourceData, 32);
 
         var groups = std.ArrayList(ResourceGroup).init(allocator);
         defer groups.deinit();
         // Group resources
         var i: usize = 0;
 
-        outer: while (i < resources.items.len) : (i += 1) {
-            var cur: ResourceData = resources.items[i];
-            for (groups.items) |*group| {
-                var close_found: bool = false;
-                for (group.resources) |member| {
-                    if (cur.pos.distanceSquaredTo(member.pos) < 140) {
-                        close_found = true;
-                        break;
+        while (i < resources.items.len) : (i += 1) {
+            const cur: ResourceData = resources.items[i];
+            var closest_dist: f32 = math.floatMax(f32);
+            var closest_index: ?usize = null;
+            for (groups.items, 0..) |group, g| {
+                for (group.constSlice()) |member| {
+                    const dist = cur.pos.distanceSquaredTo(member.pos);
+                    if (dist < closest_dist and dist < 140 and terrain_height.getValue(member.pos) == terrain_height.getValue(cur.pos) and
+                        (cur.is_geyser or member.is_geyser or getBaseType(member.unit_type) == getBaseType(cur.unit_type)))
+                    {
+                        closest_dist = dist;
+                        closest_index = g;
                     }
-                }
-                if (close_found) {
-                    group.resources[group.count] = cur;
-                    group.count += 1;
-                    continue :outer;
                 }
             }
 
-            var new_group = ResourceGroup{};
-            new_group.count = 1;
-            new_group.resources[0] = cur;
-            try groups.append(new_group);
+            if (closest_index) |index| {
+                try groups.items[index].append(cur);
+            } else {
+                var new_group = ResourceGroup{};
+                try new_group.append(cur);
+                try groups.append(new_group);
+            }
         }
 
         var result = try allocator.alloc(Point2, groups.items.len);
         for (groups.items, 0..) |group, group_index| {
             var center = Point2{ .x = 0, .y = 0 };
-            for (group.resources[0..group.count]) |resource| {
+            for (group.constSlice()) |resource| {
                 center.x += resource.pos.x;
                 center.y += resource.pos.y;
             }
-            center.x = center.x / @as(f32, @floatFromInt(group.count));
-            center.y = center.y / @as(f32, @floatFromInt(group.count));
+            center.x = center.x / @as(f32, @floatFromInt(group.len));
+            center.y = center.y / @as(f32, @floatFromInt(group.len));
             center.x = math.floor(center.x) + 0.5;
             center.y = math.floor(center.y) + 0.5;
 
@@ -336,7 +362,7 @@ pub const GameInfo = struct {
                     };
 
                     var total_distance: f32 = 0;
-                    for (group.resources[0..group.count]) |resource| {
+                    for (group.constSlice()) |resource| {
                         const req_distance: f32 = if (resource.is_geyser) 49 else 36;
                         const cur_dist = resource.pos.distanceSquaredTo(point);
                         if (cur_dist < req_distance) {
