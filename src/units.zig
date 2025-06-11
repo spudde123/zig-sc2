@@ -324,7 +324,7 @@ pub fn insideDistance(circle: Circle, units: []Unit) UnitIterator(Circle, closer
     return UnitIterator(Circle, closerThan){ .buffer = units, .context = circle };
 }
 
-pub fn outsideDistance(circle: Circle, units: []Unit) UnitIterator(Circle, closerThan) {
+pub fn outsideDistance(circle: Circle, units: []Unit) UnitIterator(Circle, furtherThan) {
     return UnitIterator(Circle, furtherThan){ .buffer = units, .context = circle };
 }
 
@@ -419,6 +419,43 @@ pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: 
                 const dist = pos.distanceSquaredTo(unit.position);
                 if (dist < min_dist) {
                     min_dist = dist;
+                    result = .{
+                        .distance_squared = dist,
+                        .unit = unit,
+                    };
+                }
+            }
+
+            return result;
+        }
+
+        pub fn findFurthest(self: *Self, pos: Point2) ?UnitDistanceResult {
+            self.index = 0;
+            var max_dist: f32 = 0;
+            var result: ?UnitDistanceResult = null;
+            while (self.next()) |unit| {
+                const dist = pos.distanceSquaredTo(unit.position);
+                if (dist > max_dist) {
+                    max_dist = dist;
+                    result = .{
+                        .distance_squared = dist,
+                        .unit = unit,
+                    };
+                }
+            }
+
+            return result;
+        }
+
+        pub fn findFurthestUsingAbility(self: *Self, pos: Point2, ability: AbilityId) ?UnitDistanceResult {
+            self.index = 0;
+            var max_dist: f32 = 0;
+            var result: ?UnitDistanceResult = null;
+            while (self.next()) |unit| {
+                if (!unit.isUsingAbility(ability)) continue;
+                const dist = pos.distanceSquaredTo(unit.position);
+                if (dist > max_dist) {
+                    max_dist = dist;
                     result = .{
                         .distance_squared = dist,
                         .unit = unit,
