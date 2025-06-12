@@ -681,16 +681,17 @@ pub const InfluenceMap = struct {
         return self.findClosestValidPoint(pos);
     }
 
+    pub const PfError = error{
+        AllocationError,
+    };
+
     /// Returns just the path length and the direction, which is probably in practice what we mostly need
     /// during a game before we do another call the next step
-    pub fn pathfindDirection(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) ?PathfindResult {
+    pub fn pathfindDirection(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) PfError!?PathfindResult {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        const came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch |err| {
-            std.log.err("Pathfind error: {}\n", .{err});
-            return null;
-        };
+        const came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return PfError.AllocationError;
         defer allocator.free(came_from);
 
         const goal_index = self.pointToIndex(validated_goal);
@@ -723,11 +724,11 @@ pub const InfluenceMap = struct {
 
     /// Returns the entire path we took from start to goal. Caller needs to call free the memory by calling deinit, or just
     /// use an arena or a fixed buffer for the step
-    pub fn pathfindPath(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) ?PathfindPath {
+    pub fn pathfindPath(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) PfError!?PathfindPath {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        const came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return null;
+        const came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return PfError.AllocationError;
         defer allocator.free(came_from);
 
         const goal_index = self.pointToIndex(validated_goal);
@@ -736,7 +737,7 @@ pub const InfluenceMap = struct {
         if (cur == null) return null;
 
         var index = cur.?.path_len;
-        var res = allocator.alloc(Point2, index) catch return null;
+        var res = allocator.alloc(Point2, index) catch return PfError.AllocationError;
         const final_cost = cur.?.cost;
         while (cur) |node| {
             res[index - 1] = self.indexToPoint(node.prev).add(.{ .x = 0.5, .y = 0.5 });
@@ -863,10 +864,19 @@ pub const InfluenceMap = struct {
     /// Runs Dijkstra's algorithm to find the shortest path from start to any of the goals
     /// Returns the result with the path length, next point to take and the cost of the path
     /// Caller needs to call deinit on the result to free the memory or use an arena or a fixed buffer for the step
-    pub fn runDijkstra(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goals: []const Point2, large_unit: bool) !DijkstraResult {
-        const validated_start = self.validateEndPoint(start) orelse return error.InvalidStartPoint;
+    pub fn runDijkstra(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goals: []const Point2, large_unit: bool) PfError!DijkstraResult {
+        const validated_start = self.validateEndPoint(start) orelse {
+            const res = allocator.alloc(?PathfindResult, goals.len) catch return PfError.AllocationError;
+            for (res) |*val| {
+                val.* = null;
+            }
+            return .{
+                .dirs = res,
+                .allocator = allocator,
+            };
+        };
         const start_index = self.pointToIndex(validated_start);
-        var goal_indices = try allocator.alloc(usize, goals.len);
+        var goal_indices = allocator.alloc(usize, goals.len) catch return PfError.AllocationError;
         defer allocator.free(goal_indices);
         for (goals, 0..) |goal, i| {
             const validated_goal = self.validateEndPoint(goal) orelse goal;
@@ -877,24 +887,24 @@ pub const InfluenceMap = struct {
 
         var queue = std.PriorityQueue(Node, void, costOrder).init(allocator, {});
         defer queue.deinit();
-        try queue.ensureTotalCapacity(orig_size);
+        queue.ensureTotalCapacity(orig_size) catch return PfError.AllocationError;
 
-        try queue.add(.{
+        queue.add(.{
             .index = start_index,
             .path_len = 0,
             .cost = 0,
             .heuristic = 0,
-        });
+        }) catch return PfError.AllocationError;
 
         const grid = self.grid;
         const w = self.w;
 
         var neighbors = std.BoundedArray(Neighbor, 8){};
 
-        var closed = try std.DynamicBitSet.initEmpty(allocator, self.w * self.h);
+        var closed = std.DynamicBitSet.initEmpty(allocator, self.w * self.h) catch return PfError.AllocationError;
         defer closed.deinit();
 
-        var came_from = try allocator.alloc(?CameFrom, grid.len);
+        var came_from = allocator.alloc(?CameFrom, grid.len) catch return PfError.AllocationError;
         defer allocator.free(came_from);
         @memset(came_from, null);
 
@@ -952,18 +962,18 @@ pub const InfluenceMap = struct {
                 // current std lib implementation for update is a bit strange
 
                 came_from[nbr.index] = .{ .prev = index, .path_len = node.path_len + 1, .cost = nbr_cost };
-                try queue.add(.{
+                queue.add(.{
                     .index = nbr.index,
                     .path_len = node.path_len + 1,
                     .cost = nbr_cost,
                     .heuristic = 0,
-                });
+                }) catch return PfError.AllocationError;
             }
 
             neighbors.resize(0) catch unreachable;
         }
 
-        var res = try allocator.alloc(?PathfindResult, goal_indices.len);
+        var res = allocator.alloc(?PathfindResult, goal_indices.len) catch return PfError.AllocationError;
         for (goal_indices, 0..) |goal_index, g| {
             var cur = came_from[goal_index];
             // No path
@@ -1049,24 +1059,28 @@ test "test_pf_basic" {
     const start: Point2 = .{ .x = 1.5, .y = 1.5 };
     const goal: Point2 = .{ .x = 10.5, .y = 10.5 };
 
-    var path_res = map.pathfindPath(allocator, start, goal, false);
+    var path_res = try map.pathfindPath(allocator, start, goal, false);
     defer path_res.?.deinit();
 
-    const dir = map.pathfindDirection(allocator, start, goal, false);
+    var dijkstra_res = try map.runDijkstra(allocator, start, &.{goal}, false);
+    defer dijkstra_res.deinit();
+
+    const dir = try map.pathfindDirection(allocator, start, goal, false);
     try std.testing.expectEqual(path_res.?.path.len, 9);
     try std.testing.expectEqual(dir.?.path_len, path_res.?.path.len);
     try std.testing.expectEqual(dir.?.next_point, path_res.?.path[4]);
+    try std.testing.expectEqual(dijkstra_res.dirs[0].?.cost, dir.?.cost);
 
     const wall_indices = [_]usize{ 2 * size + 2, 3 * size + 2, 4 * size + 2, 5 * size + 2, 6 * size + 2, 7 * size + 2, 8 * size + 2, 2 * size + 3, 2 * size + 4, 2 * size + 5, 2 * size + 6 };
     grid.setValuesIndices(&wall_indices, 0);
 
     var map2 = try InfluenceMap.fromGrid(allocator, grid);
     defer map2.deinit(allocator);
-    const dir2 = map2.pathfindDirection(allocator, start, goal, false).?;
+    const dir2 = (try map2.pathfindDirection(allocator, start, goal, false)).?;
     try std.testing.expectEqual(dir2.path_len, 15);
 
     map2.addInfluence(.{ .x = 8, .y = 4 }, 4, 10, .none);
-    const dir3 = map2.pathfindDirection(allocator, start, goal, false).?;
+    const dir3 = (try map2.pathfindDirection(allocator, start, goal, false)).?;
     try std.testing.expectEqual(dir3.path_len, 17);
 
     const safe = map2.findClosestSafeSpot(.{ .x = 8, .y = 4 }, 6);
