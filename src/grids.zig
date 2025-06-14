@@ -791,6 +791,7 @@ pub const InfluenceMap = struct {
         defer closed.deinit();
 
         var came_from = try allocator.alloc(?CameFrom, grid.len);
+        errdefer allocator.free(came_from);
         @memset(came_from, null);
 
         while (queue.removeOrNull()) |node| {

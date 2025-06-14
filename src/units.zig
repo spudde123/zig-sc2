@@ -219,6 +219,7 @@ pub fn filter(
     comptime filterFn: fn (context: @TypeOf(context), unit: Unit) bool,
 ) ![]Unit {
     var list = std.ArrayList(Unit).init(allocator);
+    errdefer list.deinit();
     for (units) |unit| {
         if (filterFn(context, unit)) {
             try list.append(unit);
@@ -257,6 +258,7 @@ pub fn ofType(
     allocator: mem.Allocator,
 ) ![]Unit {
     var list = std.ArrayList(Unit).init(allocator);
+    errdefer list.deinit();
     for (units) |unit| {
         if (unit.unit_type == unit_type) {
             try list.append(unit);
@@ -271,8 +273,9 @@ pub fn ofTypes(
     allocator: mem.Allocator,
 ) ![]Unit {
     var list = std.ArrayList(Unit).init(allocator);
+    errdefer list.deinit();
     for (units) |unit| {
-        if (mem.indexOf(UnitId, unit_types, unit.unit_type)) |_| {
+        if (mem.indexOfScalar(UnitId, unit_types, unit.unit_type)) |_| {
             try list.append(unit);
         }
     }
