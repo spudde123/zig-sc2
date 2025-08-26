@@ -97,14 +97,20 @@ pub const WebSocketClient = struct {
         const request = "GET {s} HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: Websocket\r\nSec-WebSocket-Key: {s}\r\nSec-WebSocket-Version: 13\r\n\r\n";
         var stream_writer = self.socket.writer(&.{});
         try stream_writer.interface.print(request, .{ path, handshake_key });
+
         var buf: [256]u8 = undefined;
         var total_read: usize = 0;
-        var stream_reader = self.socket.reader(&.{});
-        while (total_read < 4 or !mem.eql(u8, buf[total_read - 4 .. total_read], "\r\n\r\n")) {
-            const n = try readIntoBuffer(stream_reader.interface(), buf[total_read..]);
-            total_read += n;
+        var stream_reader = self.socket.reader(&buf);
+        var reader = stream_reader.interface();
+        while (total_read < buf.len) {
+            _ = try reader.takeByte();
+            total_read += 1;
+            if (total_read >= 4 and mem.eql(u8, buf[total_read - 4 .. total_read], "\r\n\r\n")) break;
         }
 
+        if (total_read >= buf.len) {
+            return error.ResponseTooLarge;
+        }
         std.log.debug("{s}\n", .{buf[0..total_read]});
 
         var split_iter = mem.tokenizeSequence(u8, buf[0..], "\r\n");
@@ -482,28 +488,27 @@ pub const WebSocketClient = struct {
         }
 
         var stream_reader = self.socket.reader(&.{});
-        var cursor: usize = 0;
-        var read_length = try readIntoBuffer(stream_reader.interface(), self.storage);
-        cursor += read_length;
-        while (!self.messageReceived(cursor)) {
-            read_length = try readIntoBuffer(stream_reader.interface(), self.storage[cursor..]);
-            cursor += read_length;
-        }
+        var reader = stream_reader.interface();
 
-        const payload_desc = self.storage[1];
-        var payload_start: usize = 2;
+        var header: [2]u8 = undefined;
+        try reader.readSliceAll(&header);
+
+        const payload_desc = header[1];
         var payload_length = @as(u64, payload_desc);
 
         if (payload_desc == 126) {
-            payload_length = mem.readInt(u16, self.storage[2..4], .big);
-            payload_start += 2;
+            var length: [2]u8 = undefined;
+            try reader.readSliceAll(&length);
+            payload_length = mem.readInt(u16, &length, .big);
         } else if (payload_desc == 127) {
-            payload_length = mem.readInt(u64, self.storage[2..10], .big);
-            payload_start += 8;
+            var length: [8]u8 = undefined;
+            try reader.readSliceAll(&length);
+            payload_length = mem.readInt(u64, &length, .big);
         }
+        try reader.readSliceAll(self.storage[0..payload_length]);
 
-        var reader = proto.ProtoReader{ .bytes = self.storage[payload_start..(payload_start + payload_length)] };
-        const res = try reader.decodeStruct(reader.bytes.len, sc2p.Response, self.step_allocator);
+        var proto_reader = proto.ProtoReader{ .bytes = self.storage[0..payload_length] };
+        const res = try proto_reader.decodeStruct(proto_reader.bytes.len, sc2p.Response, self.step_allocator);
 
         if (res.errors) |errors| {
             for (errors) |error_string| {
@@ -517,25 +522,6 @@ pub const WebSocketClient = struct {
         }
 
         return res;
-    }
-
-    fn messageReceived(self: WebSocketClient, cursor: usize) bool {
-        if (cursor < 2) return false;
-        const payload_desc = self.storage[1];
-        var payload_start: usize = 2;
-        var payload_length = @as(u64, payload_desc);
-
-        if (payload_desc == 126) {
-            if (cursor < 4) return false;
-            payload_length = mem.readInt(u16, self.storage[2..4], .big);
-            payload_start += 2;
-        } else if (payload_desc == 127) {
-            if (cursor < 10) return false;
-            payload_length = mem.readInt(u64, self.storage[2..10], .big);
-            payload_start += 8;
-        }
-
-        return cursor >= payload_start + payload_length;
     }
 };
 
@@ -551,9 +537,4 @@ fn checkHandshakeKey(original: []const u8, received: []const u8) bool {
     _ = base64.standard.Encoder.encode(encoded[0..], hashed_key[0..]);
 
     return mem.eql(u8, encoded[0..], received);
-}
-
-fn readIntoBuffer(reader: *std.io.Reader, buffer: []u8) !usize {
-    var rvec: [1][]u8 = [_][]u8{buffer};
-    return try reader.readVec(&rvec);
 }
