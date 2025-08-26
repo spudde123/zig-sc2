@@ -284,7 +284,7 @@ fn runHumanGame(
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
         log.debug("Doing ws connection loop {d}\n", .{attempt});
         client = ws.WebSocketClient.init(host, game_port, arena, step_arena) catch {
-            time.sleep(2 * time.ns_per_s);
+            std.Thread.sleep(2 * time.ns_per_s);
             continue;
         };
         connection_ok = true;
@@ -406,7 +406,7 @@ pub fn run(
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
         log.debug("Doing ws connection loop {d}\n", .{attempt});
         client = ws.WebSocketClient.init(host, game_port, arena, step_arena) catch {
-            time.sleep(2 * time.ns_per_s);
+            std.Thread.sleep(2 * time.ns_per_s);
             continue;
         };
         connection_ok = true;

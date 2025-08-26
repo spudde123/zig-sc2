@@ -181,9 +181,9 @@ pub const GameInfo = struct {
             .p1 = .{ .x = rect_p1.x.?, .y = rect_p1.y.? },
         };
 
-        var start_locations = std.ArrayList(Point2).init(allocator);
+        var start_locations: std.ArrayList(Point2) = .empty;
         for (raw_proto.start_locations.?) |loc_proto| {
-            try start_locations.append(.{
+            try start_locations.append(allocator, .{
                 .x = loc_proto.x.?,
                 .y = loc_proto.y.?,
             });
@@ -292,7 +292,7 @@ pub const GameInfo = struct {
         };
 
         var resources = try std.ArrayList(ResourceData).initCapacity(allocator, minerals.len + geysers.len);
-        defer resources.deinit();
+        defer resources.deinit(allocator);
         for (minerals) |patch| {
             // Don't use minerals that mainly block pathways and
             // are not meant for bases
@@ -304,10 +304,10 @@ pub const GameInfo = struct {
             resources.appendAssumeCapacity(.{ .tag = geyser.tag, .pos = geyser.position, .is_geyser = true, .unit_type = geyser.unit_type });
         }
 
-        const ResourceGroup = std.BoundedArray(ResourceData, 32);
+        const ResourceGroup = std.ArrayList(ResourceData);
 
-        var groups = std.ArrayList(ResourceGroup).init(allocator);
-        defer groups.deinit();
+        var groups: std.ArrayList(ResourceGroup) = .empty;
+        defer groups.deinit(allocator);
         // Group resources
         var i: usize = 0;
 
@@ -316,7 +316,7 @@ pub const GameInfo = struct {
             var closest_dist: f32 = math.floatMax(f32);
             var closest_index: ?usize = null;
             for (groups.items, 0..) |group, g| {
-                for (group.constSlice()) |member| {
+                for (group.items) |member| {
                     const dist = cur.pos.distanceSquaredTo(member.pos);
                     if (dist < closest_dist and dist < 140 and terrain_height.getValue(member.pos) == terrain_height.getValue(cur.pos) and
                         (cur.is_geyser or member.is_geyser or getBaseType(member.unit_type) == getBaseType(cur.unit_type)))
@@ -328,23 +328,24 @@ pub const GameInfo = struct {
             }
 
             if (closest_index) |index| {
-                try groups.items[index].append(cur);
+                try groups.items[index].append(allocator, cur);
             } else {
-                var new_group = ResourceGroup{};
-                try new_group.append(cur);
-                try groups.append(new_group);
+                var new_group = ResourceGroup.empty;
+                try new_group.append(allocator, cur);
+                try groups.append(allocator, new_group);
             }
         }
 
         var result = try allocator.alloc(Point2, groups.items.len);
-        for (groups.items, 0..) |group, group_index| {
+        for (groups.items, 0..) |*group, group_index| {
+            defer group.deinit(allocator);
             var center = Point2{ .x = 0, .y = 0 };
-            for (group.constSlice()) |resource| {
+            for (group.items) |resource| {
                 center.x += resource.pos.x;
                 center.y += resource.pos.y;
             }
-            center.x = center.x / @as(f32, @floatFromInt(group.len));
-            center.y = center.y / @as(f32, @floatFromInt(group.len));
+            center.x = center.x / @as(f32, @floatFromInt(group.items.len));
+            center.y = center.y / @as(f32, @floatFromInt(group.items.len));
             center.x = math.floor(center.x) + 0.5;
             center.y = math.floor(center.y) + 0.5;
 
@@ -362,7 +363,7 @@ pub const GameInfo = struct {
                     };
 
                     var total_distance: f32 = 0;
-                    for (group.constSlice()) |resource| {
+                    for (group.items) |resource| {
                         const req_distance: f32 = if (resource.is_geyser) 49 else 36;
                         const cur_dist = resource.pos.distanceSquaredTo(point);
                         if (cur_dist < req_distance) {
@@ -392,13 +393,14 @@ pub const GameInfo = struct {
         var groups = try temp_alloc.alloc(u8, pathing.w * pathing.h);
         @memset(groups, 0);
 
-        var flood_fill_list = std.ArrayList(usize).init(temp_alloc);
+        var flood_fill_list: std.ArrayList(usize) = .empty;
         var group_count: u8 = 0;
 
-        var current_group = std.BoundedArray(usize, 256){};
+        var group_buf: [256]usize = undefined;
+        var current_group = std.ArrayList(usize).initBuffer(&group_buf);
 
-        var vbs = std.ArrayList(VisionBlocker).init(perm_alloc);
-        var ramps = std.ArrayList(Ramp).init(perm_alloc);
+        var vbs: std.ArrayList(VisionBlocker) = .empty;
+        var ramps: std.ArrayList(Ramp) = .empty;
 
         for (0..pathing.w * pathing.h) |i| {
             const pathing_val = pathing.getValueIndex(i);
@@ -409,9 +411,9 @@ pub const GameInfo = struct {
                 group_count += 1;
                 groups[i] = group_count;
 
-                try flood_fill_list.append(i);
-                try current_group.resize(0);
-                try current_group.append(i);
+                try flood_fill_list.append(temp_alloc, i);
+                current_group.clearRetainingCapacity();
+                current_group.appendAssumeCapacity(i);
 
                 while (flood_fill_list.pop()) |cur| {
                     const neighbors = [_]usize{
@@ -429,22 +431,21 @@ pub const GameInfo = struct {
                         const neighbor_placement = placement.getValueIndex(neighbor);
                         const neighbor_group = groups[neighbor];
                         if (neighbor_pathing == 1 and neighbor_placement == 0 and neighbor_group == 0) {
-                            try current_group.append(neighbor);
+                            current_group.appendAssumeCapacity(neighbor);
                             groups[neighbor] = group_count;
-                            try flood_fill_list.append(neighbor);
+                            try flood_fill_list.append(temp_alloc, neighbor);
                         }
                     }
                 }
 
                 // Check if this group has points in uneven terrain indicating a ramp
 
-                const current_group_slice = current_group.slice();
-                const terrain_reference = terrain_height.data[current_group.get(0)];
+                const terrain_reference = terrain_height.data[current_group.items[0]];
                 var same_height = true;
                 var max_height = terrain_reference;
                 var min_height = terrain_reference;
 
-                for (current_group_slice) |point| {
+                for (current_group.items) |point| {
                     const height_val = terrain_height.data[point];
 
                     if (height_val > max_height) {
@@ -463,18 +464,18 @@ pub const GameInfo = struct {
                     // but we want to avoid false positives that come
                     // from trying to fix the map data so rocks
                     // don't ruin these calculations
-                    if (current_group.len < 3) continue;
-                    var points = try perm_alloc.alloc(GridPoint, current_group.len);
-                    for (current_group_slice, 0..) |point, j| {
+                    if (current_group.items.len < 3) continue;
+                    var points = try perm_alloc.alloc(GridPoint, current_group.items.len);
+                    for (current_group.items, 0..) |point, j| {
                         const x = @as(i32, @intCast(@mod(point, grid_width)));
                         const y = @as(i32, @intCast(@divFloor(point, grid_width)));
                         points[j] = GridPoint{ .x = x, .y = y };
                     }
                     const vision_blocker = VisionBlocker{ .points = points };
-                    try vbs.append(vision_blocker);
+                    try vbs.append(perm_alloc, vision_blocker);
                 } else {
-                    if (current_group.len < 8) continue;
-                    var points = try perm_alloc.alloc(GridPoint, current_group.len);
+                    if (current_group.items.len < 8) continue;
+                    var points = try perm_alloc.alloc(GridPoint, current_group.items.len);
 
                     var max_count: f32 = 0;
                     var min_count: f32 = 0;
@@ -483,7 +484,7 @@ pub const GameInfo = struct {
                     var x_min: f32 = 0;
                     var y_min: f32 = 0;
 
-                    for (current_group_slice, 0..) |point, j| {
+                    for (current_group.items, 0..) |point, j| {
                         const x = @as(i32, @intCast(@mod(point, grid_width)));
                         const y = @as(i32, @intCast(@divFloor(point, grid_width)));
                         points[j] = GridPoint{ .x = x, .y = y };
@@ -539,14 +540,14 @@ pub const GameInfo = struct {
                         .barracks_with_addon = barracks_with_addon,
                     };
 
-                    try ramps.append(ramp);
+                    try ramps.append(perm_alloc, ramp);
                 }
             }
         }
 
         return RampsAndVisionBlockers{
-            .vbs = try vbs.toOwnedSlice(),
-            .ramps = try ramps.toOwnedSlice(),
+            .vbs = try vbs.toOwnedSlice(perm_alloc),
+            .ramps = try ramps.toOwnedSlice(perm_alloc),
         };
     }
 
@@ -837,19 +838,19 @@ pub const Bot = struct {
 
         const obs: sc2p.ObservationRaw = response.observation.?.raw.?;
 
-        var placeholders = std.ArrayList(Unit).init(allocator);
-        var destructibles = std.ArrayList(Unit).init(allocator);
-        var mineral_patches = std.ArrayList(Unit).init(allocator);
-        var vespene_geysers = std.ArrayList(Unit).init(allocator);
-        var watch_towers = std.ArrayList(Unit).init(allocator);
+        var placeholders: std.ArrayList(Unit) = .empty;
+        var destructibles: std.ArrayList(Unit) = .empty;
+        var mineral_patches: std.ArrayList(Unit) = .empty;
+        var vespene_geysers: std.ArrayList(Unit) = .empty;
+        var watch_towers: std.ArrayList(Unit) = .empty;
         var pending_units = std.AutoHashMap(UnitId, usize).init(allocator);
         var pending_upgrades = std.AutoHashMap(UpgradeId, f32).init(allocator);
-        var units_created = std.ArrayList(u64).init(allocator);
-        var damaged_units = std.ArrayList(u64).init(allocator);
-        var construction_complete = std.ArrayList(u64).init(allocator);
-        var enemies_entered_vision = std.ArrayList(u64).init(allocator);
-        var enemies_left_vision = std.ArrayList(Unit).init(allocator);
-        var dead_units = std.ArrayList(Unit).init(allocator);
+        var units_created: std.ArrayList(u64) = .empty;
+        var damaged_units: std.ArrayList(u64) = .empty;
+        var construction_complete: std.ArrayList(u64) = .empty;
+        var enemies_entered_vision: std.ArrayList(u64) = .empty;
+        var enemies_left_vision: std.ArrayList(Unit) = .empty;
+        var dead_units: std.ArrayList(Unit) = .empty;
 
         if (obs.units) |units| {
             for (units) |unit| {
@@ -857,28 +858,28 @@ pub const Bot = struct {
                 const position = Point2{ .x = proto_pos.x.?, .y = proto_pos.y.? };
                 const z: f32 = proto_pos.z.?;
 
-                var buff_ids = std.ArrayList(BuffId).init(allocator);
+                var buff_ids: std.ArrayList(BuffId) = .empty;
 
                 if (unit.buff_ids) |buffs| {
-                    try buff_ids.ensureTotalCapacity(buffs.len);
+                    try buff_ids.ensureTotalCapacity(allocator, buffs.len);
                     for (buffs) |buff| {
                         buff_ids.appendAssumeCapacity(@as(BuffId, @enumFromInt(buff)));
                     }
                 }
 
-                var passenger_tags = std.ArrayList(u64).init(allocator);
+                var passenger_tags: std.ArrayList(u64) = .empty;
 
                 if (unit.passengers) |passengers| {
-                    try passenger_tags.ensureTotalCapacity(passengers.len);
+                    try passenger_tags.ensureTotalCapacity(allocator, passengers.len);
                     for (passengers) |passenger| {
                         passenger_tags.appendAssumeCapacity(passenger.tag.?);
                     }
                 }
 
-                var orders = std.ArrayList(UnitOrder).init(allocator);
+                var orders: std.ArrayList(UnitOrder) = .empty;
 
                 if (unit.orders) |orders_proto| {
-                    try orders.ensureTotalCapacity(orders_proto.len);
+                    try orders.ensureTotalCapacity(allocator, orders_proto.len);
                     for (orders_proto) |order_proto| {
                         const target: OrderTarget = tg: {
                             if (order_proto.target_world_space_pos) |pos_target| {
@@ -905,9 +906,9 @@ pub const Bot = struct {
                     }
                 }
 
-                var rally_targets = std.ArrayList(RallyTarget).init(allocator);
+                var rally_targets: std.ArrayList(RallyTarget) = .empty;
                 if (unit.rally_targets) |proto_rally_targets| {
-                    try rally_targets.ensureTotalCapacity(proto_rally_targets.len);
+                    try rally_targets.ensureTotalCapacity(allocator, proto_rally_targets.len);
 
                     for (proto_rally_targets) |proto_target| {
                         const proto_point = proto_target.point.?;
@@ -980,7 +981,7 @@ pub const Bot = struct {
                 };
 
                 if (u.display_type == DisplayType.placeholder) {
-                    try placeholders.append(u);
+                    try placeholders.append(allocator, u);
                     continue;
                 }
 
@@ -990,13 +991,13 @@ pub const Bot = struct {
                     .self, .ally => {
                         const prev = try prev_units.getOrPut(u.tag);
                         if (!prev.found_existing) {
-                            try units_created.append(u.tag);
+                            try units_created.append(allocator, u.tag);
                         } else {
                             if (u.build_progress >= 1 and prev.value_ptr.build_progress < 1) {
-                                try construction_complete.append(u.tag);
+                                try construction_complete.append(allocator, u.tag);
                             }
                             if (u.health < prev.value_ptr.health) {
-                                try damaged_units.append(u.tag);
+                                try damaged_units.append(allocator, u.tag);
                             }
                         }
                         prev.value_ptr.* = u;
@@ -1049,7 +1050,7 @@ pub const Bot = struct {
                         const prev = try prev_enemy.getOrPut(u.tag);
                         prev.value_ptr.* = u;
                         if (!prev.found_existing) {
-                            try enemies_entered_vision.append(u.tag);
+                            try enemies_entered_vision.append(allocator, u.tag);
                         }
                     },
                     else => {
@@ -1081,11 +1082,11 @@ pub const Bot = struct {
                         };
 
                         if (u.unit_type == .XelNagaTower) {
-                            try watch_towers.append(u);
+                            try watch_towers.append(allocator, u);
                         } else if (mem.indexOfScalar(UnitId, mineral_ids[0..], u.unit_type)) |_| {
-                            try mineral_patches.append(u);
+                            try mineral_patches.append(allocator, u);
                         } else if (mem.indexOfScalar(UnitId, geyser_ids[0..], u.unit_type)) |_| {
-                            try vespene_geysers.append(u);
+                            try vespene_geysers.append(allocator, u);
                         } else {
                             // Somehow some duplicates of enemy units with
                             // alliance neutral but owner enemy ended up
@@ -1093,7 +1094,7 @@ pub const Bot = struct {
                             // them out.
                             if (u.owner <= 2) continue;
 
-                            try destructibles.append(u);
+                            try destructibles.append(allocator, u);
                         }
                     },
                 }
@@ -1185,9 +1186,9 @@ pub const Bot = struct {
         while (enemy_iter.next()) |enemy_val| {
             if (enemy_val.value_ptr.prev_seen_loop == game_loop) continue;
             if (mem.indexOfScalar(u64, dead_unit_tags, enemy_val.value_ptr.tag)) |_| {
-                try dead_units.append(enemy_val.value_ptr.*);
+                try dead_units.append(allocator, enemy_val.value_ptr.*);
             } else {
-                try enemies_left_vision.append(enemy_val.value_ptr.*);
+                try enemies_left_vision.append(allocator, enemy_val.value_ptr.*);
             }
 
             prev_enemy.swapRemoveAt(enemy_iter.index - 1);
@@ -1195,14 +1196,14 @@ pub const Bot = struct {
             enemy_iter.len -= 1;
         }
 
-        var disappeared_units = std.ArrayList(Unit).init(allocator);
+        var disappeared_units: std.ArrayList(Unit) = .empty;
         var units_iter = prev_units.iterator();
         while (units_iter.next()) |unit_val| {
             if (unit_val.value_ptr.prev_seen_loop == game_loop) continue;
             if (mem.indexOfScalar(u64, dead_unit_tags, unit_val.value_ptr.tag)) |_| {
-                try dead_units.append(unit_val.value_ptr.*);
+                try dead_units.append(allocator, unit_val.value_ptr.*);
             } else {
-                try disappeared_units.append(unit_val.value_ptr.*);
+                try disappeared_units.append(allocator, unit_val.value_ptr.*);
             }
             prev_units.swapRemoveAt(units_iter.index - 1);
             units_iter.index -= 1;
@@ -1391,28 +1392,28 @@ pub const Actions = struct {
             .client = client,
             .combinable_abilities = ca,
             .temp_allocator = temp_allocator,
-            .order_list = try std.ArrayList(BotAction).initCapacity(perm_allocator, 400),
-            .chat_messages = try std.ArrayList(ChatAction).initCapacity(perm_allocator, 10),
-            .debug_texts = std.ArrayList(sc2p.DebugText).init(perm_allocator),
-            .debug_lines = std.ArrayList(sc2p.DebugLine).init(perm_allocator),
-            .debug_boxes = std.ArrayList(sc2p.DebugBox).init(perm_allocator),
-            .debug_spheres = std.ArrayList(sc2p.DebugSphere).init(perm_allocator),
-            .debug_create_unit = std.ArrayList(sc2p.DebugCreateUnit).init(perm_allocator),
+            .order_list = .empty,
+            .chat_messages = .empty,
+            .debug_texts = .empty,
+            .debug_lines = .empty,
+            .debug_boxes = .empty,
+            .debug_spheres = .empty,
+            .debug_create_unit = .empty,
         };
     }
 
     pub fn clear(self: *Actions) void {
-        self.order_list.clearRetainingCapacity();
-        self.chat_messages.clearRetainingCapacity();
-        self.debug_texts.clearRetainingCapacity();
-        self.debug_lines.clearRetainingCapacity();
-        self.debug_boxes.clearRetainingCapacity();
-        self.debug_spheres.clearRetainingCapacity();
-        self.debug_create_unit.clearRetainingCapacity();
+        self.order_list = .empty;
+        self.chat_messages = .empty;
+        self.debug_texts = .empty;
+        self.debug_lines = .empty;
+        self.debug_boxes = .empty;
+        self.debug_spheres = .empty;
+        self.debug_create_unit = .empty;
     }
 
     fn addAction(self: *Actions, order: BotAction) void {
-        self.order_list.append(order) catch {
+        self.order_list.append(self.temp_allocator, order) catch {
             log.err("Failed to add bot action\n", .{});
             return;
         };
@@ -1621,13 +1622,13 @@ pub const Actions = struct {
 
     pub fn chat(self: *Actions, channel: Channel, message: []const u8) void {
         const msg_copy = self.temp_allocator.dupe(u8, message) catch return;
-        self.chat_messages.append(.{ .channel = channel, .message = msg_copy }) catch return;
+        self.chat_messages.append(self.temp_allocator, .{ .channel = channel, .message = msg_copy }) catch return;
     }
 
     /// Used for tagging matches on the sc2ai ladder.
     pub fn tagGame(self: *Actions, tag: []const u8) void {
         const msg = std.fmt.allocPrint(self.temp_allocator, "Tag:{s}", .{tag}) catch return;
-        self.chat_messages.append(.{ .channel = .broadcast, .message = msg }) catch return;
+        self.chat_messages.append(self.temp_allocator, .{ .channel = .broadcast, .message = msg }) catch return;
     }
 
     pub fn toProto(self: *Actions) ?sc2p.RequestAction {
@@ -1648,7 +1649,7 @@ pub const Actions = struct {
         // Combine repeat orders
         // Hashing based on the ActionData, value is the index in the next array list
         var action_hashmap = std.AutoHashMap(ActionData.HashableActionData, usize).init(self.temp_allocator);
-        var raw_unit_commands = std.ArrayList(sc2p.ActionRawUnitCommand).init(self.temp_allocator);
+        var raw_unit_commands: std.ArrayList(sc2p.ActionRawUnitCommand) = .empty;
         var unit_lists = std.ArrayList(std.ArrayList(u64)).initCapacity(self.temp_allocator, self.order_list.items.len) catch {
             log.err("Dropping actions due to allocation failure\n", .{});
             return null;
@@ -1658,7 +1659,7 @@ pub const Actions = struct {
             const hashable = order.data.toHashable();
 
             if (action_hashmap.get(hashable)) |index| {
-                unit_lists.items[index].append(order.unit) catch {
+                unit_lists.items[index].append(self.temp_allocator, order.unit) catch {
                     log.err("Dropping actions due to allocation failure\n", .{});
                     break;
                 };
@@ -1683,7 +1684,7 @@ pub const Actions = struct {
                 var new_list = std.ArrayList(u64).initCapacity(self.temp_allocator, 1) catch break;
                 new_list.appendAssumeCapacity(order.unit);
                 unit_lists.appendAssumeCapacity(new_list);
-                raw_unit_commands.append(unit_command) catch {
+                raw_unit_commands.append(self.temp_allocator, unit_command) catch {
                     log.err("Dropping actions due to allocation failure\n", .{});
                     break;
                 };
@@ -1727,7 +1728,7 @@ pub const Actions = struct {
             .world_pos = pos_proto,
             .size = size,
         };
-        self.debug_texts.append(proto) catch return;
+        self.debug_texts.append(self.temp_allocator, proto) catch return;
     }
 
     pub fn debugTextScreen(self: *Actions, text: []const u8, pos: Point2, color: Color, size: u32) void {
@@ -1747,7 +1748,7 @@ pub const Actions = struct {
             .virtual_pos = pos_proto,
             .size = size,
         };
-        self.debug_texts.append(proto) catch return;
+        self.debug_texts.append(self.temp_allocator, proto) catch return;
     }
 
     pub fn debugLine(self: *Actions, start: Point3, end: Point3, color: Color) void {
@@ -1767,7 +1768,7 @@ pub const Actions = struct {
             .line = line,
             .color = .{ .r = color.r, .g = color.g, .b = color.b },
         };
-        self.debug_lines.append(debug_line) catch return;
+        self.debug_lines.append(self.temp_allocator, debug_line) catch return;
     }
 
     pub fn debugBox(self: *Actions, min: Point3, max: Point3, color: Color) void {
@@ -1788,7 +1789,7 @@ pub const Actions = struct {
                 .b = color.b,
             },
         };
-        self.debug_boxes.append(proto) catch return;
+        self.debug_boxes.append(self.temp_allocator, proto) catch return;
     }
 
     pub fn debugSphere(self: *Actions, center: Point3, radius: f32, color: Color) void {
@@ -1805,11 +1806,11 @@ pub const Actions = struct {
                 .b = color.b,
             },
         };
-        self.debug_spheres.append(proto) catch return;
+        self.debug_spheres.append(self.temp_allocator, proto) catch return;
     }
 
     pub fn debugCommandsToProto(self: *Actions) ?sc2p.RequestDebug {
-        var command_list = std.ArrayList(sc2p.DebugCommand).init(self.temp_allocator);
+        var command_list: std.ArrayList(sc2p.DebugCommand) = .empty;
 
         var debug_draw = sc2p.DebugDraw{};
         var add_draw_command = false;
@@ -1838,7 +1839,7 @@ pub const Actions = struct {
             const command = sc2p.DebugCommand{
                 .draw = debug_draw,
             };
-            command_list.append(command) catch {
+            command_list.append(self.temp_allocator, command) catch {
                 log.err("Dropping debug commands due to allocation failure\n", .{});
                 return null;
             };
@@ -1848,7 +1849,7 @@ pub const Actions = struct {
             const command = sc2p.DebugCommand{
                 .create_unit = debug_create_unit,
             };
-            command_list.append(command) catch {
+            command_list.append(self.temp_allocator, command) catch {
                 log.err("Dropping debug commands due to allocation failure\n", .{});
                 return null;
             };

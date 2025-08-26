@@ -69,10 +69,8 @@ pub const WebSocketClient = struct {
     pub fn init(host: []const u8, port: u16, perm_alloc: mem.Allocator, step_alloc: mem.Allocator) !WebSocketClient {
         const addr = try net.Address.parseIp(host, port);
         const socket = try net.tcpConnectToAddress(addr);
-
         const seed = @as(u64, @truncate(@as(u128, @bitCast(time.nanoTimestamp()))));
         const storage = try perm_alloc.alloc(u8, 5 * 1024 * 1024);
-
         return WebSocketClient{
             .addr = addr,
             .socket = socket,
@@ -97,13 +95,13 @@ pub const WebSocketClient = struct {
         _ = base64.standard.Encoder.encode(&handshake_key, &raw_key);
 
         const request = "GET {s} HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: Websocket\r\nSec-WebSocket-Key: {s}\r\nSec-WebSocket-Version: 13\r\n\r\n";
-        const stream = self.socket.writer();
-        try stream.print(request, .{ path, handshake_key });
-
+        var stream_writer = self.socket.writer(&.{});
+        try stream_writer.interface.print(request, .{ path, handshake_key });
         var buf: [256]u8 = undefined;
         var total_read: usize = 0;
+        var stream_reader = self.socket.reader(&.{});
         while (total_read < 4 or !mem.eql(u8, buf[total_read - 4 .. total_read], "\r\n\r\n")) {
-            const n = try self.socket.read(buf[total_read..]);
+            const n = try readIntoBuffer(stream_reader.interface(), buf[total_read..]);
             total_read += n;
         }
 
@@ -479,16 +477,16 @@ pub const WebSocketClient = struct {
             msg[0] |= 0x80;
             const payload_end = pre_payload + payload.len;
 
-            const stream = self.socket.writer();
-            try stream.writeAll(msg[0..payload_end]);
+            var stream_writer = self.socket.writer(&.{});
+            try stream_writer.interface.writeAll(msg[0..payload_end]);
         }
 
+        var stream_reader = self.socket.reader(&.{});
         var cursor: usize = 0;
-        var read_length = try self.socket.read(self.storage);
+        var read_length = try readIntoBuffer(stream_reader.interface(), self.storage);
         cursor += read_length;
-
         while (!self.messageReceived(cursor)) {
-            read_length = try self.socket.read(self.storage[cursor..]);
+            read_length = try readIntoBuffer(stream_reader.interface(), self.storage[cursor..]);
             cursor += read_length;
         }
 
@@ -553,4 +551,9 @@ fn checkHandshakeKey(original: []const u8, received: []const u8) bool {
     _ = base64.standard.Encoder.encode(encoded[0..], hashed_key[0..]);
 
     return mem.eql(u8, encoded[0..], received);
+}
+
+fn readIntoBuffer(reader: *std.io.Reader, buffer: []u8) !usize {
+    var rvec: [1][]u8 = [_][]u8{buffer};
+    return try reader.readVec(&rvec);
 }

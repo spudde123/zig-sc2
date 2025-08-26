@@ -301,10 +301,10 @@ pub fn Grid(comptime Int: type) type {
 
 /// Tries to find the cliff edges reapers can path through.
 /// Not tested on all ladder maps but looks to be working..
-/// Berlingrad for example has a platform with a unusual shape
+/// Berlingrad for example has a platform with an unusual shape
 /// in the pathing and terrain height arrays
 pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid(u1), terrain: Grid(u8)) ![]usize {
-    var list = std.ArrayList(usize).init(allocator);
+    var list: std.ArrayList(usize) = .empty;
     const w = pathing.w;
     const h = pathing.h;
     const level_diff = 16;
@@ -335,8 +335,8 @@ pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid(u1), terrain:
             const right_terrain = terrain.data[x + 1 + y * w];
             const horiz_diff = if (left_terrain > right_terrain) left_terrain - right_terrain else right_terrain - left_terrain;
 
-            if (up_val == 1 and down_val == 1 and vert_diff == level_diff) try list.append(i);
-            if (left_val == 1 and right_val == 1 and horiz_diff == level_diff) try list.append(i);
+            if (up_val == 1 and down_val == 1 and vert_diff == level_diff) try list.append(allocator, i);
+            if (left_val == 1 and right_val == 1 and horiz_diff == level_diff) try list.append(allocator, i);
 
             // And then diagonal jumps
             const diag_moves = [_]usize{ w + 1, w - 1 };
@@ -356,19 +356,19 @@ pub fn findClimbablePoints(allocator: mem.Allocator, pathing: Grid(u1), terrain:
                 const pathing_valid_double = (val2 > 0 and val4 > 0) or (val1 > 0 and val3 > 0);
 
                 if (terrain_valid_double and pathing_valid_double) {
-                    try list.append(i - diag_move);
-                    try list.append(i);
-                    try list.append(i + diag_move);
+                    try list.append(allocator, i - diag_move);
+                    try list.append(allocator, i);
+                    try list.append(allocator, i + diag_move);
                 }
 
                 if (total_diff == level_diff and val2 == 1 and val3 == 1) {
-                    try list.append(i);
+                    try list.append(allocator, i);
                 }
             }
         }
     }
 
-    return try list.toOwnedSlice();
+    return try list.toOwnedSlice(allocator);
 }
 
 pub fn createReaperGrid(allocator: mem.Allocator, pathing_grid: Grid(u1), climbable_points: []const usize) !Grid(u1) {
@@ -785,7 +785,8 @@ pub const InfluenceMap = struct {
         const grid = self.grid;
         const w = self.w;
 
-        var neighbors = std.BoundedArray(Neighbor, 8){};
+        var neighbor_arr: [8]Neighbor = undefined;
+        var neighbors: std.ArrayList(Neighbor) = .initBuffer(&neighbor_arr);
 
         var closed = try std.DynamicBitSet.initEmpty(allocator, self.w * self.h);
         defer closed.deinit();
@@ -831,7 +832,7 @@ pub const InfluenceMap = struct {
             const valid8 = grid[index + w + 1] < f32_max and grid[index + w] < f32_max and grid[index + 1] < f32_max;
             if (valid8) neighbors.appendAssumeCapacity(.{ .index = index + w + 1, .movement_cost = sqrt2 });
 
-            for (neighbors.constSlice()) |nbr| {
+            for (neighbors.items) |nbr| {
                 if (closed.isSet(nbr.index)) continue;
 
                 const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
@@ -856,7 +857,7 @@ pub const InfluenceMap = struct {
                 });
             }
 
-            neighbors.resize(0) catch unreachable;
+            neighbors.clearRetainingCapacity();
         }
 
         return came_from;
@@ -900,7 +901,8 @@ pub const InfluenceMap = struct {
         const grid = self.grid;
         const w = self.w;
 
-        var neighbors = std.BoundedArray(Neighbor, 8){};
+        var neighbor_arr: [8]Neighbor = undefined;
+        var neighbors: std.ArrayList(Neighbor) = .initBuffer(&neighbor_arr);
 
         var closed = std.DynamicBitSet.initEmpty(allocator, self.w * self.h) catch return PfError.AllocationError;
         defer closed.deinit();
@@ -949,7 +951,7 @@ pub const InfluenceMap = struct {
             const valid8 = grid[index + w + 1] < f32_max and grid[index + w] < f32_max and grid[index + 1] < f32_max;
             if (valid8) neighbors.appendAssumeCapacity(.{ .index = index + w + 1, .movement_cost = sqrt2 });
 
-            for (neighbors.constSlice()) |nbr| {
+            for (neighbors.items) |nbr| {
                 if (closed.isSet(nbr.index)) continue;
 
                 const nbr_cost = node.cost + nbr.movement_cost * grid[nbr.index];
@@ -971,7 +973,7 @@ pub const InfluenceMap = struct {
                 }) catch return PfError.AllocationError;
             }
 
-            neighbors.resize(0) catch unreachable;
+            neighbors.clearRetainingCapacity();
         }
 
         var res = allocator.alloc(?PathfindResult, goal_indices.len) catch return PfError.AllocationError;

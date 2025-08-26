@@ -57,7 +57,7 @@ pub const ProtoReader = struct {
                 const child_type = info.optional.child;
                 const child_info = @typeInfo(child_type);
                 tuple_types[i] = switch (child_info) {
-                    .pointer => |ptr| std.ArrayListUnmanaged(ptr.child),
+                    .pointer => |ptr| std.ArrayList(ptr.child),
                     else => void,
                 };
             }
@@ -72,7 +72,7 @@ pub const ProtoReader = struct {
                 const child_type = info.optional.child;
                 const child_info = @typeInfo(child_type);
                 tuple[i] = switch (child_info) {
-                    .pointer => |ptr| std.ArrayListUnmanaged(ptr.child){},
+                    .pointer => |ptr| std.ArrayList(ptr.child){},
                     else => {},
                 };
             }
