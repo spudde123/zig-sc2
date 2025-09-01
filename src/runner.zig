@@ -557,7 +557,7 @@ pub fn run(
 
         const all_own_unit_tags = bot.units.keys();
         if (all_own_unit_tags.len > 0) {
-            if (client.getAvailableAbilities(all_own_unit_tags, true)) |abilities_proto| {
+            if (client.getAvailableAbilities(all_own_unit_tags, false)) |abilities_proto| {
                 bot.setUnitAbilitiesFromProto(abilities_proto, step_arena);
             }
         }
