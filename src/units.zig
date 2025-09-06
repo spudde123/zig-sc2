@@ -218,14 +218,14 @@ pub fn filter(
     context: anytype,
     comptime filterFn: fn (context: @TypeOf(context), unit: Unit) bool,
 ) ![]Unit {
-    var list = std.ArrayList(Unit).init(allocator);
-    errdefer list.deinit();
+    var list: std.ArrayList(Unit) = .empty;
+    errdefer list.deinit(allocator);
     for (units) |unit| {
         if (filterFn(context, unit)) {
-            try list.append(unit);
+            try list.append(allocator, unit);
         }
     }
-    return try list.toOwnedSlice();
+    return try list.toOwnedSlice(allocator);
 }
 
 pub fn amountOfType(
@@ -257,14 +257,14 @@ pub fn ofType(
     unit_type: UnitId,
     allocator: mem.Allocator,
 ) ![]Unit {
-    var list = std.ArrayList(Unit).init(allocator);
-    errdefer list.deinit();
+    var list: std.ArrayList(Unit) = .empty;
+    errdefer list.deinit(allocator);
     for (units) |unit| {
         if (unit.unit_type == unit_type) {
-            try list.append(unit);
+            try list.append(allocator, unit);
         }
     }
-    return try list.toOwnedSlice();
+    return try list.toOwnedSlice(allocator);
 }
 
 pub fn ofTypes(
@@ -272,14 +272,14 @@ pub fn ofTypes(
     unit_types: []const UnitId,
     allocator: mem.Allocator,
 ) ![]Unit {
-    var list = std.ArrayList(Unit).init(allocator);
-    errdefer list.deinit();
+    var list: std.ArrayList(Unit) = .empty;
+    errdefer list.deinit(allocator);
     for (units) |unit| {
         if (mem.indexOfScalar(UnitId, unit_types, unit.unit_type)) |_| {
-            try list.append(unit);
+            try list.append(allocator, unit);
         }
     }
-    return try list.toOwnedSlice();
+    return try list.toOwnedSlice(allocator);
 }
 
 fn unitTypeMatches(context: UnitId, unit: Unit) bool {
