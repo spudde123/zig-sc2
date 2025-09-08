@@ -170,9 +170,6 @@ pub const ProtoReader = struct {
 
             // Skip unrecognized fields
             if (!recognized_field) {
-                //const type_name = @typeName(T);
-                //std.log.debug("Found unknown field in {s}\n", .{type_name});
-                //std.log.debug("field_num: {d}, type: {d}\n", .{header.field_number, header.wire_type});
                 switch (header.wire_type) {
                     .varint => {
                         _ = try self.decodeUInt64();

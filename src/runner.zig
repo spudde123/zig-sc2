@@ -94,7 +94,7 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
     const versions_concat = [_][]const u8{ base_folder, "/Versions/" };
     const versions_path = try mem.concat(allocator, u8, &versions_concat);
     var dir = fs.openDirAbsolute(versions_path, .{ .iterate = true }) catch {
-        log.err("Couldn't open versions folder {s}\n", .{versions_path});
+        log.err("Couldn't open versions folder {s}", .{versions_path});
         return Sc2PathError.no_version_folders_found;
     };
     defer dir.close();
@@ -111,7 +111,7 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
 
     if (max_version == 0) return Sc2PathError.no_version_folders_found;
 
-    log.debug("Using game version {d}\n", .{max_version});
+    log.debug("Using game version {d}", .{max_version});
     return Sc2Paths{
         .base_folder = base_folder,
         .map_folder = try mem.concat(allocator, u8, &map_concat),
@@ -185,10 +185,10 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     if (difficulty_map.get(argument)) |difficulty| {
                         program_args.computer_difficulty = difficulty;
                     } else {
-                        log.info("Unknown difficulty {s}\n", .{argument});
-                        log.info("Available difficulties:\n", .{});
+                        log.info("Unknown difficulty {s}", .{argument});
+                        log.info("Available difficulties:", .{});
                         for (difficulty_map.keys()) |key| {
-                            log.info("{s}\n", .{key});
+                            log.info("{s}", .{key});
                         }
                     }
                 },
@@ -196,10 +196,10 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     if (race_map.get(argument)) |race| {
                         program_args.computer_race = race;
                     } else {
-                        log.info("Unknown race {s}\n", .{argument});
-                        log.info("Available races:\n", .{});
+                        log.info("Unknown race {s}", .{argument});
+                        log.info("Available races:", .{});
                         for (race_map.keys()) |key| {
-                            log.info("{s}\n", .{key});
+                            log.info("{s}", .{key});
                         }
                     }
                 },
@@ -207,10 +207,10 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     if (build_map.get(argument)) |build| {
                         program_args.computer_build = build;
                     } else {
-                        log.info("Unknown build {s}\n", .{argument});
-                        log.info("Available builds:\n", .{});
+                        log.info("Unknown build {s}", .{argument});
+                        log.info("Available builds:", .{});
                         for (build_map.keys()) |key| {
-                            log.info("{s}\n", .{key});
+                            log.info("{s}", .{key});
                         }
                     }
                 },
@@ -221,10 +221,10 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                     if (race_map.get(argument)) |race| {
                         program_args.human_race = race;
                     } else {
-                        log.info("Unknown race {s}\n", .{argument});
-                        log.info("Available races:\n", .{});
+                        log.info("Unknown race {s}", .{argument});
+                        log.info("Available races:", .{});
                         for (race_map.keys()) |key| {
-                            log.info("{s}\n", .{key});
+                            log.info("{s}", .{key});
                         }
                     }
                 },
@@ -282,7 +282,7 @@ fn runHumanGame(
     var client: ws.WebSocketClient = undefined;
     var connection_ok = false;
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
-        log.debug("Doing ws connection loop {d}\n", .{attempt});
+        log.debug("Doing ws connection loop {d}", .{attempt});
         client = ws.WebSocketClient.init(host, game_port, arena, step_arena) catch {
             std.Thread.sleep(2 * time.ns_per_s);
             continue;
@@ -291,7 +291,7 @@ fn runHumanGame(
     }
 
     if (!connection_ok) {
-        log.err("Failed to connect to sc2\n", .{});
+        log.err("Failed to connect to sc2", .{});
 
         _ = try sc2_process.kill();
         return;
@@ -300,24 +300,24 @@ fn runHumanGame(
     defer client.deinit();
 
     if (!try client.completeHandshake("/sc2api")) {
-        log.err("Failed websocket handshake\n", .{});
+        log.err("Failed websocket handshake", .{});
         _ = try sc2_process.kill();
         return;
     }
 
     defer {
         _ = client.quit() catch {
-            log.err("Unable to quit the game\n", .{});
+            log.err("Unable to quit the game", .{});
         };
     }
 
     client.createGameVsHuman(map_absolute_path, realtime) catch |err| {
-        log.err("Failed to create human game: {s}\n", .{@errorName(err)});
+        log.err("Failed to create human game: {s}", .{@errorName(err)});
         return;
     };
 
     _ = client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
-        log.err("Human client failed to join the game: {s}\n", .{@errorName(err)});
+        log.err("Human client failed to join the game: {s}", .{@errorName(err)});
         return;
     };
 
@@ -327,7 +327,7 @@ fn runHumanGame(
 
         if (obs.player_result) |_| {
             _ = client.leave() catch |err| {
-                log.err("Human unable to leave game {s}\n", .{@errorName(err)});
+                log.err("Human unable to leave game {s}", .{@errorName(err)});
             };
             break;
         }
@@ -379,7 +379,7 @@ pub fn run(
 
     if (!ladder_game) {
         sc2_paths = getSc2Paths(sc2_base_folder, arena) catch {
-            log.err("Couldn't form SC2 paths\n", .{});
+            log.err("Couldn't form SC2 paths", .{});
             return;
         };
         const sc2_args = [_][]const u8{
@@ -404,7 +404,7 @@ pub fn run(
     var client: ws.WebSocketClient = undefined;
     var connection_ok = false;
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
-        log.debug("Doing ws connection loop {d}\n", .{attempt});
+        log.debug("Doing ws connection loop {d}", .{attempt});
         client = ws.WebSocketClient.init(host, game_port, arena, step_arena) catch {
             std.Thread.sleep(2 * time.ns_per_s);
             continue;
@@ -413,7 +413,7 @@ pub fn run(
     }
 
     if (!connection_ok) {
-        log.err("Failed to connect to sc2\n", .{});
+        log.err("Failed to connect to sc2", .{});
 
         if (sc2_process) |*sc2| {
             _ = try sc2.kill();
@@ -424,7 +424,7 @@ pub fn run(
     defer client.deinit();
 
     if (!try client.completeHandshake("/sc2api")) {
-        log.err("Failed websocket handshake\n", .{});
+        log.err("Failed websocket handshake", .{});
         if (sc2_process) |*sc2| {
             _ = try sc2.kill();
         }
@@ -434,9 +434,9 @@ pub fn run(
     defer {
         if (sc2_process) |*sc2| {
             _ = client.quit() catch {
-                log.err("Unable to quit the game\n", .{});
+                log.err("Unable to quit the game", .{});
                 _ = sc2.kill() catch {
-                    log.err("Unable to kill the game\n", .{});
+                    log.err("Unable to kill the game", .{});
                 };
             };
         }
@@ -453,14 +453,14 @@ pub fn run(
     const player_id: u32 = pid: {
         if (ladder_game) {
             break :pid client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
-                log.err("Failed to join ladder game: {s}\n", .{@errorName(err)});
+                log.err("Failed to join ladder game: {s}", .{@errorName(err)});
                 return;
             };
         } else if (program_args.human_game) {
             const strings_to_concat = [_][]const u8{ sc2_paths.map_folder, program_args.map_file_name, ".SC2Map" };
             const map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
             std.fs.accessAbsolute(map_absolute_path, .{}) catch {
-                log.err("Map file {s} was not found\n", .{map_absolute_path});
+                log.err("Map file {s} was not found", .{map_absolute_path});
                 return;
             };
 
@@ -479,19 +479,19 @@ pub fn run(
                 game_port + 1,
                 start_port,
             }) catch |err| {
-                log.err("Failed to spawn human game thread: {s}\n", .{@errorName(err)});
+                log.err("Failed to spawn human game thread: {s}", .{@errorName(err)});
                 return;
             };
 
             break :pid client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
-                log.err("Failed to join human game with bot: {s}\n", .{@errorName(err)});
+                log.err("Failed to join human game with bot: {s}", .{@errorName(err)});
                 return;
             };
         } else {
             const strings_to_concat = [_][]const u8{ sc2_paths.map_folder, program_args.map_file_name, ".SC2Map" };
             const map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
             std.fs.accessAbsolute(map_absolute_path, .{}) catch {
-                log.err("Map file {s} was not found\n", .{map_absolute_path});
+                log.err("Map file {s} was not found", .{map_absolute_path});
                 return;
             };
             break :pid client.createGameVsComputer(
@@ -504,7 +504,7 @@ pub fn run(
                 },
                 program_args.realtime,
             ) catch |err| {
-                log.err("Failed to create game: {s}\n", .{@errorName(err)});
+                log.err("Failed to create game: {s}", .{@errorName(err)});
                 return;
             };
         }
@@ -515,7 +515,7 @@ pub fn run(
     var first_step_done = false;
 
     const game_data_proto = client.getGameData() catch |err| {
-        log.err("Error getting game data: {s}\n", .{@errorName(err)});
+        log.err("Error getting game data: {s}", .{@errorName(err)});
         return;
     };
 
@@ -544,11 +544,11 @@ pub fn run(
             if (sc2_process) |_| {
                 if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
                     _ = client.saveReplay(replay_name) catch |err| {
-                        log.err("Unable to save replay: {s}\n", .{@errorName(err)});
+                        log.err("Unable to save replay: {s}", .{@errorName(err)});
                     };
                 }
                 _ = client.leave() catch {
-                    log.err("Unable to leave game\n", .{});
+                    log.err("Unable to leave game", .{});
                 };
             }
             try user_bot.onResult(bot, game_info, res);
@@ -564,7 +564,7 @@ pub fn run(
 
         if (!first_step_done) {
             const game_info_proto = client.getGameInfo() catch {
-                log.err("Error getting game info\n", .{});
+                log.err("Error getting game info", .{});
                 break;
             };
 
@@ -604,7 +604,7 @@ pub fn run(
             if (game_data.units.get(enemy_unit.unit_type)) |unit_data| {
                 game_info.enemy_race = unit_data.race;
             } else {
-                log.debug("Unit {d} was not found in data\n", .{enemy_unit.unit_type});
+                log.debug("Unit {d} was not found in data", .{enemy_unit.unit_type});
             }
         }
 
@@ -614,13 +614,13 @@ pub fn run(
             if (sc2_process) |_| {
                 if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
                     _ = client.saveReplay(replay_name) catch |err| {
-                        log.err("Unable to save replay: {s}\n", .{@errorName(err)});
+                        log.err("Unable to save replay: {s}", .{@errorName(err)});
                     };
                 }
             }
 
             _ = client.leave() catch {
-                log.err("Unable to leave game\n", .{});
+                log.err("Unable to leave game", .{});
             };
             try user_bot.onResult(bot, game_info, .defeat);
             break;
@@ -628,7 +628,7 @@ pub fn run(
 
         if (actions.toProto()) |action_proto| {
             client.sendActions(action_proto) catch {
-                log.err("Error sending actions at game loop {d}\n", .{bot.game_loop});
+                log.err("Error sending actions at game loop {d}", .{bot.game_loop});
             };
         }
 
@@ -638,7 +638,7 @@ pub fn run(
 
         if (!program_args.realtime) {
             _ = client.step(step_count) catch |err| {
-                log.err("Couldn't do a step request: {s}\n", .{@errorName(err)});
+                log.err("Couldn't do a step request: {s}", .{@errorName(err)});
                 break;
             };
         }
