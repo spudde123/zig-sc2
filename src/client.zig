@@ -103,8 +103,8 @@ pub const WebSocketClient = struct {
         var stream_reader = self.socket.reader(&buf);
         var reader = stream_reader.interface();
         while (total_read < buf.len) {
-            _ = try reader.takeByte();
-            total_read += 1;
+            var bufs = [_][]u8{buf[total_read..]};
+            total_read += try reader.readVec(&bufs);
             if (total_read >= 4 and mem.eql(u8, buf[total_read - 4 .. total_read], "\r\n\r\n")) break;
         }
 
