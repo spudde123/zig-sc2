@@ -100,7 +100,7 @@ pub const WebSocketClient = struct {
 
         var buf: [256]u8 = undefined;
         var total_read: usize = 0;
-        var stream_reader = self.socket.reader(&buf);
+        var stream_reader = self.socket.reader(&.{});
         var reader = stream_reader.interface();
         while (total_read < buf.len) {
             // For some reason doing this with takeByte here causes a bug on Windows
