@@ -303,5 +303,8 @@ pub const UpgradeId = enum(u32) {
     AmplifiedShielding = 300,
     PsionicAmplifiers = 301,
     SecretedCoating = 302,
+    HurricaneThrusters = 303,
+    Frenzy = 304,
+    InterferenceMatrix = 305,
     _,
 };
