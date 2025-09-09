@@ -356,7 +356,8 @@ pub const ProtoWriter = struct {
         if (varint_byte_length == 1) {
             self.encodeUInt64(@as(u64, struct_encoding_size));
         } else {
-            mem.copyBackwards(u8, self.buffer[content_start - 1 + varint_byte_length ..], self.buffer[content_start..(content_start + struct_encoding_size)]);
+            const new_start = content_start - 1 + varint_byte_length;
+            @memmove(self.buffer[new_start .. new_start + struct_encoding_size], self.buffer[content_start .. content_start + struct_encoding_size]);
             self.encodeUInt64(@as(u64, struct_encoding_size));
         }
 
