@@ -103,8 +103,6 @@ pub const WebSocketClient = struct {
         var stream_reader = self.socket.reader(&.{});
         var reader = stream_reader.interface();
         while (total_read < buf.len) {
-            // For some reason doing this with takeByte here causes a bug on Windows
-            // but worked on Mac.
             var bufs = [_][]u8{buf[total_read..]};
             total_read += try reader.readVec(&bufs);
             if (total_read >= 4 and mem.eql(u8, buf[total_read - 4 .. total_read], "\r\n\r\n")) break;
