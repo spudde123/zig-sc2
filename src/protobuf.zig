@@ -146,7 +146,7 @@ pub const ProtoReader = struct {
                         },
                         .float => |float| {
                             if (float.bits == 32) {
-                                obj_field.* = try self.decodeFloat();
+                                obj_field.* = self.decodeFloat();
                             } else @compileError("64 bit floats not supported");
                         },
                         .bool => {
@@ -223,7 +223,7 @@ pub const ProtoReader = struct {
         return data;
     }
 
-    fn decodeFloat(self: *ProtoReader) ParseError!f32 {
+    fn decodeFloat(self: *ProtoReader) f32 {
         const float_bits = mem.readInt(u32, self.bytes[self.bytes_read..][0..4], .little);
         self.bytes_read += 4;
         return @as(f32, @bitCast(float_bits));
@@ -425,7 +425,7 @@ test "protobuf_floats" {
     writer.encodeFloat(data);
 
     var reader = ProtoReader{ .bytes = buffer[0..writer.cursor] };
-    const decoded_data = try reader.decodeFloat();
+    const decoded_data = reader.decodeFloat();
 
     try std.testing.expectEqual(data, decoded_data);
 }
@@ -607,7 +607,7 @@ test "protobuf_struct" {
     std.debug.print("\n", .{});
 
     var reader = ProtoReader{ .bytes = res[1..5] };
-    const first_float = try reader.decodeFloat();
+    const first_float = reader.decodeFloat();
     std.debug.print("{d}\n", .{first_float});
 
     var reader2 = ProtoReader{ .bytes = res };
