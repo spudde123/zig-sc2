@@ -1414,7 +1414,7 @@ pub const Actions = struct {
 
     fn addAction(self: *Actions, order: BotAction) void {
         self.order_list.append(self.temp_allocator, order) catch {
-            log.err("Failed to add bot action\n", .{});
+            log.err("Failed to add bot action", .{});
             return;
         };
     }
@@ -1435,7 +1435,7 @@ pub const Actions = struct {
             };
             self.addAction(action);
         } else {
-            log.debug("Did not find {d} in game data\n", .{unit_type});
+            log.debug("Did not find {d} in game data", .{unit_type});
         }
     }
 
@@ -1451,7 +1451,7 @@ pub const Actions = struct {
             };
             self.addAction(action);
         } else {
-            log.debug("Did not find {d} in game data\n", .{structure_to_build});
+            log.debug("Did not find {d} in game data", .{structure_to_build});
         }
     }
 
@@ -1468,7 +1468,7 @@ pub const Actions = struct {
             };
             self.addAction(action);
         } else {
-            log.debug("Did not find {d} in game data\n", .{structure_to_build});
+            log.debug("Did not find {d} in game data", .{structure_to_build});
         }
     }
 
@@ -1556,7 +1556,7 @@ pub const Actions = struct {
             };
             self.addAction(action);
         } else {
-            log.debug("Did not find {d} in game data\n", .{upgrade});
+            log.debug("Did not find {d} in game data", .{upgrade});
         }
     }
 
@@ -1651,7 +1651,7 @@ pub const Actions = struct {
         var action_hashmap = std.AutoHashMap(ActionData.HashableActionData, usize).init(self.temp_allocator);
         var raw_unit_commands: std.ArrayList(sc2p.ActionRawUnitCommand) = .empty;
         var unit_lists = std.ArrayList(std.ArrayList(u64)).initCapacity(self.temp_allocator, self.order_list.items.len) catch {
-            log.err("Dropping actions due to allocation failure\n", .{});
+            log.err("Dropping actions due to allocation failure", .{});
             return null;
         };
 
@@ -1660,7 +1660,7 @@ pub const Actions = struct {
 
             if (action_hashmap.get(hashable)) |index| {
                 unit_lists.items[index].append(self.temp_allocator, order.unit) catch {
-                    log.err("Dropping actions due to allocation failure\n", .{});
+                    log.err("Dropping actions due to allocation failure", .{});
                     break;
                 };
             } else {
@@ -1685,12 +1685,12 @@ pub const Actions = struct {
                 new_list.appendAssumeCapacity(order.unit);
                 unit_lists.appendAssumeCapacity(new_list);
                 raw_unit_commands.append(self.temp_allocator, unit_command) catch {
-                    log.err("Dropping actions due to allocation failure\n", .{});
+                    log.err("Dropping actions due to allocation failure", .{});
                     break;
                 };
                 if (self.combinable_abilities.contains(order.data.ability_id)) {
                     action_hashmap.put(hashable, raw_unit_commands.items.len - 1) catch {
-                        log.err("Dropping actions due to allocation failure\n", .{});
+                        log.err("Dropping actions due to allocation failure", .{});
                         break;
                     };
                 }
@@ -1840,7 +1840,7 @@ pub const Actions = struct {
                 .draw = debug_draw,
             };
             command_list.append(self.temp_allocator, command) catch {
-                log.err("Dropping debug commands due to allocation failure\n", .{});
+                log.err("Dropping debug commands due to allocation failure", .{});
                 return null;
             };
         }
@@ -1850,7 +1850,7 @@ pub const Actions = struct {
                 .create_unit = debug_create_unit,
             };
             command_list.append(self.temp_allocator, command) catch {
-                log.err("Dropping debug commands due to allocation failure\n", .{});
+                log.err("Dropping debug commands due to allocation failure", .{});
                 return null;
             };
         }
@@ -1868,7 +1868,7 @@ pub const Actions = struct {
         assert(max_distance >= 1 and max_distance <= 30);
         const structure_data = self.game_data.units.get(structure_to_build);
         if (structure_data == null) {
-            log.debug("Did not find {d} in game data\n", .{structure_to_build});
+            log.debug("Did not find {d} in game data", .{structure_to_build});
             return null;
         }
 
@@ -1937,7 +1937,7 @@ pub const Actions = struct {
             const ability = structure_data.train_ability_id;
             return self.queryPlacementForAbility(ability, spot);
         } else {
-            log.debug("Did not find {d} in game data\n", .{structure_to_build});
+            log.debug("Did not find {d} in game data", .{structure_to_build});
             return false;
         }
     }
