@@ -318,9 +318,7 @@ pub const GameInfo = struct {
             for (groups.items, 0..) |group, g| {
                 for (group.items) |member| {
                     const dist = cur.pos.distanceSquaredTo(member.pos);
-                    if (dist < closest_dist and dist < 140 and terrain_height.getValue(member.pos) == terrain_height.getValue(cur.pos) and
-                        (cur.is_geyser or member.is_geyser or getBaseType(member.unit_type) == getBaseType(cur.unit_type)))
-                    {
+                    if (dist < closest_dist and dist < 160 and terrain_height.getValue(member.pos) == terrain_height.getValue(cur.pos)) {
                         closest_dist = dist;
                         closest_index = g;
                     }
