@@ -272,7 +272,12 @@ pub const GameInfo = struct {
             .reaper_grid = reaper_grid,
             .air_grid = air_grid,
             .climbable_points = climbable_points,
-            .expansion_locations = try generateExpansionLocations(minerals, geysers, terrain_height, allocator),
+            .expansion_locations = try generateExpansionLocations(
+                minerals,
+                geysers,
+                terrain_height,
+                allocator,
+            ),
             .vision_blockers = ramps_and_vbs.vbs,
             .ramps = ramps_and_vbs.ramps,
         };
@@ -334,20 +339,29 @@ pub const GameInfo = struct {
             }
         }
 
-        var result = try allocator.alloc(Point2, groups.items.len);
-        for (groups.items, 0..) |*group, group_index| {
+        var result_list: std.ArrayList(Point2) = .empty;
+        errdefer result_list.deinit(allocator);
+
+        for (groups.items) |*group| {
             defer group.deinit(allocator);
+            var geyser_count: u32 = 0;
             var center = Point2{ .x = 0, .y = 0 };
             for (group.items) |resource| {
                 center.x += resource.pos.x;
                 center.y += resource.pos.y;
+                if (resource.is_geyser) geyser_count += 1;
             }
+
+            // Should take away mineral walls
+            if (geyser_count == 0) continue;
+
             center.x = center.x / @as(f32, @floatFromInt(group.items.len));
             center.y = center.y / @as(f32, @floatFromInt(group.items.len));
             center.x = math.floor(center.x) + 0.5;
             center.y = math.floor(center.y) + 0.5;
 
             var min_total_distance: f32 = math.floatMax(f32);
+            var best_point: ?Point2 = null;
             var x_offset: f32 = -7;
             while (x_offset < 8) : (x_offset += 1) {
                 var y_offset: f32 = -7;
@@ -362,23 +376,28 @@ pub const GameInfo = struct {
 
                     var total_distance: f32 = 0;
                     for (group.items) |resource| {
-                        const req_distance: f32 = if (resource.is_geyser) 49 else 36;
+                        const x_diff = @abs(point.x - resource.pos.x);
+                        const y_diff = @abs(point.y - resource.pos.y);
+
+                        if (resource.is_geyser and x_diff < 4 and y_diff < 7) continue :test_point;
+                        if (resource.is_geyser and y_diff < 4 and x_diff < 7) continue :test_point;
+                        if (resource.is_geyser and x_diff < 5 and y_diff < 5) continue :test_point;
+                        if (!resource.is_geyser and x_diff < 5.5 and y_diff < 6) continue :test_point;
+                        if (!resource.is_geyser and x_diff < 6.5 and y_diff < 5) continue :test_point;
+
                         const cur_dist = resource.pos.distanceSquaredTo(point);
-                        if (cur_dist < req_distance) {
-                            continue :test_point;
-                        } else {
-                            total_distance += cur_dist;
-                        }
+                        total_distance += cur_dist;
                     }
                     if (total_distance < min_total_distance) {
-                        result[group_index] = point;
                         min_total_distance = total_distance;
+                        best_point = point;
                     }
                 }
             }
+            if (best_point) |p| try result_list.append(allocator, p);
         }
 
-        return result;
+        return result_list.toOwnedSlice(allocator);
     }
 
     fn generateRamps(
@@ -1433,7 +1452,7 @@ pub const Actions = struct {
             };
             self.addAction(action);
         } else {
-            log.debug("Did not find {d} in game data", .{unit_type});
+            log.debug("Did not find unit type {any} in game data", .{unit_type});
         }
     }
 
@@ -1449,7 +1468,7 @@ pub const Actions = struct {
             };
             self.addAction(action);
         } else {
-            log.debug("Did not find {d} in game data", .{structure_to_build});
+            log.debug("Did not find unit type {any} in game data", .{structure_to_build});
         }
     }
 
@@ -1466,7 +1485,7 @@ pub const Actions = struct {
             };
             self.addAction(action);
         } else {
-            log.debug("Did not find {d} in game data", .{structure_to_build});
+            log.debug("Did not find unit type {any} in game data", .{structure_to_build});
         }
     }
 
@@ -1554,7 +1573,7 @@ pub const Actions = struct {
             };
             self.addAction(action);
         } else {
-            log.debug("Did not find {d} in game data", .{upgrade});
+            log.debug("Did not find unit type {any} in game data", .{upgrade});
         }
     }
 
@@ -1866,7 +1885,7 @@ pub const Actions = struct {
         assert(max_distance >= 1 and max_distance <= 30);
         const structure_data = self.game_data.units.get(structure_to_build);
         if (structure_data == null) {
-            log.debug("Did not find {d} in game data", .{structure_to_build});
+            log.debug("Did not find unit type {any} in game data", .{structure_to_build});
             return null;
         }
 
@@ -1935,7 +1954,7 @@ pub const Actions = struct {
             const ability = structure_data.train_ability_id;
             return self.queryPlacementForAbility(ability, spot);
         } else {
-            log.debug("Did not find {d} in game data", .{structure_to_build});
+            log.debug("Did not find unit type {any} in game data", .{structure_to_build});
             return false;
         }
     }
