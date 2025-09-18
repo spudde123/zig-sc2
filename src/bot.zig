@@ -379,13 +379,13 @@ pub const GameInfo = struct {
                         const x_diff = @abs(point.x - resource.pos.x);
                         const y_diff = @abs(point.y - resource.pos.y);
 
-                        if (resource.is_geyser and x_diff < 4 and y_diff < 7) continue :test_point;
-                        if (resource.is_geyser and x_diff < 7 and y_diff < 4) continue :test_point;
-                        if (resource.is_geyser and x_diff < 5 and y_diff < 6) continue :test_point;
-                        if (resource.is_geyser and x_diff < 6 and y_diff < 5) continue :test_point;
-                        if (!resource.is_geyser and x_diff < 4.5 and y_diff < 6) continue :test_point;
-                        if (!resource.is_geyser and x_diff < 6.5 and y_diff < 4) continue :test_point;
-                        if (!resource.is_geyser and x_diff < 5.5 and y_diff < 5) continue :test_point;
+                        if (resource.is_geyser and x_diff < 3.5 and y_diff < 6.5) continue :test_point;
+                        if (resource.is_geyser and x_diff < 6.5 and y_diff < 3.5) continue :test_point;
+                        if (resource.is_geyser and x_diff < 4.5 and y_diff < 5.5) continue :test_point;
+                        if (resource.is_geyser and x_diff < 5.5 and y_diff < 4.5) continue :test_point;
+                        if (!resource.is_geyser and x_diff < 4 and y_diff < 5.5) continue :test_point;
+                        if (!resource.is_geyser and x_diff < 6 and y_diff < 3.5) continue :test_point;
+                        if (!resource.is_geyser and x_diff < 5 and y_diff < 4.5) continue :test_point;
 
                         const cur_dist = resource.pos.distanceSquaredTo(point);
                         total_distance += cur_dist;
