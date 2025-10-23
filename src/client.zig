@@ -460,10 +460,10 @@ pub const WebSocketClient = struct {
         {
             // Leaving space in the beginning for the bytes needed
             // in the websocket message
-            var writer = proto.ProtoWriter{ .buffer = self.storage[10..] };
+            var writer = proto.ProtoWriter{ .buffer = self.storage[14..] };
             const payload = writer.encodeBaseStruct(request);
             var msg = payload.ptr;
-            var pre_payload: usize = 2;
+            var pre_payload: usize = 6;
 
             if (payload.len <= 125) {
                 msg -= pre_payload;
@@ -480,7 +480,17 @@ pub const WebSocketClient = struct {
                 mem.writeInt(u64, msg[2..10], payload.len, .big);
             }
             msg[0] = @intFromEnum(OpCode.binary);
+            //Last frame
             msg[0] |= 0x80;
+            //Mask
+            msg[1] |= 0x80;
+            const masking_key = msg[pre_payload - 4 .. pre_payload];
+            self.prng.random().bytes(masking_key);
+            for (0..payload.len) |i| {
+                const j = i % 4;
+                msg[pre_payload + i] ^= masking_key[j];
+            }
+
             const payload_end = pre_payload + payload.len;
 
             var stream_writer = self.socket.writer(&.{});
