@@ -51,9 +51,8 @@ pub const BotSetup = struct {
 /// Sc2 uses websockets for communication
 /// with a protobuf 2 format
 /// https://github.com/Blizzard/s2client-proto.
-/// It doesn't use other frame types specified
-/// in the websocket protocol besides binary
-/// and it doesn't use masking of the messages
+/// Only uses the binary messagetype of the websocket
+/// protocol
 pub const WebSocketClient = struct {
     addr: net.Address,
     socket: net.Stream,
