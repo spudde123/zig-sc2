@@ -24,6 +24,8 @@ const InputType = enum(u8) {
     map,
     human_race,
     sc2_path,
+    proton,
+    steam_compat_data_path,
 };
 
 const ProgramArguments = struct {
@@ -35,10 +37,15 @@ const ProgramArguments = struct {
     computer_race: sc2p.Race = .random,
     computer_difficulty: sc2p.AiDifficulty = .very_hard,
     computer_build: sc2p.AiBuild = .random,
-    map_file_name: []const u8 = "InsideAndOutAIE",
+    map_file_name: []const u8 = "AcropolisAIE",
     human_game: bool = false,
     human_race: sc2p.Race = .random,
     sc2_path: ?[]const u8 = null,
+    // These are necessary when running on Linux using Proton
+    // The command is of the form "proton runinprefix SC2.exe"
+    // And it requires steam_compat_data_path environment variable to be set
+    proton: ?[]const u8 = null,
+    steam_compat_data_path: ?[]const u8 = null,
 };
 
 const race_map = std.StaticStringMap(sc2p.Race).initComptime(.{
@@ -77,22 +84,46 @@ const Sc2Paths = struct {
     working_directory: ?[]const u8,
 };
 
-const standard_sc2_base_folder: []const u8 = switch (builtin.os.tag) {
-    .windows => "C:/Program Files (x86)/StarCraft II",
-    .macos => "/Applications/StarCraft II",
-    .linux => "~/StarCraftII",
-    else => @compileError("OS not supported"),
-};
+fn getStandardSC2Folder(allocator: mem.Allocator, proton: bool) ![]const u8 {
+    return switch (builtin.os.tag) {
+        .windows => "C:/Program Files (x86)/StarCraft II",
+        .macos => "/Applications/StarCraft II",
+        .linux => l: {
+            const home = try std.process.getEnvVarOwned(allocator, "HOME");
+            defer allocator.free(home);
+
+            if (proton) {
+                break :l try std.fs.path.join(
+                    allocator,
+                    &.{
+                        home,
+                        "Games/Heroic/Prefixes/default/pfx/drive_c/Program Files (x86)/StarCraft II",
+                    },
+                );
+            }
+            break :l try std.fs.path.join(
+                allocator,
+                &.{
+                    home,
+                    "StarCraftII",
+                },
+            );
+        },
+        else => @compileError("OS not supported"),
+    };
+}
 
 const Sc2PathError = error{
     no_version_folders_found,
 };
 
-fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
+fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, proton: bool) !Sc2Paths {
     const map_concat = [_][]const u8{ base_folder, "/Maps/" };
     const support64_concat = [_][]const u8{ base_folder, "/Support64/" };
     const versions_concat = [_][]const u8{ base_folder, "/Versions/" };
+
     const versions_path = try mem.concat(allocator, u8, &versions_concat);
+
     var dir = fs.openDirAbsolute(versions_path, .{ .iterate = true }) catch {
         log.err("Couldn't open versions folder {s}", .{versions_path});
         return Sc2PathError.no_version_folders_found;
@@ -117,13 +148,17 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator) !Sc2Paths {
         .map_folder = try mem.concat(allocator, u8, &map_concat),
         .working_directory = switch (builtin.os.tag) {
             .windows => try mem.concat(allocator, u8, &support64_concat),
-            .macos, .linux => null,
+            .macos => null,
+            .linux => if (proton) try mem.concat(allocator, u8, &support64_concat) else null,
             else => @compileError("OS not supported"),
         },
         .latest_binary = switch (builtin.os.tag) {
             .windows => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{ versions_path, max_version }),
             .macos => try fmt.allocPrint(allocator, "{s}Base{d}/SC2.app/Contents/MacOS/SC2", .{ versions_path, max_version }),
-            .linux => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64", .{ versions_path, max_version }),
+            .linux => l: {
+                if (proton) break :l try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{ versions_path, max_version });
+                break :l try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64", .{ versions_path, max_version });
+            },
             else => @compileError("OS not supported"),
         },
     };
@@ -164,6 +199,10 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                 program_args.human_game = true;
             } else if (mem.eql(u8, argument, "--SC2")) {
                 current_input_type = InputType.sc2_path;
+            } else if (mem.eql(u8, argument, "--Proton")) {
+                current_input_type = InputType.proton;
+            } else if (mem.eql(u8, argument, "--SteamCompatDataPath")) {
+                current_input_type = InputType.steam_compat_data_path;
             } else {
                 current_input_type = InputType.none;
             }
@@ -231,6 +270,12 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
                 InputType.sc2_path => {
                     program_args.sc2_path = argument;
                 },
+                InputType.proton => {
+                    program_args.proton = argument;
+                },
+                InputType.steam_compat_data_path => {
+                    program_args.steam_compat_data_path = argument;
+                },
                 else => {},
             }
             current_input_type = InputType.none;
@@ -249,6 +294,8 @@ fn runHumanGame(
     realtime: bool,
     game_port: u16,
     start_port: u16,
+    proton: ?[]const u8,
+    steam_compat_data_path: ?[]const u8,
 ) !void {
     var arena_instance = std.heap.ArenaAllocator.init(base_allocator);
     // Arena allocator that is freed at the end of the game
@@ -261,7 +308,19 @@ fn runHumanGame(
 
     const host = "127.0.0.1";
 
-    const sc2_args = [_][]const u8{
+    var env = try std.process.getEnvMap(arena);
+    if (steam_compat_data_path) |data_path| {
+        env.put("STEAM_COMPAT_DATA_PATH", data_path) catch {
+            log.err("Couldn't set STEAM_COMPAT_DATA_PATH", .{});
+            return;
+        };
+    }
+    var sc2_args: std.ArrayList([]const u8) = .empty;
+    if (proton) |proton_path| {
+        try sc2_args.append(arena, proton_path);
+        try sc2_args.append(arena, "runinprefix");
+    }
+    try sc2_args.appendSlice(arena, &.{
         sc2_paths.latest_binary,
         "-listen",
         host,
@@ -269,10 +328,11 @@ fn runHumanGame(
         try fmt.allocPrint(arena, "{d}", .{game_port}),
         "-dataDir",
         sc2_paths.base_folder,
-    };
+    });
 
-    var sc2_process = ChildProcess.init(sc2_args[0..], arena);
+    var sc2_process = ChildProcess.init(sc2_args.items, arena);
     sc2_process.cwd = sc2_paths.working_directory;
+    sc2_process.env_map = &env;
 
     try sc2_process.spawn();
 
@@ -292,7 +352,6 @@ fn runHumanGame(
 
     if (!connection_ok) {
         log.err("Failed to connect to sc2", .{});
-
         _ = try sc2_process.kill();
         return;
     }
@@ -366,9 +425,21 @@ pub fn run(
     _ = try step_arena.alloc(u8, 1024 * 1024 * 10);
     _ = step_arena_instance.reset(.retain_capacity);
 
-    const program_args = readArguments(arena);
+    var program_args = readArguments(arena);
 
-    const sc2_base_folder = program_args.sc2_path orelse standard_sc2_base_folder;
+    // Allow these to be given also with env vars
+    // so tests can be properly
+    var env = try std.process.getEnvMap(arena);
+    if (program_args.proton == null) {
+        program_args.proton = env.get("PROTON");
+    }
+    if (program_args.steam_compat_data_path == null) {
+        program_args.steam_compat_data_path = env.get("STEAM_COMPAT_DATA_PATH");
+    }
+    if (program_args.sc2_path == null) {
+        program_args.sc2_path = env.get("SC2");
+    }
+    const sc2_base_folder = program_args.sc2_path orelse try getStandardSC2Folder(arena, program_args.proton != null);
     const ladder_game = program_args.ladder_server != null;
     const host: []const u8 = program_args.ladder_server orelse "127.0.0.1";
     const game_port: u16 = program_args.game_port orelse 5001;
@@ -378,11 +449,22 @@ pub fn run(
     var sc2_paths: Sc2Paths = undefined;
 
     if (!ladder_game) {
-        sc2_paths = getSc2Paths(sc2_base_folder, arena) catch {
+        sc2_paths = getSc2Paths(sc2_base_folder, arena, program_args.proton != null) catch {
             log.err("Couldn't form SC2 paths", .{});
             return;
         };
-        const sc2_args = [_][]const u8{
+        if (program_args.steam_compat_data_path) |steam_compat_data_path| {
+            env.put("STEAM_COMPAT_DATA_PATH", steam_compat_data_path) catch {
+                log.err("Couldn't set STEAM_COMPAT_DATA_PATH", .{});
+                return;
+            };
+        }
+        var sc2_args: std.ArrayList([]const u8) = .empty;
+        if (program_args.proton) |proton| {
+            try sc2_args.append(arena, proton);
+            try sc2_args.append(arena, "runinprefix");
+        }
+        try sc2_args.appendSlice(arena, &.{
             sc2_paths.latest_binary,
             "-listen",
             host,
@@ -390,10 +472,11 @@ pub fn run(
             try fmt.allocPrint(arena, "{d}", .{game_port}),
             "-dataDir",
             sc2_paths.base_folder,
-        };
+        });
 
-        sc2_process = ChildProcess.init(sc2_args[0..], arena);
+        sc2_process = ChildProcess.init(sc2_args.items, arena);
         sc2_process.?.cwd = sc2_paths.working_directory;
+        sc2_process.?.env_map = &env;
 
         try sc2_process.?.spawn();
     }
@@ -433,12 +516,30 @@ pub fn run(
 
     defer {
         if (sc2_process) |*sc2| {
+            // This should close sc2 the game on all platforms
             _ = client.quit() catch {
                 log.err("Unable to quit the game", .{});
+            };
+            // When running with Proton we need to kill the proton process
+            // also. Afterwards kill all wine stuff if they are still running
+            if (program_args.proton) |proton| {
                 _ = sc2.kill() catch {
                     log.err("Unable to kill the game", .{});
                 };
-            };
+                const last_slash = mem.lastIndexOfScalar(u8, proton, '/') orelse 0;
+                const proton_folder = proton[0 .. last_slash + 1];
+                const wine_server_path = std.fs.path.join(arena, &.{ proton_folder, "files/bin/wineserver" }) catch "wineserver";
+                _ = ChildProcess.run(.{
+                    .allocator = arena,
+                    .argv = &[_][]const u8{ wine_server_path, "-k" },
+                }) catch e: {
+                    break :e ChildProcess.RunResult{
+                        .term = .{ .Exited = 1 },
+                        .stdout = &.{},
+                        .stderr = &.{},
+                    };
+                };
+            }
         }
     }
 
@@ -457,12 +558,10 @@ pub fn run(
                 return;
             };
         } else if (program_args.human_game) {
-            const strings_to_concat = [_][]const u8{ sc2_paths.map_folder, program_args.map_file_name, ".SC2Map" };
-            const map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
-            std.fs.accessAbsolute(map_absolute_path, .{}) catch {
-                log.err("Map file {s} was not found", .{map_absolute_path});
-                return;
-            };
+            var map_name = program_args.map_file_name;
+            if (!mem.endsWith(u8, map_name, ".SC2Map")) {
+                map_name = try mem.concat(arena, u8, &.{ program_args.map_file_name, ".SC2Map" });
+            }
 
             // Start a separate thread for the human to play
             // the game. That client acts as the game host
@@ -473,11 +572,13 @@ pub fn run(
                 step_count,
                 base_allocator,
                 sc2_paths,
-                map_absolute_path,
+                map_name,
                 ws.BotSetup{ .name = "Human", .race = program_args.human_race },
                 program_args.realtime,
                 game_port + 1,
                 start_port,
+                program_args.proton,
+                program_args.steam_compat_data_path,
             }) catch |err| {
                 log.err("Failed to spawn human game thread: {s}", .{@errorName(err)});
                 return;
@@ -488,15 +589,14 @@ pub fn run(
                 return;
             };
         } else {
-            const strings_to_concat = [_][]const u8{ sc2_paths.map_folder, program_args.map_file_name, ".SC2Map" };
-            const map_absolute_path = try mem.concat(arena, u8, &strings_to_concat);
-            std.fs.accessAbsolute(map_absolute_path, .{}) catch {
-                log.err("Map file {s} was not found", .{map_absolute_path});
-                return;
-            };
+            var map_name = program_args.map_file_name;
+            if (!mem.endsWith(u8, map_name, ".SC2Map")) {
+                map_name = try mem.concat(arena, u8, &.{ program_args.map_file_name, ".SC2Map" });
+            }
+
             break :pid client.createGameVsComputer(
                 bot_setup,
-                map_absolute_path,
+                map_name,
                 ws.ComputerSetup{
                     .difficulty = program_args.computer_difficulty,
                     .build = program_args.computer_build,
