@@ -113,8 +113,17 @@ fn getStandardSC2Folder(allocator: mem.Allocator, proton: bool) ![]const u8 {
     };
 }
 
+const RunError = error{
+    NoConnection,
+    NoGameData,
+    NoGameInfo,
+    FailedToCreateGame,
+    FailedToSpawnThread,
+    FailedToJoin,
+};
+
 const Sc2PathError = error{
-    no_version_folders_found,
+    NoVersionFoldersFound,
 };
 
 fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, proton: bool) !Sc2Paths {
@@ -126,7 +135,7 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, proton: bool) 
 
     var dir = fs.openDirAbsolute(versions_path, .{ .iterate = true }) catch {
         log.err("Couldn't open versions folder {s}", .{versions_path});
-        return Sc2PathError.no_version_folders_found;
+        return Sc2PathError.NoVersionFoldersFound;
     };
     defer dir.close();
 
@@ -140,7 +149,7 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, proton: bool) 
         }
     }
 
-    if (max_version == 0) return Sc2PathError.no_version_folders_found;
+    if (max_version == 0) return Sc2PathError.NoVersionFoldersFound;
 
     log.debug("Using game version {d}", .{max_version});
     return Sc2Paths{
@@ -166,8 +175,7 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, proton: bool) 
 
 fn readArguments(allocator: mem.Allocator) ProgramArguments {
     var program_args = ProgramArguments{};
-
-    var arg_iter = std.process.argsWithAllocator(allocator) catch return program_args;
+    var arg_iter = std.process.argsWithAllocator(allocator) catch return;
     // Skip exe name
     _ = arg_iter.skip();
 
@@ -281,13 +289,12 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
             current_input_type = InputType.none;
         }
     }
-
     return program_args;
 }
 
 fn runHumanGame(
     step_count: u32,
-    base_allocator: mem.Allocator,
+    allocator: mem.Allocator,
     sc2_paths: Sc2Paths,
     map_absolute_path: []const u8,
     bot_setup: ws.BotSetup,
@@ -297,12 +304,12 @@ fn runHumanGame(
     proton: ?[]const u8,
     steam_compat_data_path: ?[]const u8,
 ) !void {
-    var arena_instance = std.heap.ArenaAllocator.init(base_allocator);
+    var arena_instance = std.heap.ArenaAllocator.init(allocator);
     // Arena allocator that is freed at the end of the game
     const arena = arena_instance.allocator();
     defer arena_instance.deinit();
 
-    var step_arena_instance = std.heap.ArenaAllocator.init(base_allocator);
+    var step_arena_instance = std.heap.ArenaAllocator.init(allocator);
     defer step_arena_instance.deinit();
     const step_arena = step_arena_instance.allocator();
 
@@ -401,8 +408,8 @@ fn runHumanGame(
 pub fn run(
     user_bot: anytype,
     step_count: u32,
-    base_allocator: mem.Allocator,
-) !void {
+    allocator: mem.Allocator,
+) !bot_data.Result {
     // Step_count 1 may cause problems from
     // what i've heard with unit orders
     // not showing up yet on the next frame
@@ -410,7 +417,7 @@ pub fn run(
     // Step_count 2 should be good enough
     // regardless
     std.debug.assert(step_count > 1);
-    var arena_instance = std.heap.ArenaAllocator.init(base_allocator);
+    var arena_instance = std.heap.ArenaAllocator.init(allocator);
     // Arena allocator that is freed at the end of the game
     const arena = arena_instance.allocator();
     defer arena_instance.deinit();
@@ -419,7 +426,7 @@ pub fn run(
     // Do a first allocation to grow the arena in size
     // to 10MB so we hopefully don't need to grow it many
     // times during the game
-    var step_arena_instance = std.heap.ArenaAllocator.init(base_allocator);
+    var step_arena_instance = std.heap.ArenaAllocator.init(allocator);
     defer step_arena_instance.deinit();
     const step_arena = step_arena_instance.allocator();
     _ = try step_arena.alloc(u8, 1024 * 1024 * 10);
@@ -428,13 +435,18 @@ pub fn run(
     var program_args = readArguments(arena);
 
     // Allow these to be given also with env vars
-    // so tests can be properly
+    // so tests can be properly run
     var env = try std.process.getEnvMap(arena);
     if (program_args.proton == null) {
         program_args.proton = env.get("PROTON");
     }
     if (program_args.steam_compat_data_path == null) {
-        program_args.steam_compat_data_path = env.get("STEAM_COMPAT_DATA_PATH");
+        // Copying the memory because we may be overriding the map
+        // value later and it can cause a problem and we don't
+        // want to hold onto the old string
+        if (env.get("STEAM_COMPAT_DATA_PATH")) |scdp| {
+            program_args.steam_compat_data_path = try arena.dupe(u8, scdp);
+        }
     }
     if (program_args.sc2_path == null) {
         program_args.sc2_path = env.get("SC2");
@@ -449,15 +461,9 @@ pub fn run(
     var sc2_paths: Sc2Paths = undefined;
 
     if (!ladder_game) {
-        sc2_paths = getSc2Paths(sc2_base_folder, arena, program_args.proton != null) catch {
-            log.err("Couldn't form SC2 paths", .{});
-            return;
-        };
+        sc2_paths = try getSc2Paths(sc2_base_folder, arena, program_args.proton != null);
         if (program_args.steam_compat_data_path) |steam_compat_data_path| {
-            env.put("STEAM_COMPAT_DATA_PATH", steam_compat_data_path) catch {
-                log.err("Couldn't set STEAM_COMPAT_DATA_PATH", .{});
-                return;
-            };
+            try env.put("STEAM_COMPAT_DATA_PATH", steam_compat_data_path);
         }
         var sc2_args: std.ArrayList([]const u8) = .empty;
         if (program_args.proton) |proton| {
@@ -501,7 +507,7 @@ pub fn run(
         if (sc2_process) |*sc2| {
             _ = try sc2.kill();
         }
-        return;
+        return RunError.NoConnection;
     }
 
     defer client.deinit();
@@ -511,7 +517,7 @@ pub fn run(
         if (sc2_process) |*sc2| {
             _ = try sc2.kill();
         }
-        return;
+        return RunError.NoConnection;
     }
 
     defer {
@@ -555,7 +561,7 @@ pub fn run(
         if (ladder_game) {
             break :pid client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
                 log.err("Failed to join ladder game: {s}", .{@errorName(err)});
-                return;
+                return RunError.FailedToJoin;
             };
         } else if (program_args.human_game) {
             var map_name = program_args.map_file_name;
@@ -570,7 +576,7 @@ pub fn run(
 
             human_thread = std.Thread.spawn(.{}, runHumanGame, .{
                 step_count,
-                base_allocator,
+                allocator,
                 sc2_paths,
                 map_name,
                 ws.BotSetup{ .name = "Human", .race = program_args.human_race },
@@ -581,12 +587,12 @@ pub fn run(
                 program_args.steam_compat_data_path,
             }) catch |err| {
                 log.err("Failed to spawn human game thread: {s}", .{@errorName(err)});
-                return;
+                return RunError.FailedToSpawnThread;
             };
 
             break :pid client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
                 log.err("Failed to join human game with bot: {s}", .{@errorName(err)});
-                return;
+                return RunError.FailedToJoin;
             };
         } else {
             var map_name = program_args.map_file_name;
@@ -605,7 +611,7 @@ pub fn run(
                 program_args.realtime,
             ) catch |err| {
                 log.err("Failed to create game: {s}", .{@errorName(err)});
-                return;
+                return RunError.FailedToCreateGame;
             };
         }
     };
@@ -616,7 +622,7 @@ pub fn run(
 
     const game_data_proto = client.getGameData() catch |err| {
         log.err("Error getting game data: {s}", .{@errorName(err)});
-        return;
+        return RunError.NoGameData;
     };
 
     const game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
@@ -652,7 +658,7 @@ pub fn run(
                 };
             }
             try user_bot.onResult(bot, game_info, res);
-            break;
+            return res;
         }
 
         const all_own_unit_tags = bot.units.keys();
@@ -665,7 +671,7 @@ pub fn run(
         if (!first_step_done) {
             const game_info_proto = client.getGameInfo() catch {
                 log.err("Error getting game info", .{});
-                break;
+                return RunError.NoGameInfo;
             };
 
             const start_location: bot_data.Point2 = sl: {
@@ -723,7 +729,7 @@ pub fn run(
                 log.err("Unable to leave game", .{});
             };
             try user_bot.onResult(bot, game_info, .defeat);
-            break;
+            return .defeat;
         }
 
         if (actions.toProto()) |action_proto| {
@@ -731,18 +737,12 @@ pub fn run(
                 log.err("Error sending actions at game loop {d}", .{bot.game_loop});
             };
         }
-
         if (actions.debugCommandsToProto()) |debug_proto| {
             client.sendDebugRequest(debug_proto);
         }
-
         if (!program_args.realtime) {
-            _ = client.step(step_count) catch |err| {
-                log.err("Couldn't do a step request: {s}", .{@errorName(err)});
-                break;
-            };
+            try client.step(step_count);
         }
-
         actions.clear();
     }
 }
@@ -819,14 +819,15 @@ test "runner_test_basic" {
             game_info: bot_data.GameInfo,
             result: bot_data.Result,
         ) !void {
+            try std.testing.expectEqual(.defeat, result);
             _ = bot;
             _ = game_info;
-            _ = result;
             _ = self;
         }
     };
 
     var test_bot = TestBot{ .name = "tester", .race = .terran };
 
-    try run(&test_bot, 2, std.testing.allocator);
+    const res = try run(&test_bot, 2, std.testing.allocator);
+    try std.testing.expectEqual(.defeat, res);
 }
