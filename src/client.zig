@@ -1,6 +1,5 @@
 const std = @import("std");
-const net = std.net;
-
+const net = std.Io.net;
 const base64 = std.base64;
 const ascii = std.ascii;
 const math = std.math;
@@ -54,7 +53,8 @@ pub const BotSetup = struct {
 /// Only uses the binary messagetype of the websocket
 /// protocol
 pub const WebSocketClient = struct {
-    addr: net.Address,
+    io: std.Io,
+    addr: net.IpAddress,
     socket: net.Stream,
     prng: rand.DefaultPrng,
     perm_allocator: mem.Allocator,
@@ -65,12 +65,17 @@ pub const WebSocketClient = struct {
     /// perm_alloc should not be freed from the outside while client is in use
     /// while the client is in use.
     /// step_alloc is meant to be freed after each game loop
-    pub fn init(host: []const u8, port: u16, perm_alloc: mem.Allocator, step_alloc: mem.Allocator) !WebSocketClient {
-        const addr = try net.Address.parseIp(host, port);
-        const socket = try net.tcpConnectToAddress(addr);
-        const seed = @as(u64, @truncate(@as(u128, @bitCast(time.nanoTimestamp()))));
+    pub fn init(io: std.Io, host: []const u8, port: u16, perm_alloc: mem.Allocator, step_alloc: mem.Allocator) !WebSocketClient {
+        const addr = try net.IpAddress.parse(host, port);
+        const socket = try addr.connect(io, .{
+            .mode = .stream,
+            .protocol = .tcp,
+        });
+
+        const seed = @as(u64, @truncate(@as(u96, @bitCast(std.Io.Timestamp.now(io, .real).toNanoseconds()))));
         const storage = try perm_alloc.alloc(u8, 5 * 1024 * 1024);
         return WebSocketClient{
+            .io = io,
             .addr = addr,
             .socket = socket,
             .prng = rand.DefaultPrng.init(seed),
@@ -81,7 +86,7 @@ pub const WebSocketClient = struct {
     }
 
     pub fn deinit(self: *WebSocketClient) void {
-        self.socket.close();
+        self.socket.close(self.io);
         self.perm_allocator.free(self.storage);
     }
 
@@ -94,16 +99,15 @@ pub const WebSocketClient = struct {
         _ = base64.standard.Encoder.encode(&handshake_key, &raw_key);
 
         const request = "GET {s} HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: Websocket\r\nSec-WebSocket-Key: {s}\r\nSec-WebSocket-Version: 13\r\n\r\n";
-        var stream_writer = self.socket.writer(&.{});
+        var stream_writer = self.socket.writer(self.io, &.{});
         try stream_writer.interface.print(request, .{ path, handshake_key });
 
         var buf: [256]u8 = undefined;
         var total_read: usize = 0;
-        var stream_reader = self.socket.reader(&.{});
-        var reader = stream_reader.interface();
+        var stream_reader = self.socket.reader(self.io, &.{});
         while (total_read < buf.len) {
             var bufs = [_][]u8{buf[total_read..]};
-            total_read += try reader.readVec(&bufs);
+            total_read += try stream_reader.interface.readVec(&bufs);
             if (total_read >= 4 and mem.eql(u8, buf[total_read - 4 .. total_read], "\r\n\r\n")) break;
         }
 
@@ -112,7 +116,7 @@ pub const WebSocketClient = struct {
         }
         std.log.debug("{s}", .{buf[0..total_read]});
 
-        var split_iter = mem.tokenizeSequence(u8, buf[0..], "\r\n");
+        var split_iter = mem.tokenizeSequence(u8, buf[0..total_read], "\r\n");
         if (split_iter.next()) |line| {
             if (!mem.startsWith(u8, line, "HTTP/1.1 101")) {
                 return false;
@@ -430,10 +434,10 @@ pub const WebSocketClient = struct {
 
         if (res.save_replay) |replay_proto| {
             const bytes = replay_proto.bytes orelse return ClientError.ReplayBytes;
-            const file = fs.cwd().createFile(replay_path, .{}) catch return ClientError.ReplayFile;
-            defer file.close();
+            const file = std.Io.Dir.cwd().createFile(self.io, replay_path, .{}) catch return ClientError.ReplayFile;
+            defer file.close(self.io);
 
-            _ = file.writeAll(bytes) catch return ClientError.ReplayWrite;
+            _ = file.writeStreamingAll(self.io, bytes) catch return ClientError.ReplayWrite;
             return;
         }
         return ClientError.BadResponse;
@@ -492,12 +496,12 @@ pub const WebSocketClient = struct {
 
             const payload_end = pre_payload + payload.len;
 
-            var stream_writer = self.socket.writer(&.{});
+            var stream_writer = self.socket.writer(self.io, &.{});
             try stream_writer.interface.writeAll(msg[0..payload_end]);
         }
 
-        var stream_reader = self.socket.reader(&.{});
-        var reader = stream_reader.interface();
+        var stream_reader = self.socket.reader(self.io, &.{});
+        var reader = &stream_reader.interface;
 
         var header: [2]u8 = undefined;
         try reader.readSliceAll(&header);

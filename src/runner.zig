@@ -4,7 +4,7 @@ const fmt = std.fmt;
 const ChildProcess = std.process.Child;
 const time = std.time;
 const log = std.log;
-const fs = std.fs;
+const Io = std.Io;
 const builtin = @import("builtin");
 
 const sc2p = @import("sc2proto.zig");
@@ -37,7 +37,7 @@ const ProgramArguments = struct {
     computer_race: sc2p.Race = .random,
     computer_difficulty: sc2p.AiDifficulty = .very_hard,
     computer_build: sc2p.AiBuild = .random,
-    map_file_name: []const u8 = "AcropolisAIE",
+    map_file_name: []const u8 = "InsideAndOutAIE",
     human_game: bool = false,
     human_race: sc2p.Race = .random,
     sc2_path: ?[]const u8 = null,
@@ -84,13 +84,12 @@ const Sc2Paths = struct {
     working_directory: ?[]const u8,
 };
 
-fn getStandardSC2Folder(allocator: mem.Allocator, proton: bool) ![]const u8 {
+fn getStandardSC2Folder(allocator: mem.Allocator, proton: bool, env: *const std.process.Environ.Map) ![]const u8 {
     return switch (builtin.os.tag) {
         .windows => "C:/Program Files (x86)/StarCraft II",
         .macos => "/Applications/StarCraft II",
         .linux => l: {
-            const home = try std.process.getEnvVarOwned(allocator, "HOME");
-            defer allocator.free(home);
+            const home = env.get(allocator, "HOME") orelse "";
 
             if (proton) {
                 break :l try std.fs.path.join(
@@ -126,22 +125,22 @@ const Sc2PathError = error{
     NoVersionFoldersFound,
 };
 
-fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, proton: bool) !Sc2Paths {
+fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, io: std.Io, proton: bool) !Sc2Paths {
     const map_concat = [_][]const u8{ base_folder, "/Maps/" };
     const support64_concat = [_][]const u8{ base_folder, "/Support64/" };
     const versions_concat = [_][]const u8{ base_folder, "/Versions/" };
 
     const versions_path = try mem.concat(allocator, u8, &versions_concat);
 
-    var dir = fs.openDirAbsolute(versions_path, .{ .iterate = true }) catch {
+    var dir = Io.Dir.openDirAbsolute(io, versions_path, .{ .iterate = true }) catch {
         log.err("Couldn't open versions folder {s}", .{versions_path});
         return Sc2PathError.NoVersionFoldersFound;
     };
-    defer dir.close();
+    defer dir.close(io);
 
     var iter = dir.iterate();
     var max_version: u64 = 0;
-    while (try iter.next()) |version| {
+    while (try iter.next(io)) |version| {
         if (mem.startsWith(u8, version.name, "Base")) {
             const version_num_string = version.name[4..];
             const num = fmt.parseUnsigned(u64, version_num_string, 0) catch continue;
@@ -173,9 +172,10 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, proton: bool) 
     };
 }
 
-fn readArguments(allocator: mem.Allocator) ProgramArguments {
+fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArguments {
     var program_args = ProgramArguments{};
-    var arg_iter = std.process.argsWithAllocator(allocator) catch return;
+    var arg_iter = args.iterateAllocator(allocator) catch return;
+    defer arg_iter.deinit();
     // Skip exe name
     _ = arg_iter.skip();
 
@@ -293,8 +293,9 @@ fn readArguments(allocator: mem.Allocator) ProgramArguments {
 }
 
 fn runHumanGame(
-    step_count: u32,
+    io: Io,
     allocator: mem.Allocator,
+    step_count: u32,
     sc2_paths: Sc2Paths,
     map_absolute_path: []const u8,
     bot_setup: ws.BotSetup,
@@ -302,7 +303,7 @@ fn runHumanGame(
     game_port: u16,
     start_port: u16,
     proton: ?[]const u8,
-    steam_compat_data_path: ?[]const u8,
+    env: *const std.process.Environ.Map,
 ) !void {
     var arena_instance = std.heap.ArenaAllocator.init(allocator);
     // Arena allocator that is freed at the end of the game
@@ -315,13 +316,6 @@ fn runHumanGame(
 
     const host = "127.0.0.1";
 
-    var env = try std.process.getEnvMap(arena);
-    if (steam_compat_data_path) |data_path| {
-        env.put("STEAM_COMPAT_DATA_PATH", data_path) catch {
-            log.err("Couldn't set STEAM_COMPAT_DATA_PATH", .{});
-            return;
-        };
-    }
     var sc2_args: std.ArrayList([]const u8) = .empty;
     if (proton) |proton_path| {
         try sc2_args.append(arena, proton_path);
@@ -337,11 +331,13 @@ fn runHumanGame(
         sc2_paths.base_folder,
     });
 
-    var sc2_process = ChildProcess.init(sc2_args.items, arena);
-    sc2_process.cwd = sc2_paths.working_directory;
-    sc2_process.env_map = &env;
+    const cwd: ChildProcess.Cwd = if (sc2_paths.working_directory) |path| .{ .path = path } else .{ .inherit = {} };
 
-    try sc2_process.spawn();
+    var sc2_process = try std.process.spawn(io, .{
+        .argv = sc2_args.items,
+        .cwd = cwd,
+        .environ_map = env,
+    });
 
     const times_to_try = 20;
     var attempt: u32 = 0;
@@ -350,8 +346,8 @@ fn runHumanGame(
     var connection_ok = false;
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
         log.debug("Doing ws connection loop {d}", .{attempt});
-        client = ws.WebSocketClient.init(host, game_port, arena, step_arena) catch {
-            std.Thread.sleep(2 * time.ns_per_s);
+        client = ws.WebSocketClient.init(io, host, game_port, arena, step_arena) catch {
+            try io.sleep(.fromSeconds(2), .awake);
             continue;
         };
         connection_ok = true;
@@ -359,7 +355,7 @@ fn runHumanGame(
 
     if (!connection_ok) {
         log.err("Failed to connect to sc2", .{});
-        _ = try sc2_process.kill();
+        sc2_process.kill(io);
         return;
     }
 
@@ -367,7 +363,7 @@ fn runHumanGame(
 
     if (!try client.completeHandshake("/sc2api")) {
         log.err("Failed websocket handshake", .{});
-        _ = try sc2_process.kill();
+        sc2_process.kill(io);
         return;
     }
 
@@ -405,10 +401,17 @@ fn runHumanGame(
     }
 }
 
+const RunParams = struct {
+    step_count: u32 = 2,
+    arena: *std.heap.ArenaAllocator,
+    gpa: mem.Allocator,
+    env_map: *const std.process.Environ.Map,
+    args: std.process.Args,
+    io: std.Io,
+};
 pub fn run(
     user_bot: anytype,
-    step_count: u32,
-    allocator: mem.Allocator,
+    params: RunParams,
 ) !bot_data.Result {
     // Step_count 1 may cause problems from
     // what i've heard with unit orders
@@ -416,34 +419,31 @@ pub fn run(
     // and so on.
     // Step_count 2 should be good enough
     // regardless
-    std.debug.assert(step_count > 1);
-    var arena_instance = std.heap.ArenaAllocator.init(allocator);
+    std.debug.assert(params.step_count > 1);
     // Arena allocator that is freed at the end of the game
-    const arena = arena_instance.allocator();
-    defer arena_instance.deinit();
+    const arena = params.arena.allocator();
 
     // Arena which is reset at the end of each step.
     // Do a first allocation to grow the arena in size
     // to 10MB so we hopefully don't need to grow it many
     // times during the game
-    var step_arena_instance = std.heap.ArenaAllocator.init(allocator);
+    var step_arena_instance = std.heap.ArenaAllocator.init(params.gpa);
     defer step_arena_instance.deinit();
     const step_arena = step_arena_instance.allocator();
     _ = try step_arena.alloc(u8, 1024 * 1024 * 10);
     _ = step_arena_instance.reset(.retain_capacity);
 
-    var program_args = readArguments(arena);
+    var program_args = readArguments(arena, params.args);
 
     // Allow these to be given also with env vars
     // so tests can be properly run
-    var env = try std.process.getEnvMap(arena);
+    var env = try params.env_map.clone(arena);
     if (program_args.proton == null) {
         program_args.proton = env.get("PROTON");
     }
     if (program_args.steam_compat_data_path == null) {
         // Copying the memory because we may be overriding the map
-        // value later and it can cause a problem and we don't
-        // want to hold onto the old string
+        // value later and it can cause a problem
         if (env.get("STEAM_COMPAT_DATA_PATH")) |scdp| {
             program_args.steam_compat_data_path = try arena.dupe(u8, scdp);
         }
@@ -451,7 +451,7 @@ pub fn run(
     if (program_args.sc2_path == null) {
         program_args.sc2_path = env.get("SC2");
     }
-    const sc2_base_folder = program_args.sc2_path orelse try getStandardSC2Folder(arena, program_args.proton != null);
+    const sc2_base_folder = program_args.sc2_path orelse try getStandardSC2Folder(arena, program_args.proton != null, &env);
     const ladder_game = program_args.ladder_server != null;
     const host: []const u8 = program_args.ladder_server orelse "127.0.0.1";
     const game_port: u16 = program_args.game_port orelse 5001;
@@ -461,7 +461,7 @@ pub fn run(
     var sc2_paths: Sc2Paths = undefined;
 
     if (!ladder_game) {
-        sc2_paths = try getSc2Paths(sc2_base_folder, arena, program_args.proton != null);
+        sc2_paths = try getSc2Paths(sc2_base_folder, arena, params.io, program_args.proton != null);
         if (program_args.steam_compat_data_path) |steam_compat_data_path| {
             try env.put("STEAM_COMPAT_DATA_PATH", steam_compat_data_path);
         }
@@ -480,11 +480,13 @@ pub fn run(
             sc2_paths.base_folder,
         });
 
-        sc2_process = ChildProcess.init(sc2_args.items, arena);
-        sc2_process.?.cwd = sc2_paths.working_directory;
-        sc2_process.?.env_map = &env;
+        const cwd: ChildProcess.Cwd = if (sc2_paths.working_directory) |path| .{ .path = path } else .{ .inherit = {} };
 
-        try sc2_process.?.spawn();
+        sc2_process = try std.process.spawn(params.io, .{
+            .argv = sc2_args.items,
+            .cwd = cwd,
+            .environ_map = &env,
+        });
     }
 
     const times_to_try = 20;
@@ -494,8 +496,8 @@ pub fn run(
     var connection_ok = false;
     while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
         log.debug("Doing ws connection loop {d}", .{attempt});
-        client = ws.WebSocketClient.init(host, game_port, arena, step_arena) catch {
-            std.Thread.sleep(2 * time.ns_per_s);
+        client = ws.WebSocketClient.init(params.io, host, game_port, arena, step_arena) catch {
+            try params.io.sleep(.fromSeconds(2), .awake);
             continue;
         };
         connection_ok = true;
@@ -505,7 +507,7 @@ pub fn run(
         log.err("Failed to connect to sc2", .{});
 
         if (sc2_process) |*sc2| {
-            _ = try sc2.kill();
+            sc2.kill(params.io);
         }
         return RunError.NoConnection;
     }
@@ -515,7 +517,7 @@ pub fn run(
     if (!try client.completeHandshake("/sc2api")) {
         log.err("Failed websocket handshake", .{});
         if (sc2_process) |*sc2| {
-            _ = try sc2.kill();
+            sc2.kill(params.io);
         }
         return RunError.NoConnection;
     }
@@ -529,18 +531,15 @@ pub fn run(
             // When running with Proton we need to kill the proton process
             // also. Afterwards kill all wine stuff if they are still running
             if (program_args.proton) |proton| {
-                _ = sc2.kill() catch {
-                    log.err("Unable to kill the game", .{});
-                };
+                _ = sc2.kill(params.io);
                 const last_slash = mem.lastIndexOfScalar(u8, proton, '/') orelse 0;
                 const proton_folder = proton[0 .. last_slash + 1];
                 const wine_server_path = std.fs.path.join(arena, &.{ proton_folder, "files/bin/wineserver" }) catch "wineserver";
-                _ = ChildProcess.run(.{
-                    .allocator = arena,
+                _ = std.process.run(arena, params.io, .{
                     .argv = &[_][]const u8{ wine_server_path, "-k" },
                 }) catch e: {
-                    break :e ChildProcess.RunResult{
-                        .term = .{ .Exited = 1 },
+                    break :e std.process.RunResult{
+                        .term = .{ .exited = 1 },
                         .stdout = &.{},
                         .stderr = &.{},
                     };
@@ -575,8 +574,9 @@ pub fn run(
             // control units.
 
             human_thread = std.Thread.spawn(.{}, runHumanGame, .{
-                step_count,
-                allocator,
+                params.io,
+                params.gpa,
+                params.step_count,
                 sc2_paths,
                 map_name,
                 ws.BotSetup{ .name = "Human", .race = program_args.human_race },
@@ -584,7 +584,7 @@ pub fn run(
                 game_port + 1,
                 start_port,
                 program_args.proton,
-                program_args.steam_compat_data_path,
+                &env,
             }) catch |err| {
                 log.err("Failed to spawn human game thread: {s}", .{@errorName(err)});
                 return RunError.FailedToSpawnThread;
@@ -628,11 +628,11 @@ pub fn run(
     const game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
     var actions = try bot_data.Actions.init(game_data, &client, arena, step_arena);
 
-    var own_units = std.AutoArrayHashMap(u64, bot_data.Unit).init(arena);
-    try own_units.ensureTotalCapacity(200);
+    var own_units: std.array_hash_map.Auto(u64, bot_data.Unit) = .empty;
+    try own_units.ensureTotalCapacity(arena, 200);
 
-    var enemy_units = std.AutoArrayHashMap(u64, bot_data.Unit).init(arena);
-    try enemy_units.ensureTotalCapacity(200);
+    var enemy_units: std.array_hash_map.Auto(u64, bot_data.Unit) = .empty;
+    try enemy_units.ensureTotalCapacity(arena, 200);
 
     var requested_game_loop: u32 = 0;
     while (true) {
@@ -640,15 +640,15 @@ pub fn run(
 
         const obs = if (program_args.realtime) try client.getObservation(requested_game_loop) else try client.getObservation(null);
 
-        var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, step_arena);
+        var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, arena, step_arena);
         // Not sure if the given game loop may be larger than what was requested
         // if the bot takes too long to make the step.
         // Regardless doesn't hurt to sync it
-        requested_game_loop = bot.game_loop + step_count;
+        requested_game_loop = bot.game_loop + params.step_count;
 
         if (bot.result) |res| {
             if (sc2_process) |_| {
-                if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
+                if (createReplayName(params.io, arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
                     _ = client.saveReplay(replay_name) catch |err| {
                         log.err("Unable to save replay: {s}", .{@errorName(err)});
                     };
@@ -718,7 +718,7 @@ pub fn run(
 
         if (actions.leave_game) {
             if (sc2_process) |_| {
-                if (createReplayName(arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
+                if (createReplayName(params.io, arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
                     _ = client.saveReplay(replay_name) catch |err| {
                         log.err("Unable to save replay: {s}", .{@errorName(err)});
                     };
@@ -741,13 +741,14 @@ pub fn run(
             client.sendDebugRequest(debug_proto);
         }
         if (!program_args.realtime) {
-            try client.step(step_count);
+            try client.step(params.step_count);
         }
         actions.clear();
     }
 }
 
 fn createReplayName(
+    io: Io,
     allocator: mem.Allocator,
     bot_name: []const u8,
     opponent: []const u8,
@@ -769,7 +770,7 @@ fn createReplayName(
         new_bot_name,
         new_opponent_name,
         new_map_name,
-        time.timestamp(),
+        Io.Timestamp.now(io, .awake).toSeconds(),
     }) catch return null;
 
     return replay_name;
@@ -828,6 +829,20 @@ test "runner_test_basic" {
 
     var test_bot = TestBot{ .name = "tester", .race = .terran };
 
-    const res = try run(&test_bot, 2, std.testing.allocator);
-    try std.testing.expectEqual(.defeat, res);
+    var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
+    const arena = arena_instance.allocator();
+    defer arena_instance.deinit();
+    var env_map = try std.testing.environ.createMap(arena);
+
+    try std.testing.expect(.defeat == try run(
+        &test_bot,
+        .{
+            .step_count = 2,
+            .gpa = std.testing.allocator,
+            .arena = &arena_instance,
+            .env_map = &env_map,
+            .args = undefined,
+            .io = std.testing.io,
+        },
+    ));
 }

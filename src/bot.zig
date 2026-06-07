@@ -786,8 +786,8 @@ pub const GameInfo = struct {
 /// iterate through them quickly and
 /// quickly identify units with their tags
 pub const Bot = struct {
-    units: *const std.AutoArrayHashMap(u64, Unit),
-    enemy_units: *const std.AutoArrayHashMap(u64, Unit),
+    units: *const std.array_hash_map.Auto(u64, Unit),
+    enemy_units: *const std.array_hash_map.Auto(u64, Unit),
     placeholders: []Unit,
     destructibles: []Unit,
     mineral_patches: []Unit,
@@ -842,12 +842,13 @@ pub const Bot = struct {
     };
 
     pub fn fromProto(
-        prev_units: *std.AutoArrayHashMap(u64, Unit),
-        prev_enemy: *std.AutoArrayHashMap(u64, Unit),
+        prev_units: *std.array_hash_map.Auto(u64, Unit),
+        prev_enemy: *std.array_hash_map.Auto(u64, Unit),
         response: sc2p.ResponseObservation,
         game_data: GameData,
         player_id: u32,
-        allocator: mem.Allocator,
+        game_arena: mem.Allocator,
+        step_arena: mem.Allocator,
     ) !Bot {
         if (response.observation == null or response.observation.?.raw == null) return ParsingError.MissingData;
 
@@ -862,8 +863,8 @@ pub const Bot = struct {
         var mineral_patches: std.ArrayList(Unit) = .empty;
         var vespene_geysers: std.ArrayList(Unit) = .empty;
         var watch_towers: std.ArrayList(Unit) = .empty;
-        var pending_units = std.AutoHashMap(UnitId, usize).init(allocator);
-        var pending_upgrades = std.AutoHashMap(UpgradeId, f32).init(allocator);
+        var pending_units = std.AutoHashMap(UnitId, usize).init(step_arena);
+        var pending_upgrades = std.AutoHashMap(UpgradeId, f32).init(step_arena);
         var units_created: std.ArrayList(u64) = .empty;
         var damaged_units: std.ArrayList(u64) = .empty;
         var construction_complete: std.ArrayList(u64) = .empty;
@@ -880,7 +881,7 @@ pub const Bot = struct {
                 var buff_ids: std.ArrayList(BuffId) = .empty;
 
                 if (unit.buff_ids) |buffs| {
-                    try buff_ids.ensureTotalCapacity(allocator, buffs.len);
+                    try buff_ids.ensureTotalCapacity(step_arena, buffs.len);
                     for (buffs) |buff| {
                         buff_ids.appendAssumeCapacity(@as(BuffId, @enumFromInt(buff)));
                     }
@@ -889,7 +890,7 @@ pub const Bot = struct {
                 var passenger_tags: std.ArrayList(u64) = .empty;
 
                 if (unit.passengers) |passengers| {
-                    try passenger_tags.ensureTotalCapacity(allocator, passengers.len);
+                    try passenger_tags.ensureTotalCapacity(step_arena, passengers.len);
                     for (passengers) |passenger| {
                         passenger_tags.appendAssumeCapacity(passenger.tag.?);
                     }
@@ -898,7 +899,7 @@ pub const Bot = struct {
                 var orders: std.ArrayList(UnitOrder) = .empty;
 
                 if (unit.orders) |orders_proto| {
-                    try orders.ensureTotalCapacity(allocator, orders_proto.len);
+                    try orders.ensureTotalCapacity(step_arena, orders_proto.len);
                     for (orders_proto) |order_proto| {
                         const target: OrderTarget = tg: {
                             if (order_proto.target_world_space_pos) |pos_target| {
@@ -927,7 +928,7 @@ pub const Bot = struct {
 
                 var rally_targets: std.ArrayList(RallyTarget) = .empty;
                 if (unit.rally_targets) |proto_rally_targets| {
-                    try rally_targets.ensureTotalCapacity(allocator, proto_rally_targets.len);
+                    try rally_targets.ensureTotalCapacity(step_arena, proto_rally_targets.len);
 
                     for (proto_rally_targets) |proto_target| {
                         const proto_point = proto_target.point.?;
@@ -1000,7 +1001,7 @@ pub const Bot = struct {
                 };
 
                 if (u.display_type == DisplayType.placeholder) {
-                    try placeholders.append(allocator, u);
+                    try placeholders.append(step_arena, u);
                     continue;
                 }
 
@@ -1008,15 +1009,15 @@ pub const Bot = struct {
                 // to a map so we can see how many we are producing
                 switch (u.alliance) {
                     .self, .ally => {
-                        const prev = try prev_units.getOrPut(u.tag);
+                        const prev = try prev_units.getOrPut(game_arena, u.tag);
                         if (!prev.found_existing) {
-                            try units_created.append(allocator, u.tag);
+                            try units_created.append(step_arena, u.tag);
                         } else {
                             if (u.build_progress >= 1 and prev.value_ptr.build_progress < 1) {
-                                try construction_complete.append(allocator, u.tag);
+                                try construction_complete.append(step_arena, u.tag);
                             }
                             if (u.health < prev.value_ptr.health) {
-                                try damaged_units.append(allocator, u.tag);
+                                try damaged_units.append(step_arena, u.tag);
                             }
                         }
                         prev.value_ptr.* = u;
@@ -1066,10 +1067,10 @@ pub const Bot = struct {
                         }
                     },
                     .enemy => {
-                        const prev = try prev_enemy.getOrPut(u.tag);
+                        const prev = try prev_enemy.getOrPut(game_arena, u.tag);
                         prev.value_ptr.* = u;
                         if (!prev.found_existing) {
-                            try enemies_entered_vision.append(allocator, u.tag);
+                            try enemies_entered_vision.append(step_arena, u.tag);
                         }
                     },
                     else => {
@@ -1101,11 +1102,11 @@ pub const Bot = struct {
                         };
 
                         if (u.unit_type == .XelNagaTower) {
-                            try watch_towers.append(allocator, u);
+                            try watch_towers.append(step_arena, u);
                         } else if (mem.indexOfScalar(UnitId, mineral_ids[0..], u.unit_type)) |_| {
-                            try mineral_patches.append(allocator, u);
+                            try mineral_patches.append(step_arena, u);
                         } else if (mem.indexOfScalar(UnitId, geyser_ids[0..], u.unit_type)) |_| {
-                            try vespene_geysers.append(allocator, u);
+                            try vespene_geysers.append(step_arena, u);
                         } else {
                             // Somehow some duplicates of enemy units with
                             // alliance neutral but owner enemy ended up
@@ -1113,7 +1114,7 @@ pub const Bot = struct {
                             // them out.
                             if (u.owner <= 2) continue;
 
-                            try destructibles.append(allocator, u);
+                            try destructibles.append(step_arena, u);
                         }
                     },
                 }
@@ -1140,7 +1141,7 @@ pub const Bot = struct {
 
         var power_sources: []PowerSource = &.{};
         if (obs.player.?.power_sources) |power_slice| {
-            power_sources = try allocator.alloc(PowerSource, power_slice.len);
+            power_sources = try step_arena.alloc(PowerSource, power_slice.len);
             for (power_slice, 0..) |item, i| {
                 power_sources[i] = .{
                     .position = .{ .x = item.pos.?.x.?, .y = item.pos.?.y.? },
@@ -1166,9 +1167,9 @@ pub const Bot = struct {
         const effects_proto = obs.effects;
         var effects: []Effect = &.{};
         if (effects_proto) |effect_proto_slice| {
-            effects = try allocator.alloc(Effect, effect_proto_slice.len);
+            effects = try step_arena.alloc(Effect, effect_proto_slice.len);
             for (effect_proto_slice, 0..) |effect_proto, effect_index| {
-                var points = try allocator.alloc(Point2, effect_proto.pos.?.len);
+                var points = try step_arena.alloc(Point2, effect_proto.pos.?.len);
                 for (effect_proto.pos.?, 0..) |pos_proto, pos_index| {
                     points[pos_index] = Point2{ .x = pos_proto.x.?, .y = pos_proto.y.? };
                 }
@@ -1183,7 +1184,7 @@ pub const Bot = struct {
 
         var sensor_towers: []SensorTower = &.{};
         if (obs.radars) |sensor_towers_proto| {
-            sensor_towers = try allocator.alloc(SensorTower, sensor_towers_proto.len);
+            sensor_towers = try step_arena.alloc(SensorTower, sensor_towers_proto.len);
             for (sensor_towers_proto, 0..) |tower_proto, tower_index| {
                 sensor_towers[tower_index] = SensorTower{
                     .position = Point2{ .x = tower_proto.pos.?.x.?, .y = tower_proto.pos.?.y.? },
@@ -1205,9 +1206,9 @@ pub const Bot = struct {
         while (enemy_iter.next()) |enemy_val| {
             if (enemy_val.value_ptr.prev_seen_loop == game_loop) continue;
             if (mem.indexOfScalar(u64, dead_unit_tags, enemy_val.value_ptr.tag)) |_| {
-                try dead_units.append(allocator, enemy_val.value_ptr.*);
+                try dead_units.append(step_arena, enemy_val.value_ptr.*);
             } else {
-                try enemies_left_vision.append(allocator, enemy_val.value_ptr.*);
+                try enemies_left_vision.append(step_arena, enemy_val.value_ptr.*);
             }
 
             prev_enemy.swapRemoveAt(enemy_iter.index - 1);
@@ -1220,9 +1221,9 @@ pub const Bot = struct {
         while (units_iter.next()) |unit_val| {
             if (unit_val.value_ptr.prev_seen_loop == game_loop) continue;
             if (mem.indexOfScalar(u64, dead_unit_tags, unit_val.value_ptr.tag)) |_| {
-                try dead_units.append(allocator, unit_val.value_ptr.*);
+                try dead_units.append(step_arena, unit_val.value_ptr.*);
             } else {
-                try disappeared_units.append(allocator, unit_val.value_ptr.*);
+                try disappeared_units.append(step_arena, unit_val.value_ptr.*);
             }
             prev_units.swapRemoveAt(units_iter.index - 1);
             units_iter.index -= 1;

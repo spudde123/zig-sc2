@@ -766,16 +766,16 @@ pub const InfluenceMap = struct {
     fn runPathfind(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) ![]?CameFrom {
         const orig_size = 256;
 
-        var queue = std.PriorityQueue(Node, void, heuristicOrder).init(allocator, {});
-        defer queue.deinit();
-        try queue.ensureTotalCapacity(orig_size);
+        var queue: std.PriorityQueue(Node, void, heuristicOrder) = .initContext({});
+        defer queue.deinit(allocator);
+        try queue.ensureTotalCapacity(allocator, orig_size);
 
         const start_floor = start.floor();
         const start_index = self.pointToIndex(start);
         const goal_floor = goal.floor();
         const goal_index = self.pointToIndex(goal);
 
-        try queue.add(.{
+        try queue.push(allocator, .{
             .index = start_index,
             .path_len = 0,
             .cost = 0,
@@ -795,7 +795,7 @@ pub const InfluenceMap = struct {
         errdefer allocator.free(came_from);
         @memset(came_from, null);
 
-        while (queue.removeOrNull()) |node| {
+        while (queue.pop()) |node| {
             if (node.index == goal_index) break;
 
             const index = node.index;
@@ -849,7 +849,7 @@ pub const InfluenceMap = struct {
                 const estimated_cost = nbr_cost + nbr_point.octileDistance(goal_floor);
 
                 came_from[nbr.index] = .{ .prev = index, .path_len = node.path_len + 1, .cost = nbr_cost };
-                try queue.add(.{
+                try queue.push(allocator, .{
                     .index = nbr.index,
                     .path_len = node.path_len + 1,
                     .cost = nbr_cost,
@@ -887,11 +887,11 @@ pub const InfluenceMap = struct {
 
         const orig_size = 256;
 
-        var queue = std.PriorityQueue(Node, void, costOrder).init(allocator, {});
-        defer queue.deinit();
-        queue.ensureTotalCapacity(orig_size) catch return PfError.AllocationError;
+        var queue: std.PriorityQueue(Node, void, costOrder) = .initContext({});
+        defer queue.deinit(allocator);
+        queue.ensureTotalCapacity(allocator, orig_size) catch return PfError.AllocationError;
 
-        queue.add(.{
+        queue.push(allocator, .{
             .index = start_index,
             .path_len = 0,
             .cost = 0,
@@ -912,7 +912,7 @@ pub const InfluenceMap = struct {
         @memset(came_from, null);
 
         var goals_found: usize = 0;
-        while (queue.removeOrNull()) |node| {
+        while (queue.pop()) |node| {
             const index = node.index;
             // If this is a node that was already visited with a lower cost
             // This is still in the priority queue because we don't
@@ -965,7 +965,7 @@ pub const InfluenceMap = struct {
                 // current std lib implementation for update is a bit strange
 
                 came_from[nbr.index] = .{ .prev = index, .path_len = node.path_len + 1, .cost = nbr_cost };
-                queue.add(.{
+                queue.push(allocator, .{
                     .index = nbr.index,
                     .path_len = node.path_len + 1,
                     .cost = nbr_cost,
