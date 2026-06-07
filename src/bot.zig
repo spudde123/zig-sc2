@@ -35,7 +35,6 @@ pub const SensorTower = unit_group.SensorTower;
 pub const PowerSource = unit_group.PowerSource;
 
 pub const InfluenceMap = grids.InfluenceMap;
-pub const PathfindResult = grids.PathfindResult;
 pub const Grid = grids.Grid;
 pub const GridPoint = grids.GridPoint;
 pub const Point2 = grids.Point2;
@@ -964,7 +963,7 @@ pub const Bot = struct {
 
                     .is_blip = unit.is_blip orelse false,
                     .is_powered = unit.is_powered orelse false,
-                    .is_active = unit.is_powered orelse false,
+                    .is_active = unit.is_active orelse false,
                     .is_structure = unit_data.attributes.contains(.structure),
 
                     .attack_upgrade_level = unit.attack_upgrade_level orelse 0,

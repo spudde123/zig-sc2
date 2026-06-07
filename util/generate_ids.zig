@@ -1,10 +1,16 @@
 const std = @import("std");
 const mem = std.mem;
 const fs = std.fs;
+const Io = std.Io;
 const os = std.os;
 const json = std.json;
+const builtin = @import("builtin");
 
-const path_from_home_dir = "\\Documents\\StarCraft II\\stableid.json";
+const path_from_home_dir = switch (builtin.os.tag) {
+    .windows => "\\Documents\\StarCraft II\\stableid.json",
+    .macos => "/Library/Application Support/Blizzard/StarCraft II/stableid.json",
+    else => @compileError("Unsupported OS"),
+};
 
 const titles = [_][]const u8{
     "Abilities",
@@ -30,19 +36,20 @@ const file_names = [_][]const u8{
     "upgrade_id.zig",
 };
 
-pub fn main() !void {
-    var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena_instance.deinit();
-    const arena = arena_instance.allocator();
+pub fn main(init: std.process.Init) !void {
+    const arena = init.arena.allocator();
 
-    const user_home = try std.process.getEnvVarOwned(arena, "USERPROFILE");
+    const var_name = switch (builtin.os.tag) {
+        .windows => "USERPROFILE",
+        .macos => "HOME",
+        else => return error.UnsupportedOs,
+    };
+    const user_home = init.environ_map.get(var_name) orelse return error.NoUserProfile;
     const to_join = [_][]const u8{ user_home, path_from_home_dir };
 
     const stableid_file_path = try fs.path.join(arena, &to_join);
-    const stableid_file = try fs.openFileAbsolute(stableid_file_path, .{});
-    defer stableid_file.close();
+    const file_contents = try Io.Dir.cwd().readFileAlloc(init.io, stableid_file_path, arena, .limited(10000 * 1024));
 
-    const file_contents = try stableid_file.readToEndAlloc(arena, 10000 * 1024);
     var tree = try json.parseFromSliceLeaky(json.Value, arena, file_contents, .{});
 
     // Fix ability data
@@ -62,7 +69,7 @@ pub fn main() !void {
         }
 
         if (!button_name_exists and remap_id == null) {
-            try ability.object.put("name", .{ .string = "" });
+            try ability.object.put(arena, "name", .{ .string = "" });
             continue;
         }
 
@@ -70,17 +77,17 @@ pub fn main() !void {
             const new_friendly_size = mem.replacementSize(u8, friendly.string, " ", "_");
             const new_friendly_string = try arena.alloc(u8, new_friendly_size);
             _ = mem.replace(u8, friendly.string, " ", "_", new_friendly_string);
-            try ability.object.put("name", .{ .string = new_friendly_string });
+            try ability.object.put(arena, "name", .{ .string = new_friendly_string });
         } else {
             const name_string = name.?;
             const button_string = button_name.?;
             const new_name = try mem.concat(arena, u8, &[_][]const u8{ name_string.string, "_", button_string.string });
-            try ability.object.put("name", .{ .string = new_name });
+            try ability.object.put(arena, "name", .{ .string = new_name });
         }
 
         const updated_name = ability.object.get("name").?;
         if (key_map.contains(updated_name.string)) {
-            try ability.object.put("name", .{ .string = "" });
+            try ability.object.put(arena, "name", .{ .string = "" });
         } else {
             try key_map.put(updated_name.string, true);
         }
@@ -95,10 +102,10 @@ pub fn main() !void {
         const file_path = try mem.concat(arena, u8, &[_][]const u8{ "src/ids/", file_name });
         std.debug.print("{s}\n", .{file_path});
 
-        const file = try fs.cwd().createFile(file_path, .{});
-        defer file.close();
+        const file = try Io.Dir.cwd().createFile(init.io, file_path, .{});
+        defer file.close(init.io);
 
-        var writer = file.writer(&.{});
+        var writer = file.writer(init.io, &.{});
         _ = try writer.interface.write("// Generated with util/generate_ids.zig\n");
         try writer.interface.print("pub const {s} = enum(u32) {{\n", .{enum_name});
 

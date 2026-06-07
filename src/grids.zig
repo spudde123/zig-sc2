@@ -97,6 +97,7 @@ pub const Point2 = struct {
 
     pub fn normalize(self: Point2) Point2 {
         const l = self.length();
+        assert(l > 0);
         return .{
             .x = self.x / l,
             .y = self.y / l,
@@ -413,41 +414,13 @@ pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usi
     return air_grid;
 }
 
-pub const PathfindResult = struct {
-    path_len: usize,
-    next_point: Point2,
-    cost: f32,
-};
-
-pub const PathfindPath = struct {
-    path_cost: f32,
-    path: []Point2,
-    allocator: mem.Allocator,
-
-    pub fn deinit(self: *PathfindPath) void {
-        self.allocator.free(self.path);
-    }
-};
-
-pub const DijkstraResult = struct {
-    dirs: []?PathfindResult,
-    allocator: mem.Allocator,
-
-    pub fn deinit(self: *DijkstraResult) void {
-        self.allocator.free(self.dirs);
-    }
-};
-
 pub const InfluenceMap = struct {
     grid: []f32 = &.{},
     w: usize = 0,
     h: usize = 0,
+    terrain_height: []const u8 = &.{},
 
     const sqrt2 = math.sqrt2;
-
-    // This needs to be set to the proper terrain height slice
-    // before calling any pathfinding functions
-    pub var terrain_height: []const u8 = &.{};
 
     pub const DecayTag = enum {
         none,
@@ -467,7 +440,7 @@ pub const InfluenceMap = struct {
         max_y: usize,
     };
 
-    pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid(u1)) !InfluenceMap {
+    pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid(u1), terrain_height: Grid(u8)) !InfluenceMap {
         const grid = try allocator.alloc(f32, base_grid.h * base_grid.w);
         for (grid, 0..) |*val, i| {
             val.* = if (base_grid.getValueIndex(i) > 0) 1 else f32_max;
@@ -476,6 +449,7 @@ pub const InfluenceMap = struct {
             .grid = grid,
             .w = base_grid.w,
             .h = base_grid.h,
+            .terrain_height = terrain_height.data,
         };
     }
 
@@ -627,9 +601,6 @@ pub const InfluenceMap = struct {
     /// as the asked point. After that accepts any spot
     /// that is pathable
     fn findClosestValidPoint(self: InfluenceMap, pos: Point2) ?Point2 {
-        // Terrain height has to be set from outside
-        // to the correct slice
-        assert(terrain_height.len > 0);
         const radius = 6;
         const bounding_rect = self.getCircleBoundingRect(pos, radius);
 
@@ -638,7 +609,7 @@ pub const InfluenceMap = struct {
         var best_dist: f32 = f32_max;
         var best_point: ?Point2 = null;
 
-        const height_at_start = terrain_height[self.pointToIndex(pos)];
+        const height_at_start = self.terrain_height[self.pointToIndex(pos)];
 
         var y = bounding_rect.min_y;
         while (y <= bounding_rect.max_y) : (y += 1) {
@@ -647,7 +618,7 @@ pub const InfluenceMap = struct {
                 const index = x + self.w * y;
                 const point = self.indexToPoint(index);
 
-                const height = terrain_height[index];
+                const height = self.terrain_height[index];
                 const dist_sqrd = point.distanceSquaredTo(pos);
                 if (dist_sqrd < r_sqrd and height == height_at_start and self.grid[index] < f32_max and dist_sqrd < best_dist) {
                     best_dist = dist_sqrd;
@@ -685,13 +656,47 @@ pub const InfluenceMap = struct {
         AllocationError,
     };
 
+    pub const PathfindResult = struct {
+        path_len: usize,
+        next_point: Point2,
+        path_cost: f32,
+    };
+
+    pub const PathfindPath = struct {
+        path_cost: f32,
+        path: []Point2,
+        allocator: mem.Allocator,
+
+        pub fn deinit(self: *PathfindPath) void {
+            self.allocator.free(self.path);
+        }
+    };
+
+    pub const DijkstraResult = struct {
+        dirs: []?PathfindResult,
+        allocator: mem.Allocator,
+
+        pub fn deinit(self: *DijkstraResult) void {
+            self.allocator.free(self.dirs);
+        }
+    };
+
+    pub const PathfindOptions = struct {
+        /// Units with larger radius like Thors, Siege Tanks, etc.
+        large_unit: bool = false,
+        /// When only returning a direction for where to go
+        /// this is the number of steps from the start which is treated
+        /// as the end point
+        point_to_take: u32 = 5,
+    };
+
     /// Returns just the path length and the direction, which is probably in practice what we mostly need
     /// during a game before we do another call the next step
-    pub fn pathfindDirection(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) PfError!?PathfindResult {
+    pub fn pathfindDirection(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, options: PathfindOptions) PfError!?PathfindResult {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        const came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return PfError.AllocationError;
+        const came_from = self.runPathfind(allocator, validated_start, validated_goal, options.large_unit) catch return PfError.AllocationError;
         defer allocator.free(came_from);
 
         const goal_index = self.pointToIndex(validated_goal);
@@ -700,13 +705,13 @@ pub const InfluenceMap = struct {
         if (cur == null) return null;
         const final_cost = cur.?.cost;
         const path_len = cur.?.path_len;
-        const point_to_take = 5;
+        const point_to_take = options.point_to_take;
 
         if (path_len <= point_to_take) {
             return .{
                 .path_len = path_len,
                 .next_point = validated_goal.add(.{ .x = 0.5, .y = 0.5 }),
-                .cost = final_cost,
+                .path_cost = final_cost,
             };
         }
         // Give the 5th point from the beginning as direction
@@ -718,17 +723,17 @@ pub const InfluenceMap = struct {
         return .{
             .path_len = path_len,
             .next_point = self.indexToPoint(cur.?.prev).add(.{ .x = 0.5, .y = 0.5 }),
-            .cost = final_cost,
+            .path_cost = final_cost,
         };
     }
 
     /// Returns the entire path we took from start to goal. Caller needs to call free the memory by calling deinit, or just
     /// use an arena or a fixed buffer for the step
-    pub fn pathfindPath(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, large_unit: bool) PfError!?PathfindPath {
+    pub fn pathfindPath(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, options: PathfindOptions) PfError!?PathfindPath {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
-        const came_from = self.runPathfind(allocator, validated_start, validated_goal, large_unit) catch return PfError.AllocationError;
+        const came_from = self.runPathfind(allocator, validated_start, validated_goal, options.large_unit) catch return PfError.AllocationError;
         defer allocator.free(came_from);
 
         const goal_index = self.pointToIndex(validated_goal);
@@ -866,7 +871,7 @@ pub const InfluenceMap = struct {
     /// Runs Dijkstra's algorithm to find the shortest path from start to any of the goals
     /// Returns the result with the path length, next point to take and the cost of the path
     /// Caller needs to call deinit on the result to free the memory or use an arena or a fixed buffer for the step
-    pub fn runDijkstra(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goals: []const Point2, large_unit: bool) PfError!DijkstraResult {
+    pub fn runDijkstra(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goals: []const Point2, options: PathfindOptions) PfError!DijkstraResult {
         const validated_start = self.validateEndPoint(start) orelse {
             const res = allocator.alloc(?PathfindResult, goals.len) catch return PfError.AllocationError;
             for (res) |*val| {
@@ -924,6 +929,7 @@ pub const InfluenceMap = struct {
             }
             closed.set(index);
 
+            const large_unit = options.large_unit;
             // We are assuming that we won't go out of bounds because in ingame grids the playable area is always only a portion
             // in the middle and it's surrounded by a lot of unpathable cells
 
@@ -986,13 +992,13 @@ pub const InfluenceMap = struct {
             }
             const final_cost = cur.?.cost;
             const path_len = cur.?.path_len;
-            const point_to_take = 5;
+            const point_to_take = options.point_to_take;
 
             if (path_len <= point_to_take) {
                 res[g] = .{
                     .path_len = path_len,
                     .next_point = self.indexToPoint(goal_index).add(.{ .x = 0.5, .y = 0.5 }),
-                    .cost = final_cost,
+                    .path_cost = final_cost,
                 };
                 continue;
             }
@@ -1005,7 +1011,7 @@ pub const InfluenceMap = struct {
             res[g] = .{
                 .path_len = path_len,
                 .next_point = self.indexToPoint(cur.?.prev).add(.{ .x = 0.5, .y = 0.5 }),
-                .cost = final_cost,
+                .path_cost = final_cost,
             };
         }
         return .{
@@ -1054,36 +1060,38 @@ test "test_pf_basic" {
     defer allocator.free(terrain_data);
 
     @memset(terrain_data, 10);
-    InfluenceMap.terrain_height = terrain_data;
+    const terrain_grid = Grid(u8){ .data = terrain_data, .w = size, .h = size };
 
-    var map = try InfluenceMap.fromGrid(allocator, grid);
+    var map = try InfluenceMap.fromGrid(allocator, grid, terrain_grid);
     defer map.deinit(allocator);
 
     const start: Point2 = .{ .x = 1.5, .y = 1.5 };
     const goal: Point2 = .{ .x = 10.5, .y = 10.5 };
 
-    var path_res = try map.pathfindPath(allocator, start, goal, false);
+    var path_res = try map.pathfindPath(allocator, start, goal, .{});
     defer path_res.?.deinit();
 
-    var dijkstra_res = try map.runDijkstra(allocator, start, &.{goal}, false);
+    var dijkstra_res = try map.runDijkstra(allocator, start, &.{ goal, goal }, .{});
     defer dijkstra_res.deinit();
 
-    const dir = try map.pathfindDirection(allocator, start, goal, false);
+    const dir = try map.pathfindDirection(allocator, start, goal, .{});
     try std.testing.expectEqual(path_res.?.path.len, 9);
     try std.testing.expectEqual(dir.?.path_len, path_res.?.path.len);
     try std.testing.expectEqual(dir.?.next_point, path_res.?.path[4]);
-    try std.testing.expectEqual(dijkstra_res.dirs[0].?.cost, dir.?.cost);
+    try std.testing.expectEqual(dijkstra_res.dirs[0].?.path_cost, dir.?.path_cost);
+    try std.testing.expectEqual(dijkstra_res.dirs[1].?.path_cost, dir.?.path_cost);
+    try std.testing.expectEqualDeep(dijkstra_res.dirs[1].?.next_point, dijkstra_res.dirs[0].?.next_point);
 
     const wall_indices = [_]usize{ 2 * size + 2, 3 * size + 2, 4 * size + 2, 5 * size + 2, 6 * size + 2, 7 * size + 2, 8 * size + 2, 2 * size + 3, 2 * size + 4, 2 * size + 5, 2 * size + 6 };
     grid.setValuesIndices(&wall_indices, 0);
 
-    var map2 = try InfluenceMap.fromGrid(allocator, grid);
+    var map2 = try InfluenceMap.fromGrid(allocator, grid, terrain_grid);
     defer map2.deinit(allocator);
-    const dir2 = (try map2.pathfindDirection(allocator, start, goal, false)).?;
+    const dir2 = (try map2.pathfindDirection(allocator, start, goal, .{})).?;
     try std.testing.expectEqual(dir2.path_len, 15);
 
     map2.addInfluence(.{ .x = 8, .y = 4 }, 4, 10, .none);
-    const dir3 = (try map2.pathfindDirection(allocator, start, goal, false)).?;
+    const dir3 = (try map2.pathfindDirection(allocator, start, goal, .{})).?;
     try std.testing.expectEqual(dir3.path_len, 17);
 
     const safe = map2.findClosestSafeSpot(.{ .x = 8, .y = 4 }, 6);

@@ -20,10 +20,6 @@ const ParseError = error{
     OutOfMemory,
 };
 
-const WriteError = error{
-    EndOfBuffer,
-};
-
 const ProtoHeader = struct {
     wire_type: WireType,
     field_number: u8,
@@ -31,7 +27,7 @@ const ProtoHeader = struct {
 
 pub const ProtoReader = struct {
     bytes_read: usize = 0,
-    bytes: []u8,
+    bytes: []const u8,
 
     fn decodeProtoHeader(self: *ProtoReader) !ProtoHeader {
         const header = try self.decodeUInt64();
@@ -43,7 +39,7 @@ pub const ProtoReader = struct {
     }
 
     /// Use an arena allocator and free all allocations afterwards when the results aren't needed anymore
-    pub fn decodeStruct(self: *ProtoReader, size: usize, comptime T: type, allocator: mem.Allocator) ParseError!T {
+    pub fn decodeStruct(self: *ProtoReader, size: usize, comptime T: type, allocator: mem.Allocator) !T {
         var res = T{};
 
         const field_nums_tuple = @field(T, "field_nums");

@@ -90,7 +90,7 @@ pub const WebSocketClient = struct {
         self.perm_allocator.free(self.storage);
     }
 
-    pub fn completeHandshake(self: *WebSocketClient, path: []const u8) !bool {
+    pub fn completeHandshake(self: *WebSocketClient, path: []const u8) !void {
         var raw_key: [handshake_key_length]u8 = undefined;
         var handshake_key: [handshake_key_length_b64]u8 = undefined;
 
@@ -119,29 +119,28 @@ pub const WebSocketClient = struct {
         var split_iter = mem.tokenizeSequence(u8, buf[0..total_read], "\r\n");
         if (split_iter.next()) |line| {
             if (!mem.startsWith(u8, line, "HTTP/1.1 101")) {
-                return false;
+                return error.ProtocolError;
             }
         }
 
         const string_to_find = "sec-websocket-accept: ";
 
-        var key_ok = false;
         while (split_iter.next()) |line| {
             const line_lowered = try self.step_allocator.alloc(u8, line.len);
             _ = ascii.lowerString(line_lowered, line);
             if (mem.startsWith(u8, line_lowered, string_to_find)) {
                 const received_key = line[string_to_find.len..line.len];
                 if (checkHandshakeKey(handshake_key[0..handshake_key_length_b64], received_key)) {
-                    key_ok = true;
+                    return;
                 }
                 break;
             }
         }
 
-        return key_ok;
+        return error.HandshakeFailed;
     }
 
-    pub fn createGameVsComputer(
+    pub fn createGameVsComputerAndJoin(
         self: *WebSocketClient,
         bot_setup: BotSetup,
         map_name: []const u8,
@@ -374,10 +373,10 @@ pub const WebSocketClient = struct {
         _ = try self.writeAndWaitForMessage(request);
     }
 
-    pub fn sendDebugRequest(self: *WebSocketClient, debug_proto: sc2p.RequestDebug) void {
+    pub fn sendDebugRequest(self: *WebSocketClient, debug_proto: sc2p.RequestDebug) !void {
         // This can silently fail without a big problem.
         const request = sc2p.Request{ .debug = debug_proto };
-        _ = self.writeAndWaitForMessage(request) catch return;
+        _ = try self.writeAndWaitForMessage(request);
     }
 
     pub fn getAvailableAbilities(self: *WebSocketClient, unit_tags: []u64, ignore_resource_requirements: bool) ?[]sc2p.ResponseQueryAvailableAbilities {
@@ -448,15 +447,15 @@ pub const WebSocketClient = struct {
         _ = try self.writeAndWaitForMessage(request);
     }
 
-    pub fn ping(self: *WebSocketClient) sc2p.ResponsePing {
+    pub fn ping(self: *WebSocketClient) !sc2p.ResponsePing {
         const request = sc2p.Request{ .ping = {} };
-        const res = self.writeAndWaitForMessage(request) catch return .{};
+        const res = try self.writeAndWaitForMessage(request);
 
         if (res.ping) |ping_res| {
             return ping_res;
         }
 
-        return .{};
+        return error.NoPingResponse;
     }
 
     fn writeAndWaitForMessage(self: *WebSocketClient, request: sc2p.Request) !sc2p.Response {

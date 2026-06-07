@@ -11,6 +11,12 @@ const sc2p = @import("sc2proto.zig");
 const ws = @import("client.zig");
 pub const bot_data = @import("bot.zig");
 
+pub const BotContext = struct {
+    bot: *const bot_data.Bot,
+    game_info: *const bot_data.GameInfo,
+    actions: *bot_data.Actions,
+};
+
 const InputType = enum(u8) {
     none,
     ladder_server,
@@ -89,7 +95,7 @@ fn getStandardSC2Folder(allocator: mem.Allocator, proton: bool, env: *const std.
         .windows => "C:/Program Files (x86)/StarCraft II",
         .macos => "/Applications/StarCraft II",
         .linux => l: {
-            const home = env.get(allocator, "HOME") orelse "";
+            const home = env.get("HOME") orelse "";
 
             if (proton) {
                 break :l try std.fs.path.join(
@@ -174,7 +180,10 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, io: std.Io, pr
 
 fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArguments {
     var program_args = ProgramArguments{};
-    var arg_iter = args.iterateAllocator(allocator) catch return;
+    var arg_iter = args.iterateAllocator(allocator) catch {
+        log.err("Failed to iterate arguments", .{});
+        return program_args;
+    };
     defer arg_iter.deinit();
     // Skip exe name
     _ = arg_iter.skip();
@@ -220,10 +229,16 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     program_args.ladder_server = argument;
                 },
                 InputType.game_port => {
-                    program_args.game_port = fmt.parseUnsigned(u16, argument, 0) catch continue;
+                    program_args.game_port = fmt.parseUnsigned(u16, argument, 0) catch {
+                        log.err("Invalid game port {s}", .{argument});
+                        continue;
+                    };
                 },
                 InputType.start_port => {
-                    program_args.start_port = fmt.parseUnsigned(u16, argument, 0) catch continue;
+                    program_args.start_port = fmt.parseUnsigned(u16, argument, 0) catch {
+                        log.err("Invalid start port {s}", .{argument});
+                        continue;
+                    };
                 },
                 InputType.opponent_id => {
                     program_args.opponent_id = argument;
@@ -232,10 +247,10 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     if (difficulty_map.get(argument)) |difficulty| {
                         program_args.computer_difficulty = difficulty;
                     } else {
-                        log.info("Unknown difficulty {s}", .{argument});
-                        log.info("Available difficulties:", .{});
+                        log.err("Unknown difficulty {s}", .{argument});
+                        log.err("Available difficulties:", .{});
                         for (difficulty_map.keys()) |key| {
-                            log.info("{s}", .{key});
+                            log.err("{s}", .{key});
                         }
                     }
                 },
@@ -243,10 +258,10 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     if (race_map.get(argument)) |race| {
                         program_args.computer_race = race;
                     } else {
-                        log.info("Unknown race {s}", .{argument});
-                        log.info("Available races:", .{});
+                        log.err("Unknown race {s}", .{argument});
+                        log.err("Available races:", .{});
                         for (race_map.keys()) |key| {
-                            log.info("{s}", .{key});
+                            log.err("{s}", .{key});
                         }
                     }
                 },
@@ -254,10 +269,10 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     if (build_map.get(argument)) |build| {
                         program_args.computer_build = build;
                     } else {
-                        log.info("Unknown build {s}", .{argument});
-                        log.info("Available builds:", .{});
+                        log.err("Unknown build {s}", .{argument});
+                        log.err("Available builds:", .{});
                         for (build_map.keys()) |key| {
-                            log.info("{s}", .{key});
+                            log.err("{s}", .{key});
                         }
                     }
                 },
@@ -268,10 +283,10 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     if (race_map.get(argument)) |race| {
                         program_args.human_race = race;
                     } else {
-                        log.info("Unknown race {s}", .{argument});
-                        log.info("Available races:", .{});
+                        log.err("Unknown race {s}", .{argument});
+                        log.err("Available races:", .{});
                         for (race_map.keys()) |key| {
-                            log.info("{s}", .{key});
+                            log.err("{s}", .{key});
                         }
                     }
                 },
@@ -361,11 +376,11 @@ fn runHumanGame(
 
     defer client.deinit();
 
-    if (!try client.completeHandshake("/sc2api")) {
+    client.completeHandshake("/sc2api") catch |err| {
         log.err("Failed websocket handshake", .{});
         sc2_process.kill(io);
-        return;
-    }
+        return err;
+    };
 
     defer {
         _ = client.quit() catch {
@@ -402,6 +417,7 @@ fn runHumanGame(
 }
 
 const RunParams = struct {
+    /// Should be greater than 1.
     step_count: u32 = 2,
     arena: *std.heap.ArenaAllocator,
     gpa: mem.Allocator,
@@ -419,7 +435,7 @@ pub fn run(
     // and so on.
     // Step_count 2 should be good enough
     // regardless
-    std.debug.assert(params.step_count > 1);
+    if (params.step_count < 2) return error.InvalidStepCount;
     // Arena allocator that is freed at the end of the game
     const arena = params.arena.allocator();
 
@@ -514,13 +530,13 @@ pub fn run(
 
     defer client.deinit();
 
-    if (!try client.completeHandshake("/sc2api")) {
+    client.completeHandshake("/sc2api") catch |err| {
         log.err("Failed websocket handshake", .{});
         if (sc2_process) |*sc2| {
             sc2.kill(params.io);
         }
-        return RunError.NoConnection;
-    }
+        return err;
+    };
 
     defer {
         if (sc2_process) |*sc2| {
@@ -600,7 +616,7 @@ pub fn run(
                 map_name = try mem.concat(arena, u8, &.{ program_args.map_file_name, ".SC2Map" });
             }
 
-            break :pid client.createGameVsComputer(
+            break :pid client.createGameVsComputerAndJoin(
                 bot_setup,
                 map_name,
                 ws.ComputerSetup{
@@ -657,7 +673,11 @@ pub fn run(
                     log.err("Unable to leave game", .{});
                 };
             }
-            try user_bot.onResult(bot, game_info, res);
+            try user_bot.onResult(.{
+                .bot = &bot,
+                .game_info = &game_info,
+                .actions = &actions,
+            }, res);
             return res;
         }
 
@@ -698,9 +718,12 @@ pub fn run(
                 arena,
                 step_arena,
             );
-            bot_data.grids.InfluenceMap.terrain_height = game_info.terrain_height.data;
             game_info.updateGrids(bot);
-            try user_bot.onStart(bot, game_info, &actions);
+            try user_bot.onStart(.{
+                .bot = &bot,
+                .game_info = &game_info,
+                .actions = &actions,
+            });
             first_step_done = true;
         } else game_info.updateGrids(bot);
 
@@ -714,7 +737,11 @@ pub fn run(
             }
         }
 
-        try user_bot.onStep(bot, game_info, &actions);
+        try user_bot.onStep(.{
+            .bot = &bot,
+            .game_info = &game_info,
+            .actions = &actions,
+        });
 
         if (actions.leave_game) {
             if (sc2_process) |_| {
@@ -728,7 +755,11 @@ pub fn run(
             _ = client.leave() catch {
                 log.err("Unable to leave game", .{});
             };
-            try user_bot.onResult(bot, game_info, .defeat);
+            try user_bot.onResult(.{
+                .bot = &bot,
+                .game_info = &game_info,
+                .actions = &actions,
+            }, .defeat);
             return .defeat;
         }
 
@@ -738,7 +769,8 @@ pub fn run(
             };
         }
         if (actions.debugCommandsToProto()) |debug_proto| {
-            client.sendDebugRequest(debug_proto);
+            // Ignore errors from debug request, as it can silently fail without a problem
+            client.sendDebugRequest(debug_proto) catch {};
         }
         if (!program_args.realtime) {
             try client.step(params.step_count);
@@ -786,43 +818,36 @@ test "runner_test_basic" {
 
         pub fn onStart(
             self: *Self,
-            bot: bot_data.Bot,
-            game_info: bot_data.GameInfo,
-            actions: *bot_data.Actions,
+            ctx: BotContext,
         ) !void {
             _ = self;
-            const enemy_start_location = game_info.enemy_start_locations[0];
-            const units = bot.units.values();
+            const enemy_start_location = ctx.game_info.enemy_start_locations[0];
+            const units = ctx.bot.units.values();
 
             for (units) |unit| {
                 if (unit.unit_type == bot_data.UnitId.SCV) {
-                    actions.attackPosition(unit.tag, enemy_start_location, false);
+                    ctx.actions.attackPosition(unit.tag, enemy_start_location, false);
                 }
             }
-            actions.chat(.broadcast, "Testing all chat!");
-            actions.chat(.team, "Testing team chat!");
+            ctx.actions.chat(.broadcast, "Testing all chat!");
+            ctx.actions.chat(.team, "Testing team chat!");
         }
 
         pub fn onStep(
             self: *Self,
-            bot: bot_data.Bot,
-            game_info: bot_data.GameInfo,
-            actions: *bot_data.Actions,
+            ctx: BotContext,
         ) !void {
-            _ = game_info;
             _ = self;
-            if (bot.game_loop > 500) actions.leaveGame();
+            if (ctx.bot.game_loop > 500) ctx.actions.leaveGame();
         }
 
         pub fn onResult(
             self: *Self,
-            bot: bot_data.Bot,
-            game_info: bot_data.GameInfo,
+            ctx: BotContext,
             result: bot_data.Result,
         ) !void {
             try std.testing.expectEqual(.defeat, result);
-            _ = bot;
-            _ = game_info;
+            _ = ctx;
             _ = self;
         }
     };
