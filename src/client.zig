@@ -47,6 +47,16 @@ pub const BotSetup = struct {
     race: sc2p.Race,
 };
 
+const default_interface_options = sc2p.InterfaceOptions{
+    .raw = true,
+    .score = false,
+    .show_cloaked = true,
+    .raw_affects_selection = false,
+    .raw_crop_to_playable_area = false,
+    .show_placeholders = true,
+    .show_burrowed_shadows = true,
+};
+
 /// Sc2 uses websockets for communication
 /// with a protobuf 2 format
 /// https://github.com/Blizzard/s2client-proto.
@@ -195,19 +205,9 @@ pub const WebSocketClient = struct {
 
         // Join game
 
-        const interface = sc2p.InterfaceOptions{
-            .raw = true,
-            .score = false,
-            .show_cloaked = true,
-            .raw_affects_selection = false,
-            .raw_crop_to_playable_area = false,
-            .show_placeholders = true,
-            .show_burrowed_shadows = true,
-        };
-
         const join_game = sc2p.RequestJoinGame{
             .race = bot_setup.race,
-            .options = interface,
+            .options = default_interface_options,
             .server_ports = null,
             .client_ports = null,
             .player_name = bot_setup.name,
@@ -287,16 +287,6 @@ pub const WebSocketClient = struct {
         bot_setup: BotSetup,
         start_port: u16,
     ) !u32 {
-        const interface = sc2p.InterfaceOptions{
-            .raw = true,
-            .score = false,
-            .show_cloaked = true,
-            .raw_affects_selection = false,
-            .raw_crop_to_playable_area = false,
-            .show_placeholders = true,
-            .show_burrowed_shadows = true,
-        };
-
         const int_port = @as(i32, start_port);
 
         const server_ports = sc2p.PortSet{
@@ -311,7 +301,7 @@ pub const WebSocketClient = struct {
 
         const join_game = sc2p.RequestJoinGame{
             .race = bot_setup.race,
-            .options = interface,
+            .options = default_interface_options,
             .server_ports = server_ports,
             .client_ports = client_ports,
             .player_name = bot_setup.name,
@@ -336,6 +326,48 @@ pub const WebSocketClient = struct {
         }
 
         return jg_data.player_id.?;
+    }
+
+    /// Starts watching a replay from the given path.
+    /// The path should be absolute, otherwise sc2 resolves
+    /// it relative to its own replay folder.
+    pub fn startReplay(
+        self: *WebSocketClient,
+        replay_path: []const u8,
+        observed_player_id: u32,
+        disable_fog: bool,
+        realtime: bool,
+    ) !void {
+        const start_replay = sc2p.RequestStartReplay{
+            .replay_path = replay_path,
+            .observed_player_id = @as(i32, @intCast(observed_player_id)),
+            .options = default_interface_options,
+            .disable_fog = disable_fog,
+            .realtime = realtime,
+        };
+
+        const request = sc2p.Request{ .start_replay = start_replay };
+        const res = try self.writeAndWaitForMessage(request);
+
+        if (res.start_replay == null or res.status == null) {
+            std.log.err("Did not get start replay response", .{});
+            return ClientError.BadResponse;
+        }
+
+        const sr_data = res.start_replay.?;
+
+        if (sr_data.error_code) |code| {
+            std.log.err("Start replay error: {d}", .{@intFromEnum(code)});
+            if (sr_data.error_details) |details| {
+                std.log.err("{s}", .{details});
+            }
+            return ClientError.BadResponse;
+        }
+
+        if (res.status.? != sc2p.Status.in_replay) {
+            std.log.err("Wrong status after start replay: {d}", .{@intFromEnum(res.status.?)});
+            return ClientError.BadResponse;
+        }
     }
 
     pub fn getObservation(self: *WebSocketClient, game_loop: ?u32) !sc2p.ResponseObservation {

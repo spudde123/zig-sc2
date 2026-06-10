@@ -32,6 +32,9 @@ const InputType = enum(u8) {
     sc2_path,
     proton,
     steam_compat_data_path,
+    replay,
+    observed_player,
+    disable_fog,
 };
 
 const ProgramArguments = struct {
@@ -52,6 +55,38 @@ const ProgramArguments = struct {
     // And it requires steam_compat_data_path environment variable to be set
     proton: ?[]const u8 = null,
     steam_compat_data_path: ?[]const u8 = null,
+    replay_path: ?[]const u8 = null,
+    observed_player_id: u32 = 1,
+    disable_fog: bool = false,
+};
+
+/// Explicit representation of what the runner should do,
+/// resolved from the command line arguments.
+pub const GameMode = union(enum) {
+    ladder: struct {
+        opponent_id: ?[]const u8,
+    },
+    vs_computer: struct {
+        computer: ws.ComputerSetup,
+        map: []const u8,
+    },
+    vs_human: struct {
+        human_race: sc2p.Race,
+        map: []const u8,
+    },
+    replay: struct {
+        path: []const u8,
+        observed_player_id: u32,
+        disable_fog: bool,
+    },
+};
+
+const Config = struct {
+    mode: GameMode,
+    realtime: bool,
+    host: []const u8,
+    game_port: u16,
+    start_port: u16,
 };
 
 const race_map = std.StaticStringMap(sc2p.Race).initComptime(.{
@@ -125,6 +160,9 @@ const RunError = error{
     FailedToCreateGame,
     FailedToSpawnThread,
     FailedToJoin,
+    FailedToStartReplay,
+    ConflictingArguments,
+    ReplayNotFound,
 };
 
 const Sc2PathError = error{
@@ -220,6 +258,13 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                 current_input_type = InputType.proton;
             } else if (mem.eql(u8, argument, "--SteamCompatDataPath")) {
                 current_input_type = InputType.steam_compat_data_path;
+            } else if (mem.eql(u8, argument, "--Replay")) {
+                current_input_type = InputType.replay;
+            } else if (mem.eql(u8, argument, "--ObservedPlayer")) {
+                current_input_type = InputType.observed_player;
+            } else if (mem.eql(u8, argument, "--DisableFog")) {
+                current_input_type = InputType.disable_fog;
+                program_args.disable_fog = true;
             } else {
                 current_input_type = InputType.none;
             }
@@ -299,6 +344,15 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                 InputType.steam_compat_data_path => {
                     program_args.steam_compat_data_path = argument;
                 },
+                InputType.replay => {
+                    program_args.replay_path = argument;
+                },
+                InputType.observed_player => {
+                    program_args.observed_player_id = fmt.parseUnsigned(u32, argument, 0) catch {
+                        log.err("Invalid observed player id {s}", .{argument});
+                        continue;
+                    };
+                },
                 else => {},
             }
             current_input_type = InputType.none;
@@ -307,12 +361,137 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
     return program_args;
 }
 
+/// Resolves the explicit game mode and connection settings
+/// from the raw command line arguments.
+fn buildConfig(arena: mem.Allocator, io: Io, program_args: ProgramArguments) !Config {
+    const mode: GameMode = mode: {
+        if (program_args.replay_path != null and (program_args.ladder_server != null or program_args.human_game)) {
+            log.err("--Replay can't be combined with --LadderServer or --Human", .{});
+            return RunError.ConflictingArguments;
+        }
+
+        if (program_args.ladder_server != null) {
+            break :mode .{ .ladder = .{ .opponent_id = program_args.opponent_id } };
+        }
+
+        if (program_args.replay_path) |path| {
+            // Sc2 resolves relative paths against its own replay folder
+            // which is rarely what the user means, so resolve the path
+            // against our working directory instead
+            const absolute_path = Io.Dir.cwd().realPathFileAlloc(io, path, arena) catch {
+                log.err("Replay file not found: {s}", .{path});
+                return RunError.ReplayNotFound;
+            };
+            break :mode .{ .replay = .{
+                .path = absolute_path,
+                .observed_player_id = program_args.observed_player_id,
+                .disable_fog = program_args.disable_fog,
+            } };
+        }
+
+        var map_name = program_args.map_file_name;
+        if (!mem.endsWith(u8, map_name, ".SC2Map")) {
+            map_name = try mem.concat(arena, u8, &.{ map_name, ".SC2Map" });
+        }
+
+        if (program_args.human_game) {
+            break :mode .{ .vs_human = .{
+                .human_race = program_args.human_race,
+                .map = map_name,
+            } };
+        }
+
+        break :mode .{ .vs_computer = .{
+            .computer = .{
+                .difficulty = program_args.computer_difficulty,
+                .build = program_args.computer_build,
+                .race = program_args.computer_race,
+            },
+            .map = map_name,
+        } };
+    };
+
+    const game_port: u16 = program_args.game_port orelse 5001;
+    return .{
+        .mode = mode,
+        .realtime = program_args.realtime,
+        .host = program_args.ladder_server orelse "127.0.0.1",
+        .game_port = game_port,
+        .start_port = program_args.start_port orelse game_port + 2,
+    };
+}
+
+fn launchSc2(
+    io: Io,
+    arena: mem.Allocator,
+    sc2_paths: Sc2Paths,
+    env: *const std.process.Environ.Map,
+    host: []const u8,
+    port: u16,
+    proton: ?[]const u8,
+) !ChildProcess {
+    var sc2_args: std.ArrayList([]const u8) = .empty;
+    if (proton) |proton_path| {
+        try sc2_args.append(arena, proton_path);
+        try sc2_args.append(arena, "runinprefix");
+    }
+    try sc2_args.appendSlice(arena, &.{
+        sc2_paths.latest_binary,
+        "-listen",
+        host,
+        "-port",
+        try fmt.allocPrint(arena, "{d}", .{port}),
+        "-dataDir",
+        sc2_paths.base_folder,
+    });
+
+    const cwd: ChildProcess.Cwd = if (sc2_paths.working_directory) |path| .{ .path = path } else .{ .inherit = {} };
+
+    return std.process.spawn(io, .{
+        .argv = sc2_args.items,
+        .cwd = cwd,
+        .environ_map = env,
+    });
+}
+
+const connection_attempts = 20;
+const connection_retry_delay_s = 2;
+
+fn connectAndHandshake(
+    io: Io,
+    host: []const u8,
+    port: u16,
+    perm_alloc: mem.Allocator,
+    step_alloc: mem.Allocator,
+) !ws.WebSocketClient {
+    var attempt: u32 = 0;
+    var client = while (attempt < connection_attempts) : (attempt += 1) {
+        log.debug("Doing ws connection loop {d}", .{attempt});
+        const client = ws.WebSocketClient.init(io, host, port, perm_alloc, step_alloc) catch {
+            try io.sleep(.fromSeconds(connection_retry_delay_s), .awake);
+            continue;
+        };
+        break client;
+    } else {
+        log.err("Failed to connect to sc2", .{});
+        return RunError.NoConnection;
+    };
+    errdefer client.deinit();
+
+    client.completeHandshake("/sc2api") catch |err| {
+        log.err("Failed websocket handshake", .{});
+        return err;
+    };
+
+    return client;
+}
+
 fn runHumanGame(
     io: Io,
     allocator: mem.Allocator,
     step_count: u32,
     sc2_paths: Sc2Paths,
-    map_absolute_path: []const u8,
+    map_name: []const u8,
     bot_setup: ws.BotSetup,
     realtime: bool,
     game_port: u16,
@@ -331,56 +510,13 @@ fn runHumanGame(
 
     const host = "127.0.0.1";
 
-    var sc2_args: std.ArrayList([]const u8) = .empty;
-    if (proton) |proton_path| {
-        try sc2_args.append(arena, proton_path);
-        try sc2_args.append(arena, "runinprefix");
-    }
-    try sc2_args.appendSlice(arena, &.{
-        sc2_paths.latest_binary,
-        "-listen",
-        host,
-        "-port",
-        try fmt.allocPrint(arena, "{d}", .{game_port}),
-        "-dataDir",
-        sc2_paths.base_folder,
-    });
+    var sc2_process = try launchSc2(io, arena, sc2_paths, env, host, game_port, proton);
 
-    const cwd: ChildProcess.Cwd = if (sc2_paths.working_directory) |path| .{ .path = path } else .{ .inherit = {} };
-
-    var sc2_process = try std.process.spawn(io, .{
-        .argv = sc2_args.items,
-        .cwd = cwd,
-        .environ_map = env,
-    });
-
-    const times_to_try = 20;
-    var attempt: u32 = 0;
-
-    var client: ws.WebSocketClient = undefined;
-    var connection_ok = false;
-    while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
-        log.debug("Doing ws connection loop {d}", .{attempt});
-        client = ws.WebSocketClient.init(io, host, game_port, arena, step_arena) catch {
-            try io.sleep(.fromSeconds(2), .awake);
-            continue;
-        };
-        connection_ok = true;
-    }
-
-    if (!connection_ok) {
-        log.err("Failed to connect to sc2", .{});
-        sc2_process.kill(io);
-        return;
-    }
-
-    defer client.deinit();
-
-    client.completeHandshake("/sc2api") catch |err| {
-        log.err("Failed websocket handshake", .{});
+    var client = connectAndHandshake(io, host, game_port, arena, step_arena) catch |err| {
         sc2_process.kill(io);
         return err;
     };
+    defer client.deinit();
 
     defer {
         _ = client.quit() catch {
@@ -388,7 +524,7 @@ fn runHumanGame(
         };
     }
 
-    client.createGameVsHuman(map_absolute_path, realtime) catch |err| {
+    client.createGameVsHuman(map_name, realtime) catch |err| {
         log.err("Failed to create human game: {s}", .{@errorName(err)});
         return;
     };
@@ -430,11 +566,9 @@ pub fn run(
     params: RunParams,
 ) !bot_data.Result {
     // Step_count 1 may cause problems from
-    // what i've heard with unit orders
-    // not showing up yet on the next frame
+    // with unit orders not showing up yet on the next frame
     // and so on.
     // Step_count 2 should be good enough
-    // regardless
     if (params.step_count < 2) return error.InvalidStepCount;
     // Arena allocator that is freed at the end of the game
     const arena = params.arena.allocator();
@@ -467,71 +601,29 @@ pub fn run(
     if (program_args.sc2_path == null) {
         program_args.sc2_path = env.get("SC2");
     }
-    const sc2_base_folder = program_args.sc2_path orelse try getStandardSC2Folder(arena, program_args.proton != null, &env);
-    const ladder_game = program_args.ladder_server != null;
-    const host: []const u8 = program_args.ladder_server orelse "127.0.0.1";
-    const game_port: u16 = program_args.game_port orelse 5001;
-    const start_port: u16 = program_args.start_port orelse game_port + 2;
+    const config = try buildConfig(arena, params.io, program_args);
 
     var sc2_process: ?ChildProcess = null;
     var sc2_paths: Sc2Paths = undefined;
 
-    if (!ladder_game) {
+    if (config.mode != .ladder) {
+        const sc2_base_folder = program_args.sc2_path orelse try getStandardSC2Folder(arena, program_args.proton != null, &env);
         sc2_paths = try getSc2Paths(sc2_base_folder, arena, params.io, program_args.proton != null);
         if (program_args.steam_compat_data_path) |steam_compat_data_path| {
             try env.put("STEAM_COMPAT_DATA_PATH", steam_compat_data_path);
         }
-        var sc2_args: std.ArrayList([]const u8) = .empty;
-        if (program_args.proton) |proton| {
-            try sc2_args.append(arena, proton);
-            try sc2_args.append(arena, "runinprefix");
-        }
-        try sc2_args.appendSlice(arena, &.{
-            sc2_paths.latest_binary,
-            "-listen",
-            host,
-            "-port",
-            try fmt.allocPrint(arena, "{d}", .{game_port}),
-            "-dataDir",
-            sc2_paths.base_folder,
-        });
-
-        const cwd: ChildProcess.Cwd = if (sc2_paths.working_directory) |path| .{ .path = path } else .{ .inherit = {} };
-
-        sc2_process = try std.process.spawn(params.io, .{
-            .argv = sc2_args.items,
-            .cwd = cwd,
-            .environ_map = &env,
-        });
+        sc2_process = try launchSc2(
+            params.io,
+            arena,
+            sc2_paths,
+            &env,
+            config.host,
+            config.game_port,
+            program_args.proton,
+        );
     }
 
-    const times_to_try = 20;
-    var attempt: u32 = 0;
-
-    var client: ws.WebSocketClient = undefined;
-    var connection_ok = false;
-    while (!connection_ok and attempt < times_to_try) : (attempt += 1) {
-        log.debug("Doing ws connection loop {d}", .{attempt});
-        client = ws.WebSocketClient.init(params.io, host, game_port, arena, step_arena) catch {
-            try params.io.sleep(.fromSeconds(2), .awake);
-            continue;
-        };
-        connection_ok = true;
-    }
-
-    if (!connection_ok) {
-        log.err("Failed to connect to sc2", .{});
-
-        if (sc2_process) |*sc2| {
-            sc2.kill(params.io);
-        }
-        return RunError.NoConnection;
-    }
-
-    defer client.deinit();
-
-    client.completeHandshake("/sc2api") catch |err| {
-        log.err("Failed websocket handshake", .{});
+    var client = connectAndHandshake(params.io, config.host, config.game_port, arena, step_arena) catch |err| {
         if (sc2_process) |*sc2| {
             sc2.kill(params.io);
         }
@@ -572,18 +664,12 @@ pub fn run(
     }
     const bot_setup: ws.BotSetup = .{ .name = user_bot.name, .race = user_bot.race };
 
-    const player_id: u32 = pid: {
-        if (ladder_game) {
-            break :pid client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
-                log.err("Failed to join ladder game: {s}", .{@errorName(err)});
-                return RunError.FailedToJoin;
-            };
-        } else if (program_args.human_game) {
-            var map_name = program_args.map_file_name;
-            if (!mem.endsWith(u8, map_name, ".SC2Map")) {
-                map_name = try mem.concat(arena, u8, &.{ program_args.map_file_name, ".SC2Map" });
-            }
-
+    const player_id: u32 = switch (config.mode) {
+        .ladder => client.joinMultiplayerGame(bot_setup, config.start_port) catch |err| {
+            log.err("Failed to join ladder game: {s}", .{@errorName(err)});
+            return RunError.FailedToJoin;
+        },
+        .vs_human => |human| pid: {
             // Start a separate thread for the human to play
             // the game. That client acts as the game host
             // because it seems only the host can manually
@@ -594,11 +680,11 @@ pub fn run(
                 params.gpa,
                 params.step_count,
                 sc2_paths,
-                map_name,
-                ws.BotSetup{ .name = "Human", .race = program_args.human_race },
-                program_args.realtime,
-                game_port + 1,
-                start_port,
+                human.map,
+                ws.BotSetup{ .name = "Human", .race = human.human_race },
+                config.realtime,
+                config.game_port + 1,
+                config.start_port,
                 program_args.proton,
                 &env,
             }) catch |err| {
@@ -606,31 +692,35 @@ pub fn run(
                 return RunError.FailedToSpawnThread;
             };
 
-            break :pid client.joinMultiplayerGame(bot_setup, start_port) catch |err| {
+            break :pid client.joinMultiplayerGame(bot_setup, config.start_port) catch |err| {
                 log.err("Failed to join human game with bot: {s}", .{@errorName(err)});
                 return RunError.FailedToJoin;
             };
-        } else {
-            var map_name = program_args.map_file_name;
-            if (!mem.endsWith(u8, map_name, ".SC2Map")) {
-                map_name = try mem.concat(arena, u8, &.{ program_args.map_file_name, ".SC2Map" });
-            }
-
-            break :pid client.createGameVsComputerAndJoin(
-                bot_setup,
-                map_name,
-                ws.ComputerSetup{
-                    .difficulty = program_args.computer_difficulty,
-                    .build = program_args.computer_build,
-                    .race = program_args.computer_race,
-                },
-                program_args.realtime,
+        },
+        .vs_computer => |comp| client.createGameVsComputerAndJoin(
+            bot_setup,
+            comp.map,
+            comp.computer,
+            config.realtime,
+        ) catch |err| {
+            log.err("Failed to create game: {s}", .{@errorName(err)});
+            return RunError.FailedToCreateGame;
+        },
+        .replay => |replay| pid: {
+            client.startReplay(
+                replay.path,
+                replay.observed_player_id,
+                replay.disable_fog,
+                config.realtime,
             ) catch |err| {
-                log.err("Failed to create game: {s}", .{@errorName(err)});
-                return RunError.FailedToCreateGame;
+                log.err("Failed to start replay: {s}", .{@errorName(err)});
+                return RunError.FailedToStartReplay;
             };
-        }
+            break :pid replay.observed_player_id;
+        },
     };
+
+    const is_replay = config.mode == .replay;
 
     var game_info: bot_data.GameInfo = undefined;
 
@@ -654,7 +744,7 @@ pub fn run(
     while (true) {
         defer _ = step_arena_instance.reset(.retain_capacity);
 
-        const obs = if (program_args.realtime) try client.getObservation(requested_game_loop) else try client.getObservation(null);
+        const obs = if (config.realtime) try client.getObservation(requested_game_loop) else try client.getObservation(null);
 
         var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, arena, step_arena);
         // Not sure if the given game loop may be larger than what was requested
@@ -662,12 +752,18 @@ pub fn run(
         // Regardless doesn't hurt to sync it
         requested_game_loop = bot.game_loop + params.step_count;
 
-        if (bot.result) |res| {
-            if (sc2_process) |_| {
-                if (createReplayName(params.io, arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
-                    _ = client.saveReplay(replay_name) catch |err| {
-                        log.err("Unable to save replay: {s}", .{@errorName(err)});
-                    };
+        // In a replay we may not get a player result and instead
+        // the status just changes to ended once the replay is over
+        const replay_ended = is_replay and client.status == .ended;
+        if (bot.result != null or replay_ended) {
+            const res: bot_data.Result = bot.result orelse .undecided;
+            if (!is_replay and sc2_process != null) {
+                if (first_step_done) {
+                    if (createReplayName(params.io, arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
+                        _ = client.saveReplay(replay_name) catch |err| {
+                            log.err("Unable to save replay: {s}", .{@errorName(err)});
+                        };
+                    }
                 }
                 client.leave() catch {
                     log.err("Unable to leave game", .{});
@@ -681,10 +777,12 @@ pub fn run(
             return res;
         }
 
-        const all_own_unit_tags = bot.units.keys();
-        if (all_own_unit_tags.len > 0) {
-            if (client.getAvailableAbilities(all_own_unit_tags, false)) |abilities_proto| {
-                bot.setUnitAbilitiesFromProto(abilities_proto, step_arena);
+        if (!is_replay) {
+            const all_own_unit_tags = bot.units.keys();
+            if (all_own_unit_tags.len > 0) {
+                if (client.getAvailableAbilities(all_own_unit_tags, false)) |abilities_proto| {
+                    bot.setUnitAbilitiesFromProto(abilities_proto, step_arena);
+                }
             }
         }
 
@@ -744,35 +842,40 @@ pub fn run(
         });
 
         if (actions.leave_game) {
-            if (sc2_process) |_| {
-                if (createReplayName(params.io, arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
-                    _ = client.saveReplay(replay_name) catch |err| {
-                        log.err("Unable to save replay: {s}", .{@errorName(err)});
-                    };
+            const res: bot_data.Result = if (is_replay) .undecided else .defeat;
+            if (!is_replay) {
+                if (sc2_process) |_| {
+                    if (createReplayName(params.io, arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
+                        _ = client.saveReplay(replay_name) catch |err| {
+                            log.err("Unable to save replay: {s}", .{@errorName(err)});
+                        };
+                    }
                 }
-            }
 
-            client.leave() catch {
-                log.err("Unable to leave game", .{});
-            };
+                client.leave() catch {
+                    log.err("Unable to leave game", .{});
+                };
+            }
             try user_bot.onResult(.{
                 .bot = &bot,
                 .game_info = &game_info,
                 .actions = &actions,
-            }, .defeat);
-            return .defeat;
+            }, res);
+            return res;
         }
 
-        if (actions.toProto()) |action_proto| {
-            client.sendActions(action_proto) catch {
-                log.err("Error sending actions at game loop {d}", .{bot.game_loop});
-            };
+        if (!is_replay) {
+            if (actions.toProto()) |action_proto| {
+                client.sendActions(action_proto) catch {
+                    log.err("Error sending actions at game loop {d}", .{bot.game_loop});
+                };
+            }
+            if (actions.debugCommandsToProto()) |debug_proto| {
+                // Ignore errors from debug request, as it can silently fail without a problem
+                client.sendDebugRequest(debug_proto) catch {};
+            }
         }
-        if (actions.debugCommandsToProto()) |debug_proto| {
-            // Ignore errors from debug request, as it can silently fail without a problem
-            client.sendDebugRequest(debug_proto) catch {};
-        }
-        if (!program_args.realtime) {
+        if (!config.realtime) {
             try client.step(params.step_count);
         }
         actions.clear();
