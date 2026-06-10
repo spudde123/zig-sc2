@@ -34,6 +34,7 @@ const InputType = enum(u8) {
     steam_compat_data_path,
     replay,
     observed_player,
+    observed_bot,
     disable_fog,
 };
 
@@ -56,8 +57,17 @@ const ProgramArguments = struct {
     proton: ?[]const u8 = null,
     steam_compat_data_path: ?[]const u8 = null,
     replay_path: ?[]const u8 = null,
-    observed_player_id: u32 = 1,
+    observed_player_id: ?u32 = null,
+    observed_bot_name: ?[]const u8 = null,
     disable_fog: bool = false,
+};
+
+/// Which player to observe when watching a replay.
+/// A bot name needs to be resolved to a player id
+/// through a replay info request once we are connected.
+pub const ObservedPlayer = union(enum) {
+    player_id: u32,
+    bot_name: []const u8,
 };
 
 /// Explicit representation of what the runner should do,
@@ -76,7 +86,7 @@ pub const GameMode = union(enum) {
     },
     replay: struct {
         path: []const u8,
-        observed_player_id: u32,
+        observed: ObservedPlayer,
         disable_fog: bool,
     },
 };
@@ -163,6 +173,7 @@ const RunError = error{
     FailedToStartReplay,
     ConflictingArguments,
     ReplayNotFound,
+    BotNotInReplay,
 };
 
 const Sc2PathError = error{
@@ -262,6 +273,8 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                 current_input_type = InputType.replay;
             } else if (mem.eql(u8, argument, "--ObservedPlayer")) {
                 current_input_type = InputType.observed_player;
+            } else if (mem.eql(u8, argument, "--ObservedBot")) {
+                current_input_type = InputType.observed_bot;
             } else if (mem.eql(u8, argument, "--DisableFog")) {
                 current_input_type = InputType.disable_fog;
                 program_args.disable_fog = true;
@@ -353,6 +366,9 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                         continue;
                     };
                 },
+                InputType.observed_bot => {
+                    program_args.observed_bot_name = argument;
+                },
                 else => {},
             }
             current_input_type = InputType.none;
@@ -375,6 +391,16 @@ fn buildConfig(arena: mem.Allocator, io: Io, program_args: ProgramArguments) !Co
         }
 
         if (program_args.replay_path) |path| {
+            if (program_args.observed_player_id != null and program_args.observed_bot_name != null) {
+                log.err("--ObservedPlayer can't be combined with --ObservedBot", .{});
+                return RunError.ConflictingArguments;
+            }
+            const observed: ObservedPlayer = observed: {
+                if (program_args.observed_bot_name) |name| {
+                    break :observed .{ .bot_name = name };
+                }
+                break :observed .{ .player_id = program_args.observed_player_id orelse 1 };
+            };
             // Sc2 resolves relative paths against its own replay folder
             // which is rarely what the user means, so resolve the path
             // against our working directory instead
@@ -384,7 +410,7 @@ fn buildConfig(arena: mem.Allocator, io: Io, program_args: ProgramArguments) !Co
             };
             break :mode .{ .replay = .{
                 .path = absolute_path,
-                .observed_player_id = program_args.observed_player_id,
+                .observed = observed,
                 .disable_fog = program_args.disable_fog,
             } };
         }
@@ -414,7 +440,8 @@ fn buildConfig(arena: mem.Allocator, io: Io, program_args: ProgramArguments) !Co
     const game_port: u16 = program_args.game_port orelse 5001;
     return .{
         .mode = mode,
-        .realtime = program_args.realtime,
+        // Replays don't seem to work in realtime mode
+        .realtime = if (mode == .replay) false else program_args.realtime,
         .host = program_args.ladder_server orelse "127.0.0.1",
         .game_port = game_port,
         .start_port = program_args.start_port orelse game_port + 2,
@@ -707,16 +734,20 @@ pub fn run(
             return RunError.FailedToCreateGame;
         },
         .replay => |replay| pid: {
+            const observed_player_id: u32 = switch (replay.observed) {
+                .player_id => |id| id,
+                .bot_name => |name| try resolveObservedPlayerId(&client, replay.path, name),
+            };
             client.startReplay(
                 replay.path,
-                replay.observed_player_id,
+                observed_player_id,
                 replay.disable_fog,
                 config.realtime,
             ) catch |err| {
                 log.err("Failed to start replay: {s}", .{@errorName(err)});
                 return RunError.FailedToStartReplay;
             };
-            break :pid replay.observed_player_id;
+            break :pid observed_player_id;
         },
     };
 
@@ -880,6 +911,40 @@ pub fn run(
         }
         actions.clear();
     }
+}
+
+/// Asks sc2 for info about the replay and finds the player id
+/// of the player with the given name. Errors out if no such
+/// player is playing in the replay.
+fn resolveObservedPlayerId(
+    client: *ws.WebSocketClient,
+    replay_path: []const u8,
+    bot_name: []const u8,
+) !u32 {
+    const replay_info = client.getReplayInfo(replay_path) catch |err| {
+        log.err("Failed to get replay info: {s}", .{@errorName(err)});
+        return RunError.FailedToStartReplay;
+    };
+
+    const players = replay_info.player_info orelse {
+        log.err("Replay info contained no players", .{});
+        return RunError.BotNotInReplay;
+    };
+
+    for (players) |player_extra| {
+        const player = player_extra.player_info orelse continue;
+        const player_name = player.player_name orelse continue;
+        if (mem.eql(u8, player_name, bot_name)) {
+            return player.player_id orelse continue;
+        }
+    }
+
+    log.err("Bot {s} is not playing in the replay. Players in the replay:", .{bot_name});
+    for (players) |player_extra| {
+        const player = player_extra.player_info orelse continue;
+        log.err("{d}: {s}", .{ player.player_id orelse 0, player.player_name orelse "Unknown" });
+    }
+    return RunError.BotNotInReplay;
 }
 
 fn createReplayName(

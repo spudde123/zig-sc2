@@ -328,6 +328,37 @@ pub const WebSocketClient = struct {
         return jg_data.player_id.?;
     }
 
+    /// Fetches metadata about a replay, including which
+    /// players are playing in it.
+    /// The path should be absolute, otherwise sc2 resolves
+    /// it relative to its own replay folder.
+    /// Note: The response is allocated with the step allocator,
+    /// so it is only valid until the next step arena reset.
+    pub fn getReplayInfo(self: *WebSocketClient, replay_path: []const u8) !sc2p.ResponseReplayInfo {
+        const replay_info = sc2p.RequestReplayInfo{
+            .replay_path = replay_path,
+            .download_data = false,
+        };
+
+        const request = sc2p.Request{ .replay_info = replay_info };
+        const res = try self.writeAndWaitForMessage(request);
+
+        const ri_data = res.replay_info orelse {
+            std.log.err("Did not get replay info response", .{});
+            return ClientError.BadResponse;
+        };
+
+        if (ri_data.error_code) |code| {
+            std.log.err("Replay info error: {d}", .{@intFromEnum(code)});
+            if (ri_data.error_details) |details| {
+                std.log.err("{s}", .{details});
+            }
+            return ClientError.BadResponse;
+        }
+
+        return ri_data;
+    }
+
     /// Starts watching a replay from the given path.
     /// The path should be absolute, otherwise sc2 resolves
     /// it relative to its own replay folder.
