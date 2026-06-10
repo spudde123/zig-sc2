@@ -403,7 +403,7 @@ fn runHumanGame(
         const obs = if (realtime) try client.getObservation(requested_game_loop) else try client.getObservation(null);
 
         if (obs.player_result) |_| {
-            _ = client.leave() catch |err| {
+            client.leave() catch |err| {
                 log.err("Human unable to leave game {s}", .{@errorName(err)});
             };
             break;
@@ -669,7 +669,7 @@ pub fn run(
                         log.err("Unable to save replay: {s}", .{@errorName(err)});
                     };
                 }
-                _ = client.leave() catch {
+                client.leave() catch {
                     log.err("Unable to leave game", .{});
                 };
             }
@@ -752,7 +752,7 @@ pub fn run(
                 }
             }
 
-            _ = client.leave() catch {
+            client.leave() catch {
                 log.err("Unable to leave game", .{});
             };
             try user_bot.onResult(.{

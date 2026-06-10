@@ -13,6 +13,7 @@ pub const Request = struct {
     pub const field_nums = .{
         .{ "create_game", 1 },
         .{ "join_game", 2 },
+        .{ "start_replay", 4 },
         .{ "leave_game", 5 },
         .{ "quit", 8 },
         .{ "game_info", 9 },
@@ -22,12 +23,14 @@ pub const Request = struct {
         .{ "game_data", 13 },
         .{ "query", 14 },
         .{ "save_replay", 15 },
+        .{ "replay_info", 16 },
         .{ "ping", 19 },
         .{ "debug", 20 },
         .{ "id", 97 },
     };
     create_game: ?RequestCreateGame = null,
     join_game: ?RequestJoinGame = null,
+    start_replay: ?RequestStartReplay = null,
     leave_game: ?void = null,
     quit: ?void = null,
     game_info: ?void = null,
@@ -37,6 +40,7 @@ pub const Request = struct {
     game_data: ?RequestData = null,
     query: ?RequestQuery = null,
     save_replay: ?void = null,
+    replay_info: ?RequestReplayInfo = null,
     ping: ?void = null,
     debug: ?RequestDebug = null,
     id: ?u32 = null,
@@ -46,6 +50,7 @@ pub const Response = struct {
     pub const field_nums = .{
         .{ "create_game", 1 },
         .{ "join_game", 2 },
+        .{ "start_replay", 4 },
         .{ "leave_game", 5 },
         .{ "quit", 8 },
         .{ "game_info", 9 },
@@ -55,6 +60,7 @@ pub const Response = struct {
         .{ "game_data", 13 },
         .{ "query", 14 },
         .{ "save_replay", 15 },
+        .{ "replay_info", 16 },
         .{ "ping", 19 },
         .{ "debug", 20 },
         .{ "id", 97 },
@@ -63,6 +69,7 @@ pub const Response = struct {
     };
     create_game: ?ResponseCreateGame = null,
     join_game: ?ResponseJoinGame = null,
+    start_replay: ?ResponseStartReplay = null,
     leave_game: ?void = null,
     quit: ?void = null,
     game_info: ?ResponseGameInfo = null,
@@ -72,6 +79,7 @@ pub const Response = struct {
     game_data: ?ResponseData = null,
     query: ?ResponseQuery = null,
     save_replay: ?ResponseSaveReplay = null,
+    replay_info: ?ResponseReplayInfo = null,
     ping: ?ResponsePing = null,
     debug: ?void = null,
 
@@ -232,6 +240,101 @@ pub const ResponseSaveReplay = struct {
         .{ "bytes", 1 },
     };
     bytes: ?[]u8 = null,
+};
+
+pub const RequestReplayInfo = struct {
+    pub const field_nums = .{
+        .{ "replay_path", 1 },
+        .{ "download_data", 3 },
+    };
+    replay_path: ?[]const u8 = null,
+    download_data: ?bool = null,
+};
+
+pub const PlayerInfoExtra = struct {
+    pub const field_nums = .{
+        .{ "player_info", 1 },
+        .{ "player_result", 2 },
+        .{ "player_mmr", 3 },
+        .{ "player_apm", 4 },
+    };
+    player_info: ?PlayerInfo = null,
+    player_result: ?PlayerResult = null,
+    player_mmr: ?i32 = null,
+    player_apm: ?i32 = null,
+};
+
+pub const ErrorReplayInfo = enum(u8) {
+    missing_replay = 1,
+    invalid_replay_path = 2,
+    invalid_replay_data = 3,
+    parsing_error = 4,
+    download_error = 5,
+};
+
+pub const ResponseReplayInfo = struct {
+    pub const field_nums = .{
+        .{ "map_name", 1 },
+        .{ "local_map_path", 2 },
+        .{ "player_info", 3 },
+        .{ "game_duration_loops", 4 },
+        .{ "game_duration_seconds", 5 },
+        .{ "game_version", 6 },
+        .{ "data_version", 11 },
+        .{ "data_build", 7 },
+        .{ "base_build", 8 },
+        .{ "error_code", 9 },
+        .{ "error_details", 10 },
+    };
+    map_name: ?[]const u8 = null,
+    local_map_path: ?[]const u8 = null,
+    player_info: ?[]PlayerInfoExtra = null,
+    game_duration_loops: ?u32 = null,
+    game_duration_seconds: ?f32 = null,
+    game_version: ?[]const u8 = null,
+    data_version: ?[]const u8 = null,
+    data_build: ?u32 = null,
+    base_build: ?u32 = null,
+    error_code: ?ErrorReplayInfo = null,
+    error_details: ?[]const u8 = null,
+};
+
+pub const RequestStartReplay = struct {
+    pub const field_nums = .{
+        .{ "replay_path", 1 },
+        .{ "observed_player_id", 2 },
+        .{ "options", 3 },
+        .{ "disable_fog", 4 },
+        .{ "map_data", 6 },
+        .{ "realtime", 7 },
+        .{ "record_replay", 8 },
+    };
+    replay_path: ?[]const u8 = null,
+    observed_player_id: ?i32 = null,
+    options: ?InterfaceOptions = null,
+    disable_fog: ?bool = null,
+    map_data: ?[]u8 = null,
+    realtime: ?bool = null,
+    record_replay: ?bool = null,
+};
+
+pub const ErrorStartReplay = enum(u8) {
+    missing_replay = 1,
+    invalid_replay_path = 2,
+    invalid_replay_data = 3,
+    invalid_map_data = 4,
+    invalid_observed_player_id = 5,
+    missing_options = 6,
+    launch_error = 7,
+};
+
+pub const ResponseStartReplay = struct {
+    pub const field_nums = .{
+        .{ "error_code", 1 },
+        .{ "error_details", 2 },
+    };
+    error_code: ?ErrorStartReplay = null,
+    error_details: ?[]const u8 = null,
 };
 
 pub const ResponseObservation = struct {
