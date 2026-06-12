@@ -559,10 +559,20 @@ pub const WebSocketClient = struct {
             const payload_end = pre_payload + payload.len;
 
             var stream_writer = self.socket.writer(self.io, &.{});
+            errdefer {
+                if (stream_writer.err) |err| {
+                    std.log.err("Write error: {s}", .{@errorName(err)});
+                }
+            }
             try stream_writer.interface.writeAll(msg[0..payload_end]);
         }
 
         var stream_reader = self.socket.reader(self.io, &.{});
+        errdefer {
+            if (stream_reader.err) |err| {
+                std.log.err("Read error: {s}", .{@errorName(err)});
+            }
+        }
         var reader = &stream_reader.interface;
 
         var header: [2]u8 = undefined;

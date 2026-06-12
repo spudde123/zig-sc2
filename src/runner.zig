@@ -546,7 +546,7 @@ fn runHumanGame(
     defer client.deinit();
 
     defer {
-        _ = client.quit() catch {
+        client.quit() catch {
             log.err("Unable to quit the game", .{});
         };
     }
@@ -660,7 +660,7 @@ pub fn run(
     defer {
         if (sc2_process) |*sc2| {
             // This should close sc2 the game on all platforms
-            _ = client.quit() catch {
+            client.quit() catch {
                 log.err("Unable to quit the game", .{});
             };
             // When running with Proton we need to kill the proton process
