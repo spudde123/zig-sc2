@@ -478,6 +478,9 @@ fn launchSc2(
         .argv = sc2_args.items,
         .cwd = cwd,
         .environ_map = env,
+        // On headless linux the game outputs some spam so we discard these
+        .stderr = .ignore,
+        .stdout = .ignore,
     });
 }
 
