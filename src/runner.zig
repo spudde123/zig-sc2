@@ -15,6 +15,10 @@ pub const BotContext = struct {
     bot: *const bot_data.Bot,
     game_info: *const bot_data.GameInfo,
     actions: *bot_data.Actions,
+    /// Allocator used for temporary allocations during a step
+    /// Memory gets cleared at the end of each step
+    step_allocator: mem.Allocator,
+    io: Io,
 };
 
 const InputType = enum(u8) {
@@ -551,6 +555,7 @@ fn runHumanGame(
     defer {
         client.quit() catch {
             log.err("Unable to quit the game", .{});
+            sc2_process.kill(io);
         };
     }
 
@@ -665,11 +670,12 @@ pub fn run(
             // This should close sc2 the game on all platforms
             client.quit() catch {
                 log.err("Unable to quit the game", .{});
+                sc2.kill(params.io);
             };
             // When running with Proton we need to kill the proton process
             // also. Afterwards kill all wine stuff if they are still running
             if (program_args.proton) |proton| {
-                _ = sc2.kill(params.io);
+                sc2.kill(params.io);
                 const last_slash = mem.lastIndexOfScalar(u8, proton, '/') orelse 0;
                 const proton_folder = proton[0 .. last_slash + 1];
                 const wine_server_path = std.fs.path.join(arena, &.{ proton_folder, "files/bin/wineserver" }) catch "wineserver";
@@ -807,6 +813,8 @@ pub fn run(
                 .bot = &bot,
                 .game_info = &game_info,
                 .actions = &actions,
+                .step_allocator = step_arena,
+                .io = params.io,
             }, res);
             return res;
         }
@@ -855,6 +863,8 @@ pub fn run(
                 .bot = &bot,
                 .game_info = &game_info,
                 .actions = &actions,
+                .step_allocator = step_arena,
+                .io = params.io,
             });
             first_step_done = true;
         } else game_info.updateGrids(bot);
@@ -873,6 +883,8 @@ pub fn run(
             .bot = &bot,
             .game_info = &game_info,
             .actions = &actions,
+            .step_allocator = step_arena,
+            .io = params.io,
         });
 
         if (actions.leave_game) {
@@ -894,6 +906,8 @@ pub fn run(
                 .bot = &bot,
                 .game_info = &game_info,
                 .actions = &actions,
+                .step_allocator = step_arena,
+                .io = params.io,
             }, res);
             return res;
         }
