@@ -459,9 +459,6 @@ test "protobuf_varint" {
     uint = try reader.decodeUInt64();
     try std.testing.expectEqual(uint, 150);
 
-    const header = try reader.decodeProtoHeader();
-    std.debug.print("Type: {d}, Field: {d}\n", .{ header.wire_type, header.field_number });
-
     var buf1: [1000]u8 = undefined;
     var buf2: [1000]u8 = undefined;
 
@@ -481,10 +478,6 @@ test "protobuf_varint" {
     var writer3 = ProtoWriter{ .buffer = buffer[0..] };
 
     writer3.encodeUInt64(300);
-    for (buffer[0..writer3.cursor]) |byte| {
-        std.debug.print("{b} ", .{byte});
-    }
-    std.debug.print("\n", .{});
 }
 
 test "protobuf_struct" {
@@ -596,23 +589,12 @@ test "protobuf_struct" {
     };
 
     const res = writer.encodeBaseStruct(t4);
-
-    for (res) |byte| {
-        std.debug.print("{b} ", .{byte});
-    }
-    std.debug.print("\n", .{});
-
-    var reader = ProtoReader{ .bytes = res[1..5] };
-    const first_float = reader.decodeFloat();
-    std.debug.print("{d}\n", .{first_float});
-
-    var reader2 = ProtoReader{ .bytes = res };
+    var reader = ProtoReader{ .bytes = res };
 
     var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_instance.deinit();
     const arena = arena_instance.allocator();
-    const decoded_t4 = try reader2.decodeStruct(res.len, Test4, arena);
-    //std.debug.print("{any}\n", .{decoded_t4});
+    const decoded_t4 = try reader.decodeStruct(res.len, Test4, arena);
 
     try std.testing.expectEqual(t4.f.?, decoded_t4.f.?);
     try std.testing.expectEqualSlices(u8, t4.g.?, decoded_t4.g.?);
@@ -621,7 +603,6 @@ test "protobuf_struct" {
     try std.testing.expectEqual(t4.h.?.c.?, decoded_t4.h.?.c.?);
     try std.testing.expectEqualSlices(u8, t4.h.?.e.?, decoded_t4.h.?.e.?);
     try std.testing.expectEqualSlices(u8, t4.k.?[0], decoded_t4.k.?[0]);
-    std.debug.print("{s}\n", .{decoded_t4.k.?[0]});
     try std.testing.expectEqual(t4.l.?, decoded_t4.l.?);
     try std.testing.expectEqual(t4.m.?[3], decoded_t4.m.?[3]);
     try std.testing.expectEqualSlices(u8, t4.n.?, decoded_t4.n.?);

@@ -100,7 +100,7 @@ pub fn main(init: std.process.Init) !void {
         const file_name = file_names[i];
         const enum_name = enum_names[i];
         const file_path = try mem.concat(arena, u8, &[_][]const u8{ "src/ids/", file_name });
-        std.debug.print("{s}\n", .{file_path});
+        std.log.debug("{s}\n", .{file_path});
 
         const file = try Io.Dir.cwd().createFile(init.io, file_path, .{});
         defer file.close(init.io);
@@ -132,7 +132,7 @@ pub fn main(init: std.process.Init) !void {
                 try writer.interface.print("    {s} = {d},\n", .{ new_name, id.integer });
             }
         }
-        std.debug.print("{d}\n", .{obj.array.items.len});
+        std.log.debug("{d}\n", .{obj.array.items.len});
         _ = try writer.interface.write("    _,\n};\n");
     }
 }
