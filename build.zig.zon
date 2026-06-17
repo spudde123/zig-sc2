@@ -1,12 +1,15 @@
 .{
     .name = .zig_sc2,
     .fingerprint = 0x924305cd9362925a,
-    .version = "0.1.1",
+    .version = "0.1.2",
     .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "src",
+        "util",
         "build.zig",
         "build.zig.zon",
+        "LICENSE",
+        "README.md",
     },
 }
