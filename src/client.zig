@@ -83,7 +83,10 @@ pub const WebSocketClient = struct {
         });
 
         const seed = @as(u64, @truncate(@as(u96, @bitCast(std.Io.Timestamp.now(io, .real).toNanoseconds()))));
-        const storage = try perm_alloc.alloc(u8, 5 * 1024 * 1024);
+        // Replay save responses can exceed 5 MiB in long validation wins. The old
+        // fixed buffer caused an index-out-of-bounds panic after victory while saving
+        // the replay, turning a won game into a reported crash.
+        const storage = try perm_alloc.alloc(u8, 32 * 1024 * 1024);
         return WebSocketClient{
             .io = io,
             .addr = addr,
