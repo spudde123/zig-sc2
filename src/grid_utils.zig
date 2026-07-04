@@ -2,7 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 
 const UnitId = @import("ids/unit_id.zig").UnitId;
-const Unit = @import("units.zig").Unit;
+const Unit = @import("sc2proto.zig").Unit;
 const grids = @import("grids.zig");
 const Grid = grids.Grid;
 const Point2 = grids.Point2;

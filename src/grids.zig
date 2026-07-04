@@ -66,6 +66,11 @@ pub const Circle = struct {
 };
 
 pub const Point2 = struct {
+    pub const field_nums = .{
+        .{ "x", 1 },
+        .{ "y", 2 },
+    };
+
     x: f32 = 0,
     y: f32 = 0,
 
@@ -187,9 +192,15 @@ pub const Point2 = struct {
 };
 
 pub const Point3 = struct {
-    x: f32,
-    y: f32,
-    z: f32,
+    pub const field_nums = .{
+        .{ "x", 1 },
+        .{ "y", 2 },
+        .{ "z", 3 },
+    };
+
+    x: f32 = 0,
+    y: f32 = 0,
+    z: f32 = 0,
 
     pub fn fromPoint2(p: Point2, z: f32) Point3 {
         return .{

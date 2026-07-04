@@ -25,14 +25,14 @@ pub const Race = sc2p.Race;
 pub const Channel = sc2p.Channel;
 pub const Attribute = sc2p.Attribute;
 
-pub const Unit = unit_group.Unit;
-pub const OrderTarget = unit_group.OrderTarget;
-pub const OrderType = unit_group.OrderType;
-pub const UnitOrder = unit_group.UnitOrder;
-pub const RallyTarget = unit_group.RallyTarget;
-pub const Effect = unit_group.Effect;
-pub const SensorTower = unit_group.SensorTower;
-pub const PowerSource = unit_group.PowerSource;
+pub const Unit = sc2p.Unit;
+pub const OrderTarget = sc2p.OrderTarget;
+pub const OrderType = sc2p.OrderType;
+pub const UnitOrder = sc2p.UnitOrder;
+pub const RallyTarget = sc2p.RallyTarget;
+pub const Effect = sc2p.Effect;
+pub const SensorTower = sc2p.SensorTower;
+pub const PowerSource = sc2p.PowerSource;
 
 pub const InfluenceMap = grids.InfluenceMap;
 pub const Grid = grids.Grid;
@@ -855,7 +855,7 @@ pub const Bot = struct {
 
         const time = @as(f32, @floatFromInt(game_loop)) / 22.4;
 
-        const obs: sc2p.ObservationRaw = response.observation.?.raw.?;
+        const obs = response.observation.?.raw.?;
 
         var placeholders: std.ArrayList(Unit) = .empty;
         var destructibles: std.ArrayList(Unit) = .empty;
@@ -871,252 +871,129 @@ pub const Bot = struct {
         var enemies_left_vision: std.ArrayList(Unit) = .empty;
         var dead_units: std.ArrayList(Unit) = .empty;
 
-        if (obs.units) |units| {
-            for (units) |unit| {
-                const proto_pos = unit.pos.?;
-                const position = Point2{ .x = proto_pos.x.?, .y = proto_pos.y.? };
-                const z: f32 = proto_pos.z.?;
+        for (obs.units) |unit| {
+            var u = unit;
+            u.prev_seen_loop = game_loop;
+            const unit_data = game_data.units.get(u.unit_type).?;
+            u.is_structure = unit_data.attributes.contains(.structure);
 
-                var buff_ids: std.ArrayList(BuffId) = .empty;
+            if (u.display_type == DisplayType.placeholder) {
+                try placeholders.append(step_arena, u);
+                continue;
+            }
 
-                if (unit.buff_ids) |buffs| {
-                    try buff_ids.ensureTotalCapacity(step_arena, buffs.len);
-                    for (buffs) |buff| {
-                        buff_ids.appendAssumeCapacity(@as(BuffId, @enumFromInt(buff)));
+            // Add both buildings and units under construction/morph
+            // to a map so we can see how many we are producing
+            switch (u.alliance) {
+                .self, .ally => {
+                    const prev = try prev_units.getOrPut(game_arena, u.tag);
+                    if (!prev.found_existing) {
+                        try units_created.append(step_arena, u.tag);
+                    } else {
+                        if (u.build_progress >= 1 and prev.value_ptr.build_progress < 1) {
+                            try construction_complete.append(step_arena, u.tag);
+                        }
+                        if (u.health < prev.value_ptr.health) {
+                            try damaged_units.append(step_arena, u.tag);
+                        }
                     }
-                }
+                    prev.value_ptr.* = u;
 
-                var passenger_tags: std.ArrayList(u64) = .empty;
-
-                if (unit.passengers) |passengers| {
-                    try passenger_tags.ensureTotalCapacity(step_arena, passengers.len);
-                    for (passengers) |passenger| {
-                        passenger_tags.appendAssumeCapacity(passenger.tag.?);
-                    }
-                }
-
-                var orders: std.ArrayList(UnitOrder) = .empty;
-
-                if (unit.orders) |orders_proto| {
-                    try orders.ensureTotalCapacity(step_arena, orders_proto.len);
-                    for (orders_proto) |order_proto| {
-                        const target: OrderTarget = tg: {
-                            if (order_proto.target_world_space_pos) |pos_target| {
-                                break :tg .{
-                                    .position = .{ .x = pos_target.x.?, .y = pos_target.y.? },
-                                };
-                            } else if (order_proto.target_unit_tag) |tag_target| {
-                                break :tg .{
-                                    .tag = tag_target,
-                                };
+                    if (u.is_structure) {
+                        // Terran buildings are already calculated via
+                        // scv orders below
+                        if (u.build_progress < 1 and unit_data.race != .terran) {
+                            if (pending_units.get(u.unit_type)) |pending_count| {
+                                try pending_units.put(u.unit_type, pending_count + 1);
                             } else {
-                                break :tg .{
-                                    .empty = {},
-                                };
+                                try pending_units.put(u.unit_type, 1);
                             }
-                        };
-
-                        const order = UnitOrder{
-                            .ability_id = @as(AbilityId, @enumFromInt(order_proto.ability_id orelse 0)),
-                            .target = target,
-                            .progress = order_proto.progress orelse 0,
-                        };
-                        orders.appendAssumeCapacity(order);
-                    }
-                }
-
-                var rally_targets: std.ArrayList(RallyTarget) = .empty;
-                if (unit.rally_targets) |proto_rally_targets| {
-                    try rally_targets.ensureTotalCapacity(step_arena, proto_rally_targets.len);
-
-                    for (proto_rally_targets) |proto_target| {
-                        const proto_point = proto_target.point.?;
-                        const rally_target = RallyTarget{
-                            .point = .{ .x = proto_point.x.?, .y = proto_point.y.? },
-                            .tag = proto_target.tag,
-                        };
-                        rally_targets.appendAssumeCapacity(rally_target);
-                    }
-                }
-
-                const unit_type = @as(UnitId, @enumFromInt(unit.unit_type.?));
-                const unit_data = game_data.units.get(unit_type).?;
-
-                const u = Unit{
-                    .display_type = unit.display_type.?,
-                    .alliance = unit.alliance.?,
-                    .tag = unit.tag orelse 0,
-                    .unit_type = unit_type,
-                    .owner = unit.owner orelse 0,
-                    .prev_seen_loop = game_loop,
-
-                    .position = position,
-                    .z = z,
-                    .facing = unit.facing orelse 0,
-                    .radius = unit.radius orelse 0,
-                    .build_progress = unit.build_progress orelse 0,
-                    .cloak = unit.cloak orelse CloakState.unknown,
-                    .buff_ids = buff_ids.items,
-
-                    .detect_range = unit.detect_range orelse 0,
-                    .radar_range = unit.radar_range orelse 0,
-
-                    .is_blip = unit.is_blip orelse false,
-                    .is_powered = unit.is_powered orelse false,
-                    .is_active = unit.is_active orelse false,
-                    .is_structure = unit_data.attributes.contains(.structure),
-
-                    .attack_upgrade_level = unit.attack_upgrade_level orelse 0,
-                    .armor_upgrade_level = unit.armor_upgrade_level orelse 0,
-                    .shield_upgrade_level = unit.shield_upgrade_level orelse 0,
-
-                    .health = unit.health orelse 0,
-                    .health_max = unit.health_max orelse 10,
-                    .shield = unit.shield orelse 0,
-                    .shield_max = unit.shield_max orelse 10,
-                    .energy = unit.energy orelse 0,
-                    .energy_max = unit.energy_max orelse 10,
-
-                    .mineral_contents = unit.mineral_contents orelse 0,
-                    .vespene_contents = unit.vespene_contents orelse 0,
-                    .is_flying = unit.is_flying orelse false,
-                    .is_burrowed = unit.is_burrowed orelse false,
-                    .is_hallucination = unit.is_hallucination orelse false,
-
-                    .orders = orders.items,
-                    .addon_tag = unit.addon_tag orelse 0,
-                    .passengers = passenger_tags.items,
-                    .cargo_space_taken = unit.cargo_space_taken orelse 0,
-                    .cargo_space_max = unit.cargo_space_max orelse 0,
-
-                    .assigned_harvesters = unit.assigned_harvesters orelse 0,
-                    .ideal_harvesters = unit.ideal_harvesters orelse 0,
-                    .weapon_cooldown = unit.weapon_cooldown orelse 0,
-                    .engaged_target_tag = unit.engaged_target_tag orelse 0,
-                    .buff_duration_remain = unit.buff_duration_remain orelse 0,
-                    .buff_duration_max = unit.buff_duration_max orelse 0,
-                    .rally_targets = rally_targets.items,
-                    .available_abilities = &.{},
-                };
-
-                if (u.display_type == DisplayType.placeholder) {
-                    try placeholders.append(step_arena, u);
-                    continue;
-                }
-
-                // Add both buildings and units under construction/morph
-                // to a map so we can see how many we are producing
-                switch (u.alliance) {
-                    .self, .ally => {
-                        const prev = try prev_units.getOrPut(game_arena, u.tag);
-                        if (!prev.found_existing) {
-                            try units_created.append(step_arena, u.tag);
                         } else {
-                            if (u.build_progress >= 1 and prev.value_ptr.build_progress < 1) {
-                                try construction_complete.append(step_arena, u.tag);
-                            }
-                            if (u.health < prev.value_ptr.health) {
-                                try damaged_units.append(step_arena, u.tag);
+                            for (u.orders) |order| {
+                                if (game_data.build_map.get(order.ability_id)) |training_unit_id| {
+                                    if (pending_units.get(training_unit_id)) |pending_count| {
+                                        try pending_units.put(training_unit_id, pending_count + 1);
+                                    } else {
+                                        try pending_units.put(training_unit_id, 1);
+                                    }
+                                }
+
+                                if (game_data.upgrade_map.get(order.ability_id)) |ongoing_upgrade_id| {
+                                    try pending_upgrades.put(ongoing_upgrade_id, order.progress);
+                                }
                             }
                         }
-                        prev.value_ptr.* = u;
-
-                        if (u.is_structure) {
-                            // Terran buildings are already calculated via
-                            // scv orders below
-                            if (u.build_progress < 1 and unit_data.race != .terran) {
-                                if (pending_units.get(u.unit_type)) |pending_count| {
-                                    try pending_units.put(u.unit_type, pending_count + 1);
-                                } else {
-                                    try pending_units.put(u.unit_type, 1);
-                                }
+                    } else {
+                        if (u.build_progress < 1) {
+                            if (pending_units.get(u.unit_type)) |pending_count| {
+                                try pending_units.put(u.unit_type, pending_count + 1);
                             } else {
-                                for (u.orders) |order| {
-                                    if (game_data.build_map.get(order.ability_id)) |training_unit_id| {
-                                        if (pending_units.get(training_unit_id)) |pending_count| {
-                                            try pending_units.put(training_unit_id, pending_count + 1);
-                                        } else {
-                                            try pending_units.put(training_unit_id, 1);
-                                        }
-                                    }
-
-                                    if (game_data.upgrade_map.get(order.ability_id)) |ongoing_upgrade_id| {
-                                        try pending_upgrades.put(ongoing_upgrade_id, order.progress);
-                                    }
-                                }
+                                try pending_units.put(u.unit_type, 1);
                             }
                         } else {
-                            if (u.build_progress < 1) {
-                                if (pending_units.get(u.unit_type)) |pending_count| {
-                                    try pending_units.put(u.unit_type, pending_count + 1);
-                                } else {
-                                    try pending_units.put(u.unit_type, 1);
-                                }
-                            } else {
-                                for (u.orders) |order| {
-                                    if (game_data.build_map.get(order.ability_id)) |training_unit_id| {
-                                        if (pending_units.get(training_unit_id)) |pending_count| {
-                                            try pending_units.put(training_unit_id, pending_count + 1);
-                                        } else {
-                                            try pending_units.put(training_unit_id, 1);
-                                        }
+                            for (u.orders) |order| {
+                                if (game_data.build_map.get(order.ability_id)) |training_unit_id| {
+                                    if (pending_units.get(training_unit_id)) |pending_count| {
+                                        try pending_units.put(training_unit_id, pending_count + 1);
+                                    } else {
+                                        try pending_units.put(training_unit_id, 1);
                                     }
                                 }
                             }
                         }
-                    },
-                    .enemy => {
-                        const prev = try prev_enemy.getOrPut(game_arena, u.tag);
-                        prev.value_ptr.* = u;
-                        if (!prev.found_existing) {
-                            try enemies_entered_vision.append(step_arena, u.tag);
-                        }
-                    },
-                    else => {
-                        const mineral_ids = [_]UnitId{
-                            .RichMineralField,
-                            .RichMineralField750,
-                            .MineralField,
-                            .MineralField450,
-                            .MineralField750,
-                            .LabMineralField,
-                            .LabMineralField750,
-                            .PurifierRichMineralField,
-                            .PurifierRichMineralField750,
-                            .PurifierMineralField,
-                            .PurifierMineralField750,
-                            .BattleStationMineralField,
-                            .BattleStationMineralField750,
-                            .MineralFieldOpaque,
-                            .MineralFieldOpaque900,
-                        };
+                    }
+                },
+                .enemy => {
+                    const prev = try prev_enemy.getOrPut(game_arena, u.tag);
+                    prev.value_ptr.* = u;
+                    if (!prev.found_existing) {
+                        try enemies_entered_vision.append(step_arena, u.tag);
+                    }
+                },
+                else => {
+                    const mineral_ids = [_]UnitId{
+                        .RichMineralField,
+                        .RichMineralField750,
+                        .MineralField,
+                        .MineralField450,
+                        .MineralField750,
+                        .LabMineralField,
+                        .LabMineralField750,
+                        .PurifierRichMineralField,
+                        .PurifierRichMineralField750,
+                        .PurifierMineralField,
+                        .PurifierMineralField750,
+                        .BattleStationMineralField,
+                        .BattleStationMineralField750,
+                        .MineralFieldOpaque,
+                        .MineralFieldOpaque900,
+                    };
 
-                        const geyser_ids = [_]UnitId{
-                            .VespeneGeyser,
-                            .SpacePlatformGeyser,
-                            .RichVespeneGeyser,
-                            .ProtossVespeneGeyser,
-                            .PurifierVespeneGeyser,
-                            .ShakurasVespeneGeyser,
-                        };
+                    const geyser_ids = [_]UnitId{
+                        .VespeneGeyser,
+                        .SpacePlatformGeyser,
+                        .RichVespeneGeyser,
+                        .ProtossVespeneGeyser,
+                        .PurifierVespeneGeyser,
+                        .ShakurasVespeneGeyser,
+                    };
 
-                        if (u.unit_type == .XelNagaTower) {
-                            try watch_towers.append(step_arena, u);
-                        } else if (mem.indexOfScalar(UnitId, mineral_ids[0..], u.unit_type)) |_| {
-                            try mineral_patches.append(step_arena, u);
-                        } else if (mem.indexOfScalar(UnitId, geyser_ids[0..], u.unit_type)) |_| {
-                            try vespene_geysers.append(step_arena, u);
-                        } else {
-                            // Somehow some duplicates of enemy units with
-                            // alliance neutral but owner enemy ended up
-                            // here in local testing. Shouldn't harm to filter
-                            // them out.
-                            if (u.owner <= 2) continue;
+                    if (u.unit_type == .XelNagaTower) {
+                        try watch_towers.append(step_arena, u);
+                    } else if (mem.indexOfScalar(UnitId, mineral_ids[0..], u.unit_type)) |_| {
+                        try mineral_patches.append(step_arena, u);
+                    } else if (mem.indexOfScalar(UnitId, geyser_ids[0..], u.unit_type)) |_| {
+                        try vespene_geysers.append(step_arena, u);
+                    } else {
+                        // Somehow some duplicates of enemy units with
+                        // alliance neutral but owner enemy ended up
+                        // here in local testing. Shouldn't harm to filter
+                        // them out.
+                        if (u.owner <= 2) continue;
 
-                            try destructibles.append(step_arena, u);
-                        }
-                    },
-                }
+                        try destructibles.append(step_arena, u);
+                    }
+                },
             }
         }
 
@@ -1130,25 +1007,17 @@ pub const Bot = struct {
             }
         }
 
-        const upgrade_proto = obs.player.?.upgrade_ids;
-        if (upgrade_proto) |upgrade_slice| {
+        // The raw player data is required, same as before the
+        // direct-decode refactor where this field was unwrapped with .?
+        const player_raw = obs.player.?;
+        if (player_raw.upgrade_ids) |upgrade_slice| {
             for (upgrade_slice) |upgrade| {
                 const upgrade_id = @as(UpgradeId, @enumFromInt(upgrade));
                 try pending_upgrades.put(upgrade_id, 1);
             }
         }
 
-        var power_sources: []PowerSource = &.{};
-        if (obs.player.?.power_sources) |power_slice| {
-            power_sources = try step_arena.alloc(PowerSource, power_slice.len);
-            for (power_slice, 0..) |item, i| {
-                power_sources[i] = .{
-                    .position = .{ .x = item.pos.?.x.?, .y = item.pos.?.y.? },
-                    .radius = item.radius orelse 0,
-                    .tag = item.tag orelse 0,
-                };
-            }
-        }
+        const power_sources: []PowerSource = player_raw.power_sources;
 
         const visibility_proto = obs.map_state.?.visibility.?;
         assert(visibility_proto.bits_per_pixel.? == 8);
@@ -1163,34 +1032,8 @@ pub const Bot = struct {
         assert(creep_proto.bits_per_pixel.? == 1);
         const creep_grid = Grid(u1){ .data = creep_proto.image.?, .w = grid_width, .h = grid_height };
 
-        const effects_proto = obs.effects;
-        var effects: []Effect = &.{};
-        if (effects_proto) |effect_proto_slice| {
-            effects = try step_arena.alloc(Effect, effect_proto_slice.len);
-            for (effect_proto_slice, 0..) |effect_proto, effect_index| {
-                var points = try step_arena.alloc(Point2, effect_proto.pos.?.len);
-                for (effect_proto.pos.?, 0..) |pos_proto, pos_index| {
-                    points[pos_index] = Point2{ .x = pos_proto.x.?, .y = pos_proto.y.? };
-                }
-                effects[effect_index] = Effect{
-                    .id = @as(EffectId, @enumFromInt(effect_proto.effect_id.?)),
-                    .alliance = effect_proto.alliance.?,
-                    .positions = points,
-                    .radius = effect_proto.radius.?,
-                };
-            }
-        }
-
-        var sensor_towers: []SensorTower = &.{};
-        if (obs.radars) |sensor_towers_proto| {
-            sensor_towers = try step_arena.alloc(SensorTower, sensor_towers_proto.len);
-            for (sensor_towers_proto, 0..) |tower_proto, tower_index| {
-                sensor_towers[tower_index] = SensorTower{
-                    .position = Point2{ .x = tower_proto.pos.?.x.?, .y = tower_proto.pos.?.y.? },
-                    .radius = tower_proto.radius.?,
-                };
-            }
-        }
+        const effects: []Effect = obs.effects;
+        const sensor_towers: []SensorTower = obs.radars;
 
         var dead_unit_tags: []u64 = &.{};
         if (obs.event) |events_proto| {

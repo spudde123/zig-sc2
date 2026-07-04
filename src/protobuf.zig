@@ -58,8 +58,10 @@ pub const ProtoReader = struct {
 
                     if (header.field_number == field_num) {
                         const obj_field = &@field(res, field_name);
-                        const info = @typeInfo(@TypeOf(obj_field.*));
-                        const child_type = info.optional.child;
+                        const FieldType = @TypeOf(obj_field.*);
+                        const f_info = @typeInfo(FieldType);
+                        const is_optional = f_info == .optional;
+                        const child_type = if (is_optional) f_info.optional.child else FieldType;
                         const child_info = @typeInfo(child_type);
 
                         switch (child_info) {
@@ -71,7 +73,12 @@ pub const ProtoReader = struct {
                                 if (ptr.child == u8) {
                                     obj_field.* = try self.decodeBytes();
                                 } else {
-                                    const old_len = if (obj_field.*) |old| old.len else 0;
+                                    // Concatenation support for non-contiguous repeated
+                                    // fields. Invariant: non-optional repeated fields must
+                                    // default to an empty slice (&.{}), otherwise the
+                                    // default elements would be treated as previously
+                                    // decoded data and get prepended to the result.
+                                    const old_len = if (is_optional) (if (obj_field.*) |old| old.len else 0) else obj_field.*.len;
                                     const payload_start = self.bytes_read;
                                     var count: usize = 1;
                                     try self.skipFieldPayload(header);
@@ -88,8 +95,12 @@ pub const ProtoReader = struct {
                                     }
 
                                     const new_items = try allocator.alloc(ptr.child, old_len + count);
-                                    if (obj_field.*) |old| {
-                                        @memcpy(new_items[0..old_len], old);
+                                    if (is_optional) {
+                                        if (obj_field.*) |old| {
+                                            @memcpy(new_items[0..old_len], old);
+                                        }
+                                    } else {
+                                        @memcpy(new_items[0..old_len], obj_field.*);
                                     }
 
                                     self.bytes_read = payload_start;
@@ -140,6 +151,13 @@ pub const ProtoReader = struct {
             if (!recognized_field) {
                 try self.skipFieldPayload(header);
             }
+        }
+
+        // Note: postDecode only runs when the message itself was present on
+        // the wire. A wholly absent nested message keeps its default value,
+        // so defaults must already equal their post-decode fixed point.
+        if (@hasDecl(T, "postDecode")) {
+            try res.postDecode(allocator);
         }
 
         return res;
@@ -316,6 +334,14 @@ pub const ProtoWriter = struct {
                                         } else {
                                             self.encodeInt64(@as(i64, integer_val));
                                         }
+                                    }
+                                },
+                                .@"enum" => {
+                                    const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
+
+                                    for (data) |enum_val| {
+                                        self.encodeProtoHeader(field_header);
+                                        self.encodeUInt64(@intFromEnum(enum_val));
                                     }
                                 },
                                 else => @compileError("Unsupported type in repeated field"),
@@ -621,4 +647,125 @@ test "protobuf_struct" {
     try std.testing.expectEqual(t4.l.?, decoded_t4.l.?);
     try std.testing.expectEqual(t4.m.?[3], decoded_t4.m.?[3]);
     try std.testing.expectEqualSlices(u8, t4.n.?, decoded_t4.n.?);
+}
+
+test "protobuf_decode_non_optional_defaults" {
+    var buf: [512]u8 = undefined;
+    var writer = ProtoWriter{ .buffer = buf[0..] };
+
+    const OptionalStyle = struct {
+        pub const field_nums = .{ .{ "a", 1 }, .{ "b", 2 }, .{ "c", 3 } };
+        a: ?u32 = null,
+        b: ?f32 = null,
+        c: ?bool = null,
+    };
+    const DirectStyle = struct {
+        pub const field_nums = OptionalStyle.field_nums;
+        a: u32 = 10,
+        b: f32 = 2.5,
+        c: bool = true,
+    };
+
+    const encoded = writer.encodeBaseStruct(OptionalStyle{ .a = 42, .b = 7.25, .c = false });
+    var reader = ProtoReader{ .bytes = encoded };
+    const decoded = try reader.decodeStruct(encoded.len, DirectStyle, std.testing.allocator);
+    try std.testing.expectEqual(@as(u32, 42), decoded.a);
+    try std.testing.expectEqual(@as(f32, 7.25), decoded.b);
+    try std.testing.expectEqual(false, decoded.c);
+
+    var empty_reader = ProtoReader{ .bytes = &.{} };
+    const empty = try empty_reader.decodeStruct(0, DirectStyle, std.testing.allocator);
+    try std.testing.expectEqual(@as(u32, 10), empty.a);
+    try std.testing.expectEqual(@as(f32, 2.5), empty.b);
+    try std.testing.expectEqual(true, empty.c);
+
+    writer.cursor = 0;
+    const partial = writer.encodeBaseStruct(OptionalStyle{ .c = false });
+    var partial_reader = ProtoReader{ .bytes = partial };
+    const partial_decoded = try partial_reader.decodeStruct(partial.len, DirectStyle, std.testing.allocator);
+    try std.testing.expectEqual(@as(u32, 10), partial_decoded.a);
+    try std.testing.expectEqual(false, partial_decoded.c);
+}
+
+test "protobuf_decode_non_optional_repeated_concat_and_mixed" {
+    var buf: [1024]u8 = undefined;
+    var writer = ProtoWriter{ .buffer = buf[0..] };
+
+    const OptionalStyle = struct {
+        pub const field_nums = .{ .{ "xs", 1 }, .{ "gap", 2 }, .{ "maybe", 3 } };
+        xs: ?[]u32 = null,
+        gap: ?u32 = null,
+        maybe: ?u32 = null,
+    };
+    const DirectStyle = struct {
+        pub const field_nums = OptionalStyle.field_nums;
+        xs: []u32 = &.{},
+        gap: u32 = 0,
+        maybe: ?u32 = null,
+    };
+
+    var first = [_]u32{ 1, 2 };
+    var second = [_]u32{3};
+    var buf2: [512]u8 = undefined;
+    var combined_buf: [1024]u8 = undefined;
+    var writer2 = ProtoWriter{ .buffer = buf2[0..] };
+    const one = writer.encodeBaseStruct(OptionalStyle{ .xs = first[0..], .gap = 9 });
+    const two = writer2.encodeBaseStruct(OptionalStyle{ .xs = second[0..], .maybe = 4 });
+    @memcpy(combined_buf[0..one.len], one);
+    @memcpy(combined_buf[one.len..][0..two.len], two);
+    const encoded = combined_buf[0 .. one.len + two.len];
+
+    var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_instance.deinit();
+    var reader = ProtoReader{ .bytes = encoded };
+    const decoded = try reader.decodeStruct(encoded.len, DirectStyle, arena_instance.allocator());
+    try std.testing.expectEqualSlices(u32, &.{ 1, 2, 3 }, decoded.xs);
+    try std.testing.expectEqual(@as(u32, 9), decoded.gap);
+    try std.testing.expectEqual(@as(u32, 4), decoded.maybe.?);
+}
+
+test "protobuf_post_decode_top_level_and_repeated" {
+    var buf: [512]u8 = undefined;
+    var writer = ProtoWriter{ .buffer = buf[0..] };
+
+    const OptionalChild = struct {
+        pub const field_nums = .{.{ "value", 1 }};
+        value: ?u32 = null,
+    };
+    const OptionalParent = struct {
+        pub const field_nums = .{ .{ "children", 1 }, .{ "marker", 2 } };
+        children: ?[]OptionalChild = null,
+        marker: ?u32 = null,
+    };
+    const Child = struct {
+        pub const field_nums = OptionalChild.field_nums;
+        value: u32 = 0,
+        doubled: u32 = 0,
+        pub fn postDecode(self: *@This(), allocator: mem.Allocator) !void {
+            _ = allocator;
+            self.doubled = self.value * 2;
+        }
+    };
+    const Parent = struct {
+        pub const field_nums = .{ .{ "children", 1 }, .{ "marker", 2 } };
+        children: []Child = &.{},
+        marker: u32 = 0,
+        touched: bool = false,
+        pub fn postDecode(self: *@This(), allocator: mem.Allocator) !void {
+            _ = allocator;
+            self.touched = true;
+            self.marker += 1;
+        }
+    };
+
+    var children = [_]OptionalChild{ .{ .value = 5 }, .{ .value = 9 } };
+    const encoded = writer.encodeBaseStruct(OptionalParent{ .children = children[0..], .marker = 10 });
+    var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_instance.deinit();
+    var reader = ProtoReader{ .bytes = encoded };
+    const decoded = try reader.decodeStruct(encoded.len, Parent, arena_instance.allocator());
+    try std.testing.expect(decoded.touched);
+    try std.testing.expectEqual(@as(u32, 11), decoded.marker);
+    try std.testing.expectEqual(@as(u32, 10), decoded.children[0].doubled);
+    try std.testing.expectEqual(@as(u32, 18), decoded.children[1].doubled);
 }

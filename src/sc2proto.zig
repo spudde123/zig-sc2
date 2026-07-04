@@ -1,3 +1,315 @@
+const std = @import("std");
+const mem = std.mem;
+const grids = @import("grids.zig");
+const Point2 = grids.Point2;
+const Point3 = grids.Point3;
+
+const AbilityId = @import("ids/ability_id.zig").AbilityId;
+const BuffId = @import("ids/buff_id.zig").BuffId;
+const EffectId = @import("ids/effect_id.zig").EffectId;
+const UnitId = @import("ids/unit_id.zig").UnitId;
+const UpgradeId = @import("ids/upgrade_id.zig").UpgradeId;
+
+pub const PowerSource = struct {
+    pub const field_nums = .{
+        .{ "position", 1 },
+        .{ "radius", 2 },
+        .{ "tag", 3 },
+    };
+
+    position: Point2 = .{},
+    radius: f32 = 0,
+    tag: u64 = 0,
+};
+
+pub const Effect = struct {
+    pub const field_nums = .{
+        .{ "id", 1 },
+        .{ "positions", 2 },
+        .{ "alliance", 3 },
+        .{ "radius", 5 },
+    };
+
+    id: EffectId = @enumFromInt(0),
+    // Effects are normally sent with alliance. Default to neutral to avoid
+    // accidentally classifying missing data as self/allied/enemy-owned.
+    alliance: Alliance = .neutral,
+    positions: []Point2 = &.{},
+    radius: f32 = 0,
+};
+
+pub const SensorTower = struct {
+    pub const field_nums = .{
+        .{ "position", 1 },
+        .{ "radius", 2 },
+    };
+
+    position: Point2 = .{},
+    radius: f32 = 0,
+};
+
+pub const OrderType = enum(u8) {
+    empty,
+    position,
+    tag,
+};
+
+pub const OrderTarget = union(OrderType) {
+    empty: void,
+    position: Point2,
+    tag: u64,
+};
+
+pub const UnitOrder = struct {
+    pub const field_nums = .{
+        .{ "ability_id", 1 },
+        .{ "target_world_space_pos", 2 },
+        .{ "target_unit_tag", 3 },
+        .{ "progress", 4 },
+    };
+
+    ability_id: AbilityId = @enumFromInt(0),
+    target: OrderTarget = .{ .empty = {} },
+    progress: f32 = 0,
+
+    // Internal decode staging fields; postDecode derives `target` from them.
+    // Bot code should use `target` instead.
+    target_world_space_pos: ?Point2 = null,
+    target_unit_tag: ?u64 = null,
+
+    pub fn postDecode(self: *UnitOrder, allocator: mem.Allocator) !void {
+        _ = allocator;
+        self.target = if (self.target_world_space_pos) |pos|
+            .{ .position = pos }
+        else if (self.target_unit_tag) |tag|
+            .{ .tag = tag }
+        else
+            .{ .empty = {} };
+    }
+};
+
+pub const RallyTarget = struct {
+    pub const field_nums = .{
+        .{ "point", 1 },
+        .{ "tag", 2 },
+    };
+
+    point: Point2 = .{},
+    tag: ?u64 = null,
+};
+
+pub const PlayerRaw = struct {
+    pub const field_nums = .{
+        .{ "power_sources", 1 },
+        .{ "upgrade_ids", 3 },
+    };
+
+    power_sources: []PowerSource = &.{},
+    upgrade_ids: ?[]u32 = null,
+};
+
+pub const Event = struct {
+    pub const field_nums = .{.{ "dead_units", 1 }};
+    dead_units: ?[]u64 = null,
+};
+
+pub const ObservationRaw = struct {
+    pub const field_nums = .{
+        .{ "player", 1 },
+        .{ "units", 2 },
+        .{ "map_state", 3 },
+        .{ "event", 4 },
+        .{ "effects", 5 },
+        .{ "radars", 6 },
+    };
+
+    player: ?PlayerRaw = null,
+    units: []Unit = &.{},
+    map_state: ?MapState = null,
+    event: ?Event = null,
+    effects: []Effect = &.{},
+    radars: []SensorTower = &.{},
+};
+
+pub const Unit = struct {
+    pub const field_nums = .{
+        .{ "display_type", 1 },
+        .{ "alliance", 2 },
+        .{ "tag", 3 },
+        .{ "unit_type", 4 },
+        .{ "owner", 5 },
+        .{ "pos3", 6 },
+        .{ "facing", 7 },
+        .{ "radius", 8 },
+        .{ "build_progress", 9 },
+        .{ "cloak", 10 },
+        .{ "is_blip", 13 },
+        .{ "health", 14 },
+        .{ "health_max", 15 },
+        .{ "shield", 16 },
+        .{ "energy", 17 },
+        .{ "mineral_contents", 18 },
+        .{ "vespene_contents", 19 },
+        .{ "is_flying", 20 },
+        .{ "is_burrowed", 21 },
+        .{ "orders", 22 },
+        .{ "addon_tag", 23 },
+        .{ "passengers_raw", 24 },
+        .{ "cargo_space_taken", 25 },
+        .{ "cargo_space_max", 26 },
+        .{ "buff_ids", 27 },
+        .{ "assigned_harvesters", 28 },
+        .{ "ideal_harvesters", 29 },
+        .{ "weapon_cooldown", 30 },
+        .{ "detect_range", 31 },
+        .{ "radar_range", 32 },
+        .{ "engaged_target_tag", 34 },
+        .{ "is_powered", 35 },
+        .{ "shield_max", 36 },
+        .{ "energy_max", 37 },
+        .{ "is_hallucination", 38 },
+        .{ "is_active", 39 },
+        .{ "attack_upgrade_level", 40 },
+        .{ "armor_upgrade_level", 41 },
+        .{ "shield_upgrade_level", 42 },
+        .{ "buff_duration_remain", 43 },
+        .{ "buff_duration_max", 44 },
+        .{ "rally_targets", 45 },
+    };
+
+    // SC2 always sends display_type/alliance for raw units; these defaults
+    // are only reached on malformed data. Alliance defaults to .neutral so a
+    // missing value can't misclassify a unit as our own (neutral units with
+    // owner <= 2 get filtered out in Bot.fromProto).
+    display_type: DisplayType = .visible,
+    alliance: Alliance = .neutral,
+    tag: u64 = 0,
+    unit_type: UnitId = @enumFromInt(0),
+    owner: i32 = 0,
+    prev_seen_loop: u32 = 0,
+
+    position: Point2 = .{},
+    z: f32 = 0,
+    facing: f32 = 0,
+    radius: f32 = 0,
+    build_progress: f32 = 0,
+    cloak: CloakState = .unknown,
+    buff_ids: []BuffId = &.{},
+
+    detect_range: f32 = 0,
+    radar_range: f32 = 0,
+
+    is_blip: bool = false,
+    is_powered: bool = false,
+    is_active: bool = false,
+    is_structure: bool = false,
+
+    attack_upgrade_level: i32 = 0,
+    armor_upgrade_level: i32 = 0,
+    shield_upgrade_level: i32 = 0,
+
+    health: f32 = 0,
+    health_max: f32 = 10,
+    shield: f32 = 0,
+    shield_max: f32 = 10,
+    energy: f32 = 0,
+    energy_max: f32 = 10,
+    mineral_contents: i32 = 0,
+    vespene_contents: i32 = 0,
+    is_flying: bool = false,
+    is_burrowed: bool = false,
+    is_hallucination: bool = false,
+
+    orders: []UnitOrder = &.{},
+    addon_tag: u64 = 0,
+    passengers: []u64 = &.{},
+    cargo_space_taken: i32 = 0,
+    cargo_space_max: i32 = 0,
+
+    assigned_harvesters: i32 = 0,
+    ideal_harvesters: i32 = 0,
+    weapon_cooldown: f32 = 0,
+    engaged_target_tag: u64 = 0,
+    buff_duration_remain: i32 = 0,
+    buff_duration_max: i32 = 0,
+    rally_targets: []RallyTarget = &.{},
+
+    available_abilities: []AbilityId = &.{},
+
+    // Internal decode staging fields. `pos3` and `passengers_raw` receive the
+    // raw wire data; postDecode derives `position`, `z` and `passengers` from
+    // them. Bot code should not read or mutate these.
+    pos3: Point3 = .{},
+    passengers_raw: []PassengerTag = &.{},
+
+    const PassengerTag = struct {
+        pub const field_nums = .{.{ "tag", 1 }};
+        tag: u64 = 0,
+    };
+
+    pub fn postDecode(self: *Unit, allocator: mem.Allocator) !void {
+        self.position = .{ .x = self.pos3.x, .y = self.pos3.y };
+        self.z = self.pos3.z;
+        if (self.passengers_raw.len > 0) {
+            const tags = try allocator.alloc(u64, self.passengers_raw.len);
+            for (self.passengers_raw, 0..) |passenger, i| {
+                tags[i] = passenger.tag;
+            }
+            self.passengers = tags;
+        }
+    }
+
+    pub fn isIdle(self: Unit) bool {
+        return self.orders.len == 0;
+    }
+
+    pub fn isCollecting(self: Unit) bool {
+        if (self.orders.len == 0) return false;
+        const order = self.orders[0];
+
+        return (order.ability_id == .Harvest_Gather_SCV or
+            order.ability_id == .Harvest_Return_SCV or
+            order.ability_id == .Harvest_Gather_Drone or
+            order.ability_id == .Harvest_Return_Drone or
+            order.ability_id == .Harvest_Gather_Probe or
+            order.ability_id == .Harvest_Return_Probe or
+            order.ability_id == .Harvest_Gather_Mule or
+            order.ability_id == .Harvest_Return_Mule);
+    }
+
+    pub fn isRepairing(self: Unit) bool {
+        if (self.orders.len == 0) return false;
+        const order = self.orders[0];
+
+        return (order.ability_id == .Effect_Repair or order.ability_id == .Effect_Repair_Mule or order.ability_id == .Effect_Repair_SCV);
+    }
+
+    pub fn isUsingAbility(self: Unit, ability: AbilityId) bool {
+        if (self.orders.len == 0) return false;
+        const order = self.orders[0];
+
+        return order.ability_id == ability;
+    }
+
+    pub fn hasBuff(self: Unit, buff: BuffId) bool {
+        for (self.buff_ids) |b| {
+            if (b == buff) return true;
+        }
+        return false;
+    }
+
+    pub fn hasAbilityAvailable(self: Unit, ability: AbilityId) bool {
+        for (self.available_abilities) |available_ability| {
+            if (available_ability == ability) return true;
+        }
+        return false;
+    }
+
+    pub fn isReady(self: Unit) bool {
+        return self.build_progress >= 1;
+    }
+};
+
 pub const Status = enum(u8) {
     default = 0,
     launched = 1,
@@ -506,54 +818,6 @@ pub const ScoreDetails = struct {
     current_effective_apm: ?f32 = null,
 };
 
-pub const ObservationRaw = struct {
-    pub const field_nums = .{
-        .{ "player", 1 },
-        .{ "units", 2 },
-        .{ "map_state", 3 },
-        .{ "event", 4 },
-        .{ "effects", 5 },
-        .{ "radars", 6 },
-    };
-    player: ?PlayerRaw = null,
-    units: ?[]Unit = null,
-    map_state: ?MapState = null,
-    event: ?Event = null,
-    effects: ?[]Effect = null,
-    radars: ?[]RadarRing = null,
-};
-
-pub const RadarRing = struct {
-    pub const field_nums = .{
-        .{ "pos", 1 },
-        .{ "radius", 2 },
-    };
-    pos: ?Point = null,
-    radius: ?f32 = null,
-};
-
-pub const PowerSource = struct {
-    pub const field_nums = .{
-        .{ "pos", 1 },
-        .{ "radius", 2 },
-        .{ "tag", 3 },
-    };
-    pos: ?Point = null,
-    radius: ?f32 = null,
-    tag: ?u64 = null,
-};
-
-pub const PlayerRaw = struct {
-    pub const field_nums = .{
-        .{ "power_sources", 1 },
-        .{ "camera", 2 },
-        .{ "upgrade_ids", 3 },
-    };
-    power_sources: ?[]PowerSource = null,
-    camera: ?Point = null,
-    upgrade_ids: ?[]u32 = null,
-};
-
 pub const MapState = struct {
     pub const field_nums = .{
         .{ "visibility", 1 },
@@ -561,13 +825,6 @@ pub const MapState = struct {
     };
     visibility: ?ImageData = null,
     creep: ?ImageData = null,
-};
-
-pub const Event = struct {
-    pub const field_nums = .{
-        .{ "dead_units", 1 },
-    };
-    dead_units: ?[]u64 = null,
 };
 
 pub const DisplayType = enum(u8) {
@@ -590,164 +847,6 @@ pub const CloakState = enum(u8) {
     cloaked_detected = 2,
     not_cloaked = 3,
     cloaked_allied = 4,
-};
-
-pub const Effect = struct {
-    pub const field_nums = .{
-        .{ "effect_id", 1 },
-        .{ "pos", 2 },
-        .{ "alliance", 3 },
-        .{ "owner", 4 },
-        .{ "radius", 5 },
-    };
-    effect_id: ?u32 = null,
-    pos: ?[]Point2D = null,
-    alliance: ?Alliance = null,
-    owner: ?i32 = null,
-    radius: ?f32 = null,
-};
-
-pub const RallyTarget = struct {
-    pub const field_nums = .{
-        .{ "point", 1 },
-        .{ "tag", 2 },
-    };
-    point: ?Point = null,
-    tag: ?u64 = null,
-};
-
-pub const UnitOrder = struct {
-    pub const field_nums = .{
-        .{ "ability_id", 1 },
-        .{ "target_world_space_pos", 2 },
-        .{ "target_unit_tag", 3 },
-        .{ "progress", 4 },
-    };
-    ability_id: ?u32 = null,
-    target_world_space_pos: ?Point = null,
-    target_unit_tag: ?u64 = null,
-    progress: ?f32 = null,
-};
-
-pub const PassengerUnit = struct {
-    pub const field_nums = .{
-        .{ "tag", 1 },
-        .{ "health", 2 },
-        .{ "health_max", 3 },
-        .{ "shield", 4 },
-        .{ "shield_max", 7 },
-        .{ "energy", 5 },
-        .{ "energy_max", 8 },
-        .{ "unit_type", 6 },
-    };
-    tag: ?u64 = null,
-    health: ?f32 = null,
-    health_max: ?f32 = null,
-    shield: ?f32 = null,
-    shield_max: ?f32 = null,
-    energy: ?f32 = null,
-    energy_max: ?f32 = null,
-    unit_type: ?u32 = null,
-};
-
-pub const Unit = struct {
-    pub const field_nums = .{
-        .{ "display_type", 1 },
-        .{ "alliance", 2 },
-        .{ "tag", 3 },
-        .{ "unit_type", 4 },
-        .{ "owner", 5 },
-        .{ "pos", 6 },
-        .{ "facing", 7 },
-        .{ "radius", 8 },
-        .{ "build_progress", 9 },
-        .{ "cloak", 10 },
-        .{ "buff_ids", 27 },
-        .{ "detect_range", 31 },
-        .{ "radar_range", 32 },
-        .{ "is_selected", 11 },
-        .{ "is_on_screen", 12 },
-        .{ "is_blip", 13 },
-        .{ "is_powered", 35 },
-        .{ "is_active", 39 },
-        .{ "attack_upgrade_level", 40 },
-        .{ "armor_upgrade_level", 41 },
-        .{ "shield_upgrade_level", 42 },
-        .{ "health", 14 },
-        .{ "health_max", 15 },
-        .{ "shield", 16 },
-        .{ "shield_max", 36 },
-        .{ "energy", 17 },
-        .{ "energy_max", 37 },
-        .{ "mineral_contents", 18 },
-        .{ "vespene_contents", 19 },
-        .{ "is_flying", 20 },
-        .{ "is_burrowed", 21 },
-        .{ "is_hallucination", 38 },
-        .{ "orders", 22 },
-        .{ "addon_tag", 23 },
-        .{ "passengers", 24 },
-        .{ "cargo_space_taken", 25 },
-        .{ "cargo_space_max", 26 },
-        .{ "assigned_harvesters", 28 },
-        .{ "ideal_harvesters", 29 },
-        .{ "weapon_cooldown", 30 },
-        .{ "engaged_target_tag", 34 },
-        .{ "buff_duration_remain", 43 },
-        .{ "buff_duration_max", 44 },
-        .{ "rally_targets", 45 },
-    };
-    display_type: ?DisplayType = null,
-    alliance: ?Alliance = null,
-    tag: ?u64 = null,
-    unit_type: ?u32 = null,
-    owner: ?i32 = null,
-
-    pos: ?Point = null,
-    facing: ?f32 = null,
-    radius: ?f32 = null,
-    build_progress: ?f32 = null,
-    cloak: ?CloakState = null,
-    buff_ids: ?[]u32 = null,
-
-    detect_range: ?f32 = null,
-    radar_range: ?f32 = null,
-
-    is_selected: ?bool = null,
-    is_on_screen: ?bool = null,
-    is_blip: ?bool = null,
-    is_powered: ?bool = null,
-    is_active: ?bool = null,
-
-    attack_upgrade_level: ?i32 = null,
-    armor_upgrade_level: ?i32 = null,
-    shield_upgrade_level: ?i32 = null,
-
-    health: ?f32 = null,
-    health_max: ?f32 = null,
-    shield: ?f32 = null,
-    shield_max: ?f32 = null,
-    energy: ?f32 = null,
-    energy_max: ?f32 = null,
-    mineral_contents: ?i32 = null,
-    vespene_contents: ?i32 = null,
-    is_flying: ?bool = null,
-    is_burrowed: ?bool = null,
-    is_hallucination: ?bool = null,
-
-    orders: ?[]UnitOrder = null,
-    addon_tag: ?u64 = null,
-    passengers: ?[]PassengerUnit = null,
-    cargo_space_taken: ?i32 = null,
-    cargo_space_max: ?i32 = null,
-
-    assigned_harvesters: ?i32 = null,
-    ideal_harvesters: ?i32 = null,
-    weapon_cooldown: ?f32 = null,
-    engaged_target_tag: ?u64 = null,
-    buff_duration_remain: ?i32 = null,
-    buff_duration_max: ?i32 = null,
-    rally_targets: ?[]RallyTarget = null,
 };
 
 pub const Action = struct {
@@ -1684,3 +1783,139 @@ pub const ResponseQueryBuildingPlacement = struct {
     };
     result: ?ActionResult = null,
 };
+
+test "unit direct protobuf decode" {
+    const protobuf = @import("protobuf.zig");
+    const RawPoint = struct {
+        pub const field_nums = .{ .{ "x", 1 }, .{ "y", 2 }, .{ "z", 3 } };
+        x: ?f32 = null,
+        y: ?f32 = null,
+        z: ?f32 = null,
+    };
+    const RawOrder = struct {
+        pub const field_nums = .{
+            .{ "ability_id", 1 },
+            .{ "target_world_space_pos", 2 },
+            .{ "target_unit_tag", 3 },
+            .{ "progress", 4 },
+        };
+        ability_id: ?u32 = null,
+        target_world_space_pos: ?RawPoint = null,
+        target_unit_tag: ?u64 = null,
+        progress: ?f32 = null,
+    };
+    const RawPassenger = struct {
+        pub const field_nums = .{.{ "tag", 1 }};
+        tag: ?u64 = null,
+    };
+    const RawRally = struct {
+        pub const field_nums = .{ .{ "point", 1 }, .{ "tag", 2 } };
+        point: ?RawPoint = null,
+        tag: ?u64 = null,
+    };
+    const RawUnit = struct {
+        pub const field_nums = Unit.field_nums;
+        display_type: ?DisplayType = null,
+        alliance: ?Alliance = null,
+        tag: ?u64 = null,
+        unit_type: ?u32 = null,
+        owner: ?i32 = null,
+        pos3: ?RawPoint = null,
+        facing: ?f32 = null,
+        radius: ?f32 = null,
+        build_progress: ?f32 = null,
+        cloak: ?CloakState = null,
+        is_blip: ?bool = null,
+        health: ?f32 = null,
+        health_max: ?f32 = null,
+        shield: ?f32 = null,
+        energy: ?f32 = null,
+        mineral_contents: ?i32 = null,
+        vespene_contents: ?i32 = null,
+        is_flying: ?bool = null,
+        is_burrowed: ?bool = null,
+        orders: ?[]RawOrder = null,
+        addon_tag: ?u64 = null,
+        passengers_raw: ?[]RawPassenger = null,
+        cargo_space_taken: ?i32 = null,
+        cargo_space_max: ?i32 = null,
+        buff_ids: ?[]u32 = null,
+        assigned_harvesters: ?i32 = null,
+        ideal_harvesters: ?i32 = null,
+        weapon_cooldown: ?f32 = null,
+        detect_range: ?f32 = null,
+        radar_range: ?f32 = null,
+        engaged_target_tag: ?u64 = null,
+        is_powered: ?bool = null,
+        shield_max: ?f32 = null,
+        energy_max: ?f32 = null,
+        is_hallucination: ?bool = null,
+        is_active: ?bool = null,
+        attack_upgrade_level: ?i32 = null,
+        armor_upgrade_level: ?i32 = null,
+        shield_upgrade_level: ?i32 = null,
+        buff_duration_remain: ?i32 = null,
+        buff_duration_max: ?i32 = null,
+        rally_targets: ?[]RawRally = null,
+    };
+
+    var orders = [_]RawOrder{
+        .{ .ability_id = @intFromEnum(AbilityId.Move), .target_world_space_pos = .{ .x = 1, .y = 2 }, .progress = 0.25 },
+        .{ .ability_id = @intFromEnum(AbilityId.Attack), .target_unit_tag = 99, .progress = 0.5 },
+    };
+    var passengers = [_]RawPassenger{ .{ .tag = 101 }, .{ .tag = 202 } };
+    var buffs = [_]u32{ @intFromEnum(BuffId.Stimpack), @intFromEnum(BuffId.GuardianShield) };
+    var rallies = [_]RawRally{.{ .point = .{ .x = 3, .y = 4, .z = 5 }, .tag = 303 }};
+
+    const raw = RawUnit{
+        .display_type = .visible,
+        .alliance = .self,
+        .tag = 1234,
+        .unit_type = @intFromEnum(UnitId.SCV),
+        .owner = 1,
+        .pos3 = .{ .x = 10, .y = 11, .z = 12 },
+        .facing = 1.5,
+        .build_progress = 1,
+        .buff_ids = buffs[0..],
+        .orders = orders[0..],
+        .passengers_raw = passengers[0..],
+        .rally_targets = rallies[0..],
+    };
+
+    var buffer: [4096]u8 = undefined;
+    var writer = protobuf.ProtoWriter{ .buffer = buffer[0..] };
+    const encoded = writer.encodeBaseStruct(raw);
+    var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_instance.deinit();
+    var reader = protobuf.ProtoReader{ .bytes = encoded };
+    const decoded = try reader.decodeStruct(encoded.len, Unit, arena_instance.allocator());
+
+    try std.testing.expectEqual(DisplayType.visible, decoded.display_type);
+    try std.testing.expectEqual(Alliance.self, decoded.alliance);
+    try std.testing.expectEqual(@as(u64, 1234), decoded.tag);
+    try std.testing.expectEqual(UnitId.SCV, decoded.unit_type);
+    try std.testing.expectEqual(Point2{ .x = 10, .y = 11 }, decoded.position);
+    try std.testing.expectEqual(@as(f32, 12), decoded.z);
+    try std.testing.expectEqual(CloakState.unknown, decoded.cloak);
+    try std.testing.expectEqual(@as(f32, 10), decoded.health_max);
+    try std.testing.expectEqual(@as(f32, 10), decoded.shield_max);
+    try std.testing.expectEqual(@as(f32, 10), decoded.energy_max);
+    try std.testing.expectEqualSlices(BuffId, &.{ BuffId.Stimpack, BuffId.GuardianShield }, decoded.buff_ids);
+    try std.testing.expectEqual(@as(usize, 2), decoded.passengers.len);
+    try std.testing.expectEqual(@as(u64, 202), decoded.passengers[1]);
+    try std.testing.expectEqual(OrderType.position, std.meta.activeTag(decoded.orders[0].target));
+    try std.testing.expectEqual(Point2{ .x = 1, .y = 2 }, decoded.orders[0].target.position);
+    try std.testing.expectEqual(OrderType.tag, std.meta.activeTag(decoded.orders[1].target));
+    try std.testing.expectEqual(@as(u64, 99), decoded.orders[1].target.tag);
+    try std.testing.expectEqual(Point2{ .x = 3, .y = 4 }, decoded.rally_targets[0].point);
+    try std.testing.expectEqual(@as(u64, 303), decoded.rally_targets[0].tag.?);
+
+    writer.cursor = 0;
+    const default_encoded = writer.encodeBaseStruct(RawUnit{ .display_type = .visible, .alliance = .self, .unit_type = @intFromEnum(UnitId.SCV) });
+    var default_reader = protobuf.ProtoReader{ .bytes = default_encoded };
+    const defaults = try default_reader.decodeStruct(default_encoded.len, Unit, arena_instance.allocator());
+    try std.testing.expectEqual(@as(f32, 10), defaults.health_max);
+    try std.testing.expectEqual(CloakState.unknown, defaults.cloak);
+    try std.testing.expectEqual(@as(usize, 0), defaults.buff_ids.len);
+    try std.testing.expectEqual(@as(usize, 0), defaults.passengers.len);
+}
