@@ -593,9 +593,15 @@ pub const WebSocketClient = struct {
             try reader.readSliceAll(&length);
             payload_length = mem.readInt(u64, &length, .big);
         }
-        try reader.readSliceAll(self.storage[0..payload_length]);
+        const payload_len: usize = @intCast(payload_length);
+        try reader.readSliceAll(self.storage[0..payload_len]);
 
-        var proto_reader = proto.ProtoReader{ .bytes = self.storage[0..payload_length] };
+        // Dupe the payload once into the step arena so the decoded response
+        // can reference it zero-copy (self.storage is reused by later requests
+        // within the same step). Note this keeps the whole payload alive in
+        // the arena until it is reset at the end of the step.
+        const response_payload = try self.step_allocator.dupe(u8, self.storage[0..payload_len]);
+        var proto_reader = proto.ProtoReader{ .bytes = response_payload };
         const res = try proto_reader.decodeStruct(proto_reader.bytes.len, sc2p.Response, self.step_allocator);
 
         if (res.errors) |errors| {

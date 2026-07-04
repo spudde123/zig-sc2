@@ -27,7 +27,10 @@ const ProtoHeader = struct {
 
 pub const ProtoReader = struct {
     bytes_read: usize = 0,
-    bytes: []const u8,
+    // Mutable only because decodeBytes returns zero-copy subslices
+    // that need to coerce to ?[]u8 fields (e.g. ImageData.image).
+    // The reader itself never writes to this buffer.
+    bytes: []u8,
 
     fn decodeProtoHeader(self: *ProtoReader) !ProtoHeader {
         const header = try self.decodeUInt64();
@@ -43,152 +46,163 @@ pub const ProtoReader = struct {
         var res = T{};
 
         const field_nums_tuple = @field(T, "field_nums");
-        // Make a tuple to store arraylists for the fields
-        // where we need to generate slices of unknown length.
-        const TupleType = comptime t: {
-            var tuple_types: [field_nums_tuple.len]type = undefined;
-            for (field_nums_tuple, 0..) |field_info, i| {
-                const field_name = field_info[0];
-                const info = @typeInfo(@TypeOf(@field(res, field_name)));
-                const child_type = info.optional.child;
-                const child_info = @typeInfo(child_type);
-                tuple_types[i] = switch (child_info) {
-                    .pointer => |ptr| std.ArrayList(ptr.child),
-                    else => void,
-                };
-            }
-            break :t std.meta.Tuple(&tuple_types);
-        };
-
-        var list_tuple: TupleType = comptime l: {
-            var tuple: TupleType = undefined;
-            for (field_nums_tuple, 0..) |field_info, i| {
-                const field_name = field_info[0];
-                const info = @typeInfo(@TypeOf(@field(res, field_name)));
-                const child_type = info.optional.child;
-                const child_info = @typeInfo(child_type);
-                tuple[i] = switch (child_info) {
-                    .pointer => .empty,
-                    else => {},
-                };
-            }
-            break :l tuple;
-        };
-
         const start: usize = self.bytes_read;
 
         while (self.bytes_read - start < size) {
             const header = try self.decodeProtoHeader();
 
-            var recognized_field = false;
-            inline for (field_nums_tuple, 0..) |field_info, i| {
-                const field_name = field_info[0];
-                const field_num = field_info[1];
+            const recognized_field = dispatch: {
+                inline for (field_nums_tuple) |field_info| {
+                    const field_name = field_info[0];
+                    const field_num = field_info[1];
 
-                if (header.field_number == field_num) {
-                    recognized_field = true;
-                    const obj_field = &@field(res, field_name);
-                    const info = @typeInfo(@TypeOf(obj_field.*));
-                    const child_type = info.optional.child;
-                    const child_info = @typeInfo(child_type);
+                    if (header.field_number == field_num) {
+                        const obj_field = &@field(res, field_name);
+                        const info = @typeInfo(@TypeOf(obj_field.*));
+                        const child_type = info.optional.child;
+                        const child_info = @typeInfo(child_type);
 
-                    switch (child_info) {
-                        .@"struct" => {
-                            const struct_encoding_size = try self.decodeUInt64();
-                            obj_field.* = try self.decodeStruct(struct_encoding_size, child_type, allocator);
-                        },
-                        .pointer => |ptr| {
-                            if (ptr.child == u8) {
-                                obj_field.* = try self.decodeBytes(allocator);
-                            } else {
-                                switch (ptr.child) {
-                                    []const u8 => {
-                                        const string = try self.decodeBytes(allocator);
-                                        try list_tuple[i].append(allocator, string);
-                                    },
-                                    u32, u64 => {
-                                        const int_to_add = @as(ptr.child, @intCast(try self.decodeUInt64()));
-                                        try list_tuple[i].append(allocator, int_to_add);
-                                    },
-                                    i32, i64 => {
-                                        const int_to_add = @as(ptr.child, @intCast(try self.decodeInt64()));
-                                        try list_tuple[i].append(allocator, int_to_add);
-                                    },
-                                    else => {
-                                        const element_info = @typeInfo(ptr.child);
-                                        switch (element_info) {
-                                            .@"struct" => {
-                                                const struct_encoding_size = try self.decodeUInt64();
-                                                const struct_to_add = try self.decodeStruct(struct_encoding_size, ptr.child, allocator);
-                                                try list_tuple[i].append(allocator, struct_to_add);
-                                            },
-                                            .@"enum" => {
-                                                const enum_int = try self.decodeUInt64();
-                                                try list_tuple[i].append(allocator, @as(ptr.child, @enumFromInt(enum_int)));
-                                            },
-                                            else => @compileError("Unsupported type in repeated field"),
+                        switch (child_info) {
+                            .@"struct" => {
+                                const struct_encoding_size = try self.decodeUInt64();
+                                obj_field.* = try self.decodeStruct(struct_encoding_size, child_type, allocator);
+                            },
+                            .pointer => |ptr| {
+                                if (ptr.child == u8) {
+                                    obj_field.* = try self.decodeBytes();
+                                } else {
+                                    const old_len = if (obj_field.*) |old| old.len else 0;
+                                    const payload_start = self.bytes_read;
+                                    var count: usize = 1;
+                                    try self.skipFieldPayload(header);
+
+                                    while (self.bytes_read - start < size) {
+                                        const next_header_pos = self.bytes_read;
+                                        const next_header = try self.decodeProtoHeader();
+                                        if (next_header.field_number != field_num) {
+                                            self.bytes_read = next_header_pos;
+                                            break;
                                         }
-                                    },
+                                        count += 1;
+                                        try self.skipFieldPayload(next_header);
+                                    }
+
+                                    const new_items = try allocator.alloc(ptr.child, old_len + count);
+                                    if (obj_field.*) |old| {
+                                        @memcpy(new_items[0..old_len], old);
+                                    }
+
+                                    self.bytes_read = payload_start;
+                                    for (new_items[old_len..], 0..) |*item, item_i| {
+                                        if (item_i != 0) {
+                                            _ = try self.decodeProtoHeader();
+                                        }
+                                        item.* = try self.decodeRepeatedElement(ptr.child, allocator);
+                                    }
+                                    obj_field.* = new_items;
                                 }
-                                obj_field.* = list_tuple[i].items;
-                            }
-                        },
-                        .int => |int| {
-                            if (int.signedness == .unsigned) {
-                                obj_field.* = @as(child_type, @intCast(try self.decodeUInt64()));
-                            } else {
-                                obj_field.* = @as(child_type, @intCast(try self.decodeInt64()));
-                            }
-                        },
-                        .float => |float| {
-                            if (float.bits == 32) {
-                                obj_field.* = self.decodeFloat();
-                            } else @compileError("64 bit floats not supported");
-                        },
-                        .bool => {
-                            const num = try self.decodeUInt64();
-                            obj_field.* = num > 0;
-                        },
-                        .void => {
-                            // This only comes up when a message has an empty embedded message
-                            // so we move forward by reading the zero size
-                            _ = try self.decodeUInt64();
-                            obj_field.* = {};
-                        },
-                        .@"enum" => {
-                            const enum_int = try self.decodeUInt64();
-                            obj_field.* = @as(child_type, @enumFromInt(enum_int));
-                        },
-                        else => @compileError("Unsupported field type"),
+                            },
+                            .int => |int| {
+                                if (int.signedness == .unsigned) {
+                                    obj_field.* = @as(child_type, @intCast(try self.decodeUInt64()));
+                                } else {
+                                    obj_field.* = @as(child_type, @intCast(try self.decodeInt64()));
+                                }
+                            },
+                            .float => |float| {
+                                if (float.bits == 32) {
+                                    obj_field.* = try self.decodeFloat();
+                                } else @compileError("64 bit floats not supported");
+                            },
+                            .bool => {
+                                const num = try self.decodeUInt64();
+                                obj_field.* = num > 0;
+                            },
+                            .void => {
+                                // This only comes up when a message has an empty embedded message
+                                // so we move forward by reading the zero size
+                                _ = try self.decodeUInt64();
+                                obj_field.* = {};
+                            },
+                            .@"enum" => {
+                                const enum_int = try self.decodeUInt64();
+                                obj_field.* = @as(child_type, @enumFromInt(enum_int));
+                            },
+                            else => @compileError("Unsupported field type"),
+                        }
+                        break :dispatch true;
                     }
                 }
-            }
+                break :dispatch false;
+            };
 
             // Skip unrecognized fields
             if (!recognized_field) {
-                switch (header.wire_type) {
-                    .varint => {
-                        _ = try self.decodeUInt64();
-                    },
-                    ._32bit => {
-                        self.bytes_read += 4;
-                    },
-                    ._64bit => {
-                        self.bytes_read += 8;
-                    },
-                    .length_delim => {
-                        const skip_len = try self.decodeUInt64();
-                        self.bytes_read += skip_len;
-                    },
-                    else => unreachable,
-                }
+                try self.skipFieldPayload(header);
             }
         }
 
         return res;
     }
 
+    fn skipFieldPayload(self: *ProtoReader, header: ProtoHeader) ParseError!void {
+        switch (header.wire_type) {
+            .varint => {
+                _ = try self.decodeUInt64();
+            },
+            ._32bit => {
+                if (self.bytes_read > self.bytes.len or 4 > self.bytes.len - self.bytes_read) return error.EndOfStream;
+                self.bytes_read += 4;
+            },
+            ._64bit => {
+                if (self.bytes_read > self.bytes.len or 8 > self.bytes.len - self.bytes_read) return error.EndOfStream;
+                self.bytes_read += 8;
+            },
+            .length_delim => {
+                const skip_len: usize = @intCast(try self.decodeUInt64());
+                if (self.bytes_read > self.bytes.len or skip_len > self.bytes.len - self.bytes_read) return error.EndOfStream;
+                self.bytes_read += skip_len;
+            },
+            else => unreachable,
+        }
+    }
+
+    fn decodeRepeatedElement(self: *ProtoReader, comptime T: type, allocator: mem.Allocator) !T {
+        const info = @typeInfo(T);
+        switch (info) {
+            .pointer => |ptr| {
+                if (ptr.child == u8) {
+                    return try self.decodeBytes();
+                } else @compileError("Unsupported pointer type in repeated field");
+            },
+            .int => |int| {
+                if (int.signedness == .unsigned) {
+                    return @as(T, @intCast(try self.decodeUInt64()));
+                } else {
+                    return @as(T, @intCast(try self.decodeInt64()));
+                }
+            },
+            .@"struct" => {
+                const struct_encoding_size = try self.decodeUInt64();
+                return try self.decodeStruct(struct_encoding_size, T, allocator);
+            },
+            .@"enum" => {
+                const enum_int = try self.decodeUInt64();
+                return @as(T, @enumFromInt(enum_int));
+            },
+            else => @compileError("Unsupported type in repeated field"),
+        }
+    }
+
     fn decodeUInt64(self: *ProtoReader) ParseError!u64 {
+        if (self.bytes_read < self.bytes.len) {
+            const first = self.bytes[self.bytes_read];
+            if (first < 0x80) {
+                self.bytes_read += 1;
+                return first;
+            }
+        }
+
         var value: u64 = 0;
 
         for (self.bytes[self.bytes_read..], 0..) |byte, i| {
@@ -211,15 +225,17 @@ pub const ProtoReader = struct {
         return @as(i64, @bitCast(try self.decodeUInt64()));
     }
 
-    fn decodeBytes(self: *ProtoReader, allocator: mem.Allocator) ![]u8 {
-        const num_of_bytes = try self.decodeUInt64();
-        const data = try allocator.dupe(u8, self.bytes[self.bytes_read..(self.bytes_read + num_of_bytes)]);
+    fn decodeBytes(self: *ProtoReader) ParseError![]u8 {
+        const num_of_bytes: usize = @intCast(try self.decodeUInt64());
+        if (self.bytes_read > self.bytes.len or num_of_bytes > self.bytes.len - self.bytes_read) return error.EndOfStream;
+        const data = self.bytes[self.bytes_read..(self.bytes_read + num_of_bytes)];
         self.bytes_read += num_of_bytes;
 
         return data;
     }
 
-    fn decodeFloat(self: *ProtoReader) f32 {
+    fn decodeFloat(self: *ProtoReader) ParseError!f32 {
+        if (self.bytes_read > self.bytes.len or 4 > self.bytes.len - self.bytes_read) return error.EndOfStream;
         const float_bits = mem.readInt(u32, self.bytes[self.bytes_read..][0..4], .little);
         self.bytes_read += 4;
         return @as(f32, @bitCast(float_bits));
@@ -421,7 +437,7 @@ test "protobuf_floats" {
     writer.encodeFloat(data);
 
     var reader = ProtoReader{ .bytes = buffer[0..writer.cursor] };
-    const decoded_data = reader.decodeFloat();
+    const decoded_data = try reader.decodeFloat();
 
     try std.testing.expectEqual(data, decoded_data);
 }
@@ -440,10 +456,9 @@ test "protobuf_bytes" {
 
     var reader = ProtoReader{ .bytes = buffer[0..] };
 
-    const decoded = try reader.decodeBytes(std.testing.allocator);
+    const decoded = try reader.decodeBytes();
     try std.testing.expectEqualSlices(u8, decoded, comparison[1..]);
     try std.testing.expectEqual(reader.bytes_read, 8);
-    std.testing.allocator.free(decoded);
 }
 
 test "protobuf_varint" {
