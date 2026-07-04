@@ -22,6 +22,11 @@ const Point2 = grids.Point2;
 const Point3 = grids.Point3;
 const Circle = grids.Circle;
 
+// Helper functions and iterators for collections of units.
+// The unit struct itself is defined in sc2proto.zig
+// because it's decoded directly from the protobuf
+// messages
+
 pub fn getUnitByTag(units: []Unit, tag: u64) ?Unit {
     for (units) |unit| {
         if (unit.tag == tag) return unit;
