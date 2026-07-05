@@ -477,14 +477,15 @@ fn launchSc2(
     });
 
     const cwd: ChildProcess.Cwd = if (sc2_paths.working_directory) |path| .{ .path = path } else .{ .inherit = {} };
-
+    // On headless linux the game outputs some spam so we discard these
+    const output: std.process.SpawnOptions.StdIo = if (builtin.os.tag == .linux and proton == null) .ignore else .inherit;
     return std.process.spawn(io, .{
         .argv = sc2_args.items,
         .cwd = cwd,
         .environ_map = env,
         // On headless linux the game outputs some spam so we discard these
-        .stderr = .ignore,
-        .stdout = .ignore,
+        .stderr = output,
+        .stdout = output,
     });
 }
 
