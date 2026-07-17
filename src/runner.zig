@@ -995,7 +995,8 @@ fn createReplayName(
 
 test "runner_test_basic" {
     // Just test that we can connect without problems
-
+    // If using non-standard SC2 location give it as an
+    // environment variable
     const TestBot = struct {
         const Self = @This();
         name: []const u8,
@@ -1044,6 +1045,18 @@ test "runner_test_basic" {
     defer arena_instance.deinit();
     var env_map = try std.testing.environ.createMap(arena);
 
+    // Dummy args so we don't crash
+    const args: std.process.Args = if (builtin.os.tag == .windows)
+        .{
+            .vector = std.unicode.utf8ToUtf16LeStringLiteral(
+                "runner_test",
+            ),
+        }
+    else
+        .{
+            .vector = &[_][*:0]const u8{"runner_test"},
+        };
+
     try std.testing.expect(.defeat == try run(
         &test_bot,
         .{
@@ -1051,7 +1064,7 @@ test "runner_test_basic" {
             .gpa = std.testing.allocator,
             .arena = &arena_instance,
             .env_map = &env_map,
-            .args = undefined,
+            .args = args,
             .io = std.testing.io,
         },
     ));
