@@ -27,7 +27,7 @@ const Circle = grids.Circle;
 // because it's decoded directly from the protobuf
 // messages
 
-pub fn getUnitByTag(units: []Unit, tag: u64) ?Unit {
+pub fn getUnitByTag(units: []const Unit, tag: u64) ?Unit {
     for (units) |unit| {
         if (unit.tag == tag) return unit;
     }
@@ -39,7 +39,7 @@ pub const UnitDistanceResult = struct {
     distance_squared: f32,
 };
 
-pub fn findClosestUnit(units: []Unit, pos: Point2) ?UnitDistanceResult {
+pub fn findClosestUnit(units: []const Unit, pos: Point2) ?UnitDistanceResult {
     var min_distance: f32 = math.floatMax(f32);
     var closest_unit_result: ?UnitDistanceResult = null;
     for (units) |unit| {
@@ -55,7 +55,7 @@ pub fn findClosestUnit(units: []Unit, pos: Point2) ?UnitDistanceResult {
     return closest_unit_result;
 }
 
-pub fn findFurthestUnit(units: []Unit, pos: Point2) ?UnitDistanceResult {
+pub fn findFurthestUnit(units: []const Unit, pos: Point2) ?UnitDistanceResult {
     var max_distance: f32 = 0;
     var furthest_unit_result: ?UnitDistanceResult = null;
     for (units) |unit| {
@@ -72,7 +72,7 @@ pub fn findFurthestUnit(units: []Unit, pos: Point2) ?UnitDistanceResult {
 }
 
 pub fn filter(
-    units: []Unit,
+    units: []const Unit,
     allocator: mem.Allocator,
     context: anytype,
     comptime filterFn: fn (context: @TypeOf(context), unit: Unit) bool,
@@ -88,7 +88,7 @@ pub fn filter(
 }
 
 pub fn amountOfType(
-    units: []Unit,
+    units: []const Unit,
     unit_type: UnitId,
 ) usize {
     var count: usize = 0;
@@ -99,7 +99,7 @@ pub fn amountOfType(
 }
 
 pub fn amountOfTypes(
-    units: []Unit,
+    units: []const Unit,
     unit_types: []const UnitId,
 ) usize {
     var count: usize = 0;
@@ -112,7 +112,7 @@ pub fn amountOfTypes(
 }
 
 pub fn ofType(
-    units: []Unit,
+    units: []const Unit,
     unit_type: UnitId,
     allocator: mem.Allocator,
 ) ![]Unit {
@@ -127,7 +127,7 @@ pub fn ofType(
 }
 
 pub fn ofTypes(
-    units: []Unit,
+    units: []const Unit,
     unit_types: []const UnitId,
     allocator: mem.Allocator,
 ) ![]Unit {
@@ -182,38 +182,50 @@ fn furtherThan(context: Circle, unit: Unit) bool {
     return !context.isInside(unit.position);
 }
 
-pub fn insideDistance(circle: Circle, units: []Unit) UnitIterator(Circle, closerThan) {
+fn structureMatches(context: bool, unit: Unit) bool {
+    return unit.is_structure == context;
+}
+
+pub fn insideDistance(circle: Circle, units: []const Unit) UnitIterator(Circle, closerThan) {
     return UnitIterator(Circle, closerThan){ .buffer = units, .context = circle };
 }
 
-pub fn outsideDistance(circle: Circle, units: []Unit) UnitIterator(Circle, furtherThan) {
+pub fn outsideDistance(circle: Circle, units: []const Unit) UnitIterator(Circle, furtherThan) {
     return UnitIterator(Circle, furtherThan){ .buffer = units, .context = circle };
 }
 
-pub fn includeTags(tags: []u64, units: []Unit) UnitIterator([]u64, tagsMatch) {
+pub fn includeTags(tags: []u64, units: []const Unit) UnitIterator([]u64, tagsMatch) {
     return UnitIterator([]u64, tagsMatch){ .buffer = units, .context = tags };
 }
 
-pub fn excludeTags(tags: []u64, units: []Unit) UnitIterator([]u64, tagsDontMatch) {
+pub fn excludeTags(tags: []u64, units: []const Unit) UnitIterator([]u64, tagsDontMatch) {
     return UnitIterator([]u64, tagsDontMatch){ .buffer = units, .context = tags };
 }
 
-pub fn includeType(unit_type: UnitId, units: []Unit) UnitIterator(UnitId, unitTypeMatches) {
+pub fn includeType(unit_type: UnitId, units: []const Unit) UnitIterator(UnitId, unitTypeMatches) {
     return UnitIterator(UnitId, unitTypeMatches){ .buffer = units, .context = unit_type };
 }
 
-pub fn includeTypes(unit_types: []const UnitId, units: []Unit) UnitIterator([]const UnitId, unitTypesMatch) {
+pub fn includeTypes(unit_types: []const UnitId, units: []const Unit) UnitIterator([]const UnitId, unitTypesMatch) {
     return UnitIterator([]const UnitId, unitTypesMatch){ .buffer = units, .context = unit_types };
 }
 
-pub fn excludeTypes(unit_types: []const UnitId, units: []Unit) UnitIterator([]const UnitId, unitTypesDontMatch) {
+pub fn excludeTypes(unit_types: []const UnitId, units: []const Unit) UnitIterator([]const UnitId, unitTypesDontMatch) {
     return UnitIterator([]const UnitId, unitTypesDontMatch){ .buffer = units, .context = unit_types };
+}
+
+pub fn includeStructures(units: []const Unit) UnitIterator(bool, structureMatches) {
+    return UnitIterator(bool, structureMatches){ .buffer = units, .context = true };
+}
+
+pub fn excludeStructures(units: []const Unit) UnitIterator(bool, structureMatches) {
+    return UnitIterator(bool, structureMatches){ .buffer = units, .context = false };
 }
 
 pub fn UnitIterator(comptime ContextType: type, comptime filterFn: fn (context: ContextType, unit: Unit) bool) type {
     return struct {
         index: usize = 0,
-        buffer: []Unit,
+        buffer: []const Unit,
         context: ContextType,
 
         const Self = @This();
