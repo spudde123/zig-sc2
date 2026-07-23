@@ -7,14 +7,14 @@ const f32_max = math.floatMax(f32);
 
 pub const PackedBits = struct {
     pub fn read(data: []const u8, index: usize) u1 {
-        const byte_index = index / 8;
-        const bit_offset: u3 = @intCast(index % 8);
-        return @intCast((data[byte_index] >> (7 - bit_offset)) & 1);
+        const byte_index = index >> 3;
+        const bit_offset: u3 = @truncate(index);
+        return @truncate(data[byte_index] >> (7 - bit_offset));
     }
 
     pub fn write(data: []u8, index: usize, value: u1) void {
-        const byte_index = index / 8;
-        const bit_offset: u3 = @intCast(index % 8);
+        const byte_index = index >> 3;
+        const bit_offset: u3 = @truncate(index);
         if (value == 1) {
             data[byte_index] |= @as(u8, 1) << (7 - bit_offset);
         } else {
@@ -23,7 +23,7 @@ pub const PackedBits = struct {
     }
 
     pub fn bytesRequired(count: usize) usize {
-        return (count + 7) / 8;
+        return (count + 7) >> 3;
     }
 };
 
@@ -224,29 +224,19 @@ pub fn Grid(comptime Int: type) type {
         h: usize,
 
         pub fn getValue(self: Self, point: Point2) Int {
-            const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
-            const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
-
-            assert(x >= 0 and x < self.w);
-            assert(y >= 0 and y < self.h);
-            switch (Int) {
-                u8 => return self.data[x + y * self.w],
-                u1 => PackedBits.read(self.data, x + y * self.w),
-                else => @compileError("Grid should have u8 or u1 members"),
-            }
+            assert(point.x >= 0 and point.x < @as(f32, @floatFromInt(self.w)));
+            assert(point.y >= 0 and point.y < @as(f32, @floatFromInt(self.h)));
+            const x: usize = @intFromFloat(math.floor(point.x));
+            const y: usize = @intFromFloat(math.floor(point.y));
+            return self.getValueIndex(x + y * self.w);
         }
 
         pub fn setValue(self: *Self, point: Point2, value: Int) void {
-            const x: usize = @as(usize, @intFromFloat(math.floor(point.x)));
-            const y: usize = @as(usize, @intFromFloat(math.floor(point.y)));
-
-            assert(x >= 0 and x < self.w);
-            assert(y >= 0 and y < self.h);
-            switch (Int) {
-                u8 => self.data[x + y * self.w] = value,
-                u1 => PackedBits.write(self.data, x + y * self.w, value),
-                else => @compileError("Grid should have u8 or u1 members"),
-            }
+            assert(point.x >= 0 and point.x < @as(f32, @floatFromInt(self.w)));
+            assert(point.y >= 0 and point.y < @as(f32, @floatFromInt(self.h)));
+            const x: usize = @intFromFloat(math.floor(point.x));
+            const y: usize = @intFromFloat(math.floor(point.y));
+            self.setValueIndex(x + y * self.w, value);
         }
 
         pub fn getValueIndex(self: Self, index: usize) Int {
@@ -273,11 +263,7 @@ pub fn Grid(comptime Int: type) type {
 
         pub fn allEqual(self: Self, indices: []const usize, value: Int) bool {
             for (indices) |index| {
-                switch (Int) {
-                    u8 => if (self.data[index] != value) return false,
-                    u1 => if (PackedBits.read(self.data, index) != value) return false,
-                    else => @compileError("Grid should have u8 or u1 members"),
-                }
+                if (self.getValueIndex(index) != value) return false;
             }
             return true;
         }
@@ -285,11 +271,7 @@ pub fn Grid(comptime Int: type) type {
         pub fn count(self: Self, indices: []const usize) u64 {
             var total: u64 = 0;
             for (indices) |index| {
-                switch (Int) {
-                    u8 => total += self.data[index],
-                    u1 => total += PackedBits.read(self.data, index),
-                    else => @compileError("Grid should have u8 or u1 members"),
-                }
+                total += self.getValueIndex(index);
             }
             return total;
         }
@@ -405,6 +387,9 @@ pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usi
     const start_y = @as(usize, @intCast(playable_area.p0.y));
     const end_y = @as(usize, @intCast(playable_area.p1.y));
 
+    assert(start_x <= end_x and end_x < map_width);
+    assert(start_y <= end_y and end_y < map_height);
+
     const req_bytes = PackedBits.bytesRequired(map_width * map_height);
     const data = try allocator.alloc(u8, req_bytes);
     var air_grid = Grid(u1){
@@ -412,14 +397,10 @@ pub fn createAirGrid(allocator: mem.Allocator, map_width: usize, map_height: usi
         .w = map_width,
         .h = map_height,
     };
-
-    var y: usize = 0;
-    while (y < map_height) : (y += 1) {
-        var x: usize = 0;
-        while (x < map_width) : (x += 1) {
-            const index = x + map_width * y;
-            const playable = x >= start_x and x <= end_x and y >= start_y and y <= end_y;
-            air_grid.setValueIndex(index, if (playable) 1 else 0);
+    @memset(air_grid.data, 0);
+    for (start_y..end_y + 1) |y| {
+        for (start_x..end_x + 1) |x| {
+            air_grid.setValueIndex(x + map_width * y, 1);
         }
     }
     return air_grid;
@@ -535,11 +516,10 @@ pub const InfluenceMap = struct {
     }
 
     pub fn addInfluenceCreep(self: *InfluenceMap, creep: Grid(u1), amount: f32) void {
-        for (0..creep.h) |y| {
-            for (0..creep.w) |x| {
-                const index = x + creep.w * y;
-                if (creep.getValueIndex(index) > 0) self.grid[index] += amount;
-            }
+        assert(self.w == creep.w);
+        assert(self.h == creep.h);
+        for (self.grid, 0..) |*val, i| {
+            if (creep.getValueIndex(i) > 0) val.* += amount;
         }
     }
 
