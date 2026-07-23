@@ -745,11 +745,20 @@ pub const InfluenceMap = struct {
         assert(options.point_to_take > 0);
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
+        const start_index = self.pointToIndex(validated_start);
+        const goal_index = self.pointToIndex(validated_goal);
+
+        if (start_index == goal_index) {
+            return .{
+                .path_len = 0,
+                .next_point = self.indexToPoint(goal_index).add(.{ .x = 0.5, .y = 0.5 }),
+                .path_cost = 0,
+            };
+        }
 
         const came_from = self.runPathfind(allocator, validated_start, validated_goal, options.large_unit) catch return PfError.AllocationError;
         defer allocator.free(came_from);
 
-        const goal_index = self.pointToIndex(validated_goal);
         var cur = came_from[goal_index];
         // No path
         if (cur == null) return null;
@@ -782,11 +791,21 @@ pub const InfluenceMap = struct {
     pub fn pathfindPath(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, options: PathfindOptions) PfError!?PathfindPath {
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
+        const start_index = self.pointToIndex(validated_start);
+        const goal_index = self.pointToIndex(validated_goal);
+
+        if (start_index == goal_index) {
+            const path = allocator.alloc(Point2, 0) catch return PfError.AllocationError;
+            return .{
+                .path_cost = 0,
+                .path = path,
+                .allocator = allocator,
+            };
+        }
 
         const came_from = self.runPathfind(allocator, validated_start, validated_goal, options.large_unit) catch return PfError.AllocationError;
         defer allocator.free(came_from);
 
-        const goal_index = self.pointToIndex(validated_goal);
         var cur = came_from[goal_index];
         // No path
         if (cur == null) return null;
@@ -1035,6 +1054,15 @@ pub const InfluenceMap = struct {
 
         var res = allocator.alloc(?PathfindResult, goal_indices.len) catch return PfError.AllocationError;
         for (goal_indices, 0..) |goal_index, g| {
+            if (goal_index == start_index) {
+                res[g] = .{
+                    .path_len = 0,
+                    .next_point = self.indexToPoint(goal_index).add(.{ .x = 0.5, .y = 0.5 }),
+                    .path_cost = 0,
+                };
+                continue;
+            }
+
             var cur = came_from[goal_index];
             // No path
             if (cur == null) {
@@ -1132,6 +1160,22 @@ test "test_pf_basic" {
     try std.testing.expectEqual(dijkstra_res.dirs[0].?.path_cost, dir.?.path_cost);
     try std.testing.expectEqual(dijkstra_res.dirs[1].?.path_cost, dir.?.path_cost);
     try std.testing.expectEqualDeep(dijkstra_res.dirs[1].?.next_point, dijkstra_res.dirs[0].?.next_point);
+
+    const same_dir = (try map.pathfindDirection(allocator, start, start, .{})).?;
+    try std.testing.expectEqual(@as(usize, 0), same_dir.path_len);
+    try std.testing.expectEqual(@as(f32, 0), same_dir.path_cost);
+    try std.testing.expectEqual(start, same_dir.next_point);
+
+    var same_path = (try map.pathfindPath(allocator, start, start, .{})).?;
+    defer same_path.deinit();
+    try std.testing.expectEqual(@as(usize, 0), same_path.path.len);
+    try std.testing.expectEqual(@as(f32, 0), same_path.path_cost);
+
+    var same_dijkstra = try map.runDijkstra(allocator, start, &.{start}, .{});
+    defer same_dijkstra.deinit();
+    try std.testing.expectEqual(@as(usize, 0), same_dijkstra.dirs[0].?.path_len);
+    try std.testing.expectEqual(@as(f32, 0), same_dijkstra.dirs[0].?.path_cost);
+    try std.testing.expectEqual(start, same_dijkstra.dirs[0].?.next_point);
 
     const wall_indices = [_]usize{ 2 * size + 2, 3 * size + 2, 4 * size + 2, 5 * size + 2, 6 * size + 2, 7 * size + 2, 8 * size + 2, 2 * size + 3, 2 * size + 4, 2 * size + 5, 2 * size + 6 };
     grid.setValuesIndices(&wall_indices, 0);
