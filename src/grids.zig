@@ -6,6 +6,31 @@ const assert = std.debug.assert;
 const f32_max = math.floatMax(f32);
 
 pub const PackedBits = struct {
+    pub const lane_count = 8;
+    pub const Mask = @Vector(lane_count, bool);
+
+    const mask_table: [256]Mask = blk: {
+        var table: [256]Mask = undefined;
+        for (0..256) |i| {
+            const byte: u8 = @intCast(i);
+            table[i] = .{
+                byte & 0x80 != 0,
+                byte & 0x40 != 0,
+                byte & 0x20 != 0,
+                byte & 0x10 != 0,
+                byte & 0x08 != 0,
+                byte & 0x04 != 0,
+                byte & 0x02 != 0,
+                byte & 0x01 != 0,
+            };
+        }
+        break :blk table;
+    };
+
+    pub fn maskForByte(byte: u8) Mask {
+        return mask_table[byte];
+    }
+
     pub fn read(data: []const u8, index: usize) u1 {
         const byte_index = index >> 3;
         const bit_offset: u3 = @truncate(index);
@@ -432,11 +457,29 @@ pub const InfluenceMap = struct {
         max_y: usize,
     };
 
+    const ValueVector = @Vector(PackedBits.lane_count, f32);
+
+    fn fillFromGrid(values: []f32, base_grid: Grid(u1)) void {
+        assert(values.len == base_grid.w * base_grid.h);
+        assert(base_grid.data.len >= PackedBits.bytesRequired(values.len));
+
+        const pathable: ValueVector = @splat(1);
+        const unpathable: ValueVector = @splat(f32_max);
+
+        var i: usize = 0;
+        while (i + PackedBits.lane_count <= values.len) : (i += PackedBits.lane_count) {
+            const mask = PackedBits.maskForByte(base_grid.data[i >> 3]);
+            const vector = @select(f32, mask, pathable, unpathable);
+            values[i..][0..PackedBits.lane_count].* = vector;
+        }
+        while (i < values.len) : (i += 1) {
+            values[i] = if (base_grid.getValueIndex(i) > 0) 1 else f32_max;
+        }
+    }
+
     pub fn fromGrid(allocator: mem.Allocator, base_grid: Grid(u1), terrain_height: Grid(u8)) !InfluenceMap {
         const grid = try allocator.alloc(f32, base_grid.h * base_grid.w);
-        for (grid, 0..) |*val, i| {
-            val.* = if (base_grid.getValueIndex(i) > 0) 1 else f32_max;
-        }
+        fillFromGrid(grid, base_grid);
         return .{
             .grid = grid,
             .w = base_grid.w,
@@ -446,9 +489,9 @@ pub const InfluenceMap = struct {
     }
 
     pub fn reset(self: *InfluenceMap, base_grid: Grid(u1)) void {
-        for (self.grid, 0..) |*val, i| {
-            val.* = if (base_grid.getValueIndex(i) > 0) 1 else f32_max;
-        }
+        assert(self.w == base_grid.w);
+        assert(self.h == base_grid.h);
+        fillFromGrid(self.grid, base_grid);
     }
 
     pub fn deinit(self: *InfluenceMap, allocator: mem.Allocator) void {
@@ -518,8 +561,20 @@ pub const InfluenceMap = struct {
     pub fn addInfluenceCreep(self: *InfluenceMap, creep: Grid(u1), amount: f32) void {
         assert(self.w == creep.w);
         assert(self.h == creep.h);
-        for (self.grid, 0..) |*val, i| {
-            if (creep.getValueIndex(i) > 0) val.* += amount;
+        assert(creep.data.len >= PackedBits.bytesRequired(self.grid.len));
+
+        const influence: ValueVector = @splat(amount);
+        const no_influence: ValueVector = @splat(0);
+
+        var i: usize = 0;
+        while (i + PackedBits.lane_count <= self.grid.len) : (i += PackedBits.lane_count) {
+            const values: ValueVector = self.grid[i..][0..PackedBits.lane_count].*;
+            const mask = PackedBits.maskForByte(creep.data[i >> 3]);
+            const additions = @select(f32, mask, influence, no_influence);
+            self.grid[i..][0..PackedBits.lane_count].* = values + additions;
+        }
+        while (i < self.grid.len) : (i += 1) {
+            if (creep.getValueIndex(i) > 0) self.grid[i] += amount;
         }
     }
 
@@ -557,7 +612,10 @@ pub const InfluenceMap = struct {
             var x = bounding_rect.min_x;
             while (x <= bounding_rect.max_x) : (x += 1) {
                 const index = x + self.w * y;
-                const point = self.indexToPoint(index).add(.{ .x = 0.5, .y = 0.5 });
+                const point: Point2 = .{
+                    .x = @as(f32, @floatFromInt(x)) + 0.5,
+                    .y = @as(f32, @floatFromInt(y)) + 0.5,
+                };
                 const dist_sqrd = point.distanceSquaredTo(pos);
                 if (dist_sqrd < r_sqrd and self.grid[index] <= best_val and self.grid[index] < f32_max and dist_sqrd < best_dist) {
                     best_val = self.grid[index];
@@ -1095,6 +1153,9 @@ test "test_pf_basic" {
 }
 
 test "packed_bits" {
+    const expected_mask: PackedBits.Mask = .{ true, false, true, true, false, false, false, true };
+    try std.testing.expectEqual(expected_mask, PackedBits.maskForByte(0b10110001));
+
     var test_data = [_]u8{0} ** 10;
 
     PackedBits.write(&test_data, 0, 1);
@@ -1120,4 +1181,28 @@ test "packed_bits" {
 
     const later_bit = PackedBits.read(&test_data, 9);
     try std.testing.expectEqual(@as(u1, 1), later_bit);
+}
+
+test "influence map uses packed masks including scalar tail" {
+    var base_data = [_]u8{ 0b10101010, 0b10000000 };
+    const base_grid = Grid(u1){ .data = &base_data, .w = 10, .h = 1 };
+    var terrain_data = [_]u8{0} ** 10;
+    const terrain_grid = Grid(u8){ .data = &terrain_data, .w = 10, .h = 1 };
+
+    var map = try InfluenceMap.fromGrid(std.testing.allocator, base_grid, terrain_grid);
+    defer map.deinit(std.testing.allocator);
+
+    for (map.grid, 0..) |value, i| {
+        try std.testing.expectEqual(if (i % 2 == 0) @as(f32, 1) else f32_max, value);
+    }
+
+    var creep_data = [_]u8{ 0b10000000, 0b10000000 };
+    const creep_grid = Grid(u1){ .data = &creep_data, .w = 10, .h = 1 };
+    map.addInfluenceCreep(creep_grid, 2);
+    try std.testing.expectEqual(@as(f32, 3), map.grid[0]);
+    try std.testing.expectEqual(@as(f32, 3), map.grid[8]);
+
+    map.reset(base_grid);
+    try std.testing.expectEqual(@as(f32, 1), map.grid[0]);
+    try std.testing.expectEqual(@as(f32, 1), map.grid[8]);
 }
