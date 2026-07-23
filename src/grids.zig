@@ -742,6 +742,7 @@ pub const InfluenceMap = struct {
     /// Returns just the path length and the direction, which is probably in practice what we mostly need
     /// during a game before we do another call the next step
     pub fn pathfindDirection(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goal: Point2, options: PathfindOptions) PfError!?PathfindResult {
+        assert(options.point_to_take > 0);
         const validated_start = self.validateEndPoint(start) orelse return null;
         const validated_goal = self.validateEndPoint(goal) orelse return null;
 
@@ -921,6 +922,7 @@ pub const InfluenceMap = struct {
     /// Returns the result with the path length, next point to take and the cost of the path
     /// Caller needs to call deinit on the result to free the memory or use an arena or a fixed buffer for the step
     pub fn runDijkstra(self: InfluenceMap, allocator: mem.Allocator, start: Point2, goals: []const Point2, options: PathfindOptions) PfError!DijkstraResult {
+        assert(options.point_to_take > 0);
         const validated_start = self.validateEndPoint(start) orelse {
             const res = allocator.alloc(?PathfindResult, goals.len) catch return PfError.AllocationError;
             for (res) |*val| {
