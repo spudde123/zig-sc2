@@ -522,9 +522,10 @@ pub const WebSocketClient = struct {
             // in the websocket message
             const max_websocket_header_size = 14;
 
-            var buf: [64 * 1024]u8 = undefined;
-            const payload = try proto.encode(buf[max_websocket_header_size..], request);
+            var buf = try self.step_allocator.alloc(u8, 2 * 1024 * 1024);
+            defer self.step_allocator.free(buf);
 
+            const payload = try proto.encode(buf[max_websocket_header_size..], request);
             var msg = payload.ptr;
             var pre_payload: usize = 6;
 
