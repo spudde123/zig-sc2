@@ -67,15 +67,11 @@ pub const WebSocketClient = struct {
     addr: net.IpAddress,
     socket: net.Stream,
     prng: rand.DefaultPrng,
-    perm_allocator: mem.Allocator,
     step_allocator: mem.Allocator,
-    storage: []u8,
     status: sc2p.Status = .default,
 
-    /// perm_alloc should not be freed from the outside while client is in use
-    /// while the client is in use.
     /// step_alloc is meant to be freed after each game loop
-    pub fn init(io: std.Io, host: []const u8, port: u16, perm_alloc: mem.Allocator, step_alloc: mem.Allocator) !WebSocketClient {
+    pub fn init(io: std.Io, host: []const u8, port: u16, step_alloc: mem.Allocator) !WebSocketClient {
         const addr = try net.IpAddress.parse(host, port);
         const socket = try addr.connect(io, .{
             .mode = .stream,
@@ -86,21 +82,17 @@ pub const WebSocketClient = struct {
         // Replay save responses can exceed 5 MiB in long validation wins. The old
         // fixed buffer caused an index-out-of-bounds panic after victory while saving
         // the replay, turning a won game into a reported crash.
-        const storage = try perm_alloc.alloc(u8, 32 * 1024 * 1024);
         return WebSocketClient{
             .io = io,
             .addr = addr,
             .socket = socket,
             .prng = rand.DefaultPrng.init(seed),
-            .perm_allocator = perm_alloc,
             .step_allocator = step_alloc,
-            .storage = storage,
         };
     }
 
     pub fn deinit(self: *WebSocketClient) void {
         self.socket.close(self.io);
-        self.perm_allocator.free(self.storage);
     }
 
     pub fn completeHandshake(self: *WebSocketClient, path: []const u8) !void {
@@ -528,8 +520,11 @@ pub const WebSocketClient = struct {
         {
             // Leaving space in the beginning for the bytes needed
             // in the websocket message
-            var writer = proto.ProtoWriter{ .buffer = self.storage[14..] };
-            const payload = writer.encodeBaseStruct(request);
+            const max_websocket_header_size = 14;
+
+            var buf: [64 * 1024]u8 = undefined;
+            const payload = try proto.encode(buf[max_websocket_header_size..], request);
+
             var msg = payload.ptr;
             var pre_payload: usize = 6;
 
@@ -594,15 +589,9 @@ pub const WebSocketClient = struct {
             payload_length = mem.readInt(u64, &length, .big);
         }
         const payload_len: usize = @intCast(payload_length);
-        try reader.readSliceAll(self.storage[0..payload_len]);
+        const response_payload = try reader.readAlloc(self.step_allocator, payload_len);
 
-        // Dupe the payload once into the step arena so the decoded response
-        // can reference it zero-copy (self.storage is reused by later requests
-        // within the same step). Note this keeps the whole payload alive in
-        // the arena until it is reset at the end of the step.
-        const response_payload = try self.step_allocator.dupe(u8, self.storage[0..payload_len]);
-        var proto_reader = proto.ProtoReader{ .bytes = response_payload };
-        const res = try proto_reader.decodeStruct(proto_reader.bytes.len, sc2p.Response, self.step_allocator);
+        const res = try proto.decode(sc2p.Response, response_payload, self.step_allocator);
 
         if (res.errors) |errors| {
             for (errors) |error_string| {

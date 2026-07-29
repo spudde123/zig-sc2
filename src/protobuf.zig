@@ -17,7 +17,8 @@ const WireType = enum(u8) {
 const ParseError = error{
     Overflow,
     EndOfStream,
-    OutOfMemory,
+    EndOfBuffer,
+    UnsupportedWireType,
 };
 
 const ProtoHeader = struct {
@@ -25,7 +26,19 @@ const ProtoHeader = struct {
     field_number: u8,
 };
 
-pub const ProtoReader = struct {
+/// Use an arena allocator and free all allocations afterwards when the results aren't needed anymore
+pub fn decode(comptime T: type, bytes: []u8, allocator: mem.Allocator) !T {
+    var reader = ProtoReader{ .bytes = bytes };
+    return try reader.decodeStruct(T, bytes.len, allocator);
+}
+
+pub fn encode(buf: []u8, s: anytype) ![]u8 {
+    var proto_writer = ProtoWriter{ .buf = buf };
+    const varint_byte_length = try proto_writer.encodeElementStruct(s);
+    return buf[varint_byte_length..proto_writer.cursor];
+}
+
+const ProtoReader = struct {
     bytes_read: usize = 0,
     // Mutable only because decodeBytes returns zero-copy subslices
     // that need to coerce to ?[]u8 fields (e.g. ImageData.image).
@@ -41,8 +54,7 @@ pub const ProtoReader = struct {
         };
     }
 
-    /// Use an arena allocator and free all allocations afterwards when the results aren't needed anymore
-    pub fn decodeStruct(self: *ProtoReader, size: usize, comptime T: type, allocator: mem.Allocator) !T {
+    fn decodeStruct(self: *ProtoReader, comptime T: type, size: usize, allocator: mem.Allocator) !T {
         var res = T{};
 
         const field_nums_tuple = @field(T, "field_nums");
@@ -67,7 +79,7 @@ pub const ProtoReader = struct {
                         switch (child_info) {
                             .@"struct" => {
                                 const struct_encoding_size = try self.decodeUInt64();
-                                obj_field.* = try self.decodeStruct(struct_encoding_size, child_type, allocator);
+                                obj_field.* = try self.decodeStruct(child_type, struct_encoding_size, allocator);
                             },
                             .pointer => |ptr| {
                                 if (ptr.child == u8) {
@@ -181,7 +193,7 @@ pub const ProtoReader = struct {
                 if (self.bytes_read > self.bytes.len or skip_len > self.bytes.len - self.bytes_read) return error.EndOfStream;
                 self.bytes_read += skip_len;
             },
-            else => unreachable,
+            else => return ParseError.UnsupportedWireType,
         }
     }
 
@@ -202,7 +214,7 @@ pub const ProtoReader = struct {
             },
             .@"struct" => {
                 const struct_encoding_size = try self.decodeUInt64();
-                return try self.decodeStruct(struct_encoding_size, T, allocator);
+                return try self.decodeStruct(T, struct_encoding_size, allocator);
             },
             .@"enum" => {
                 const enum_int = try self.decodeUInt64();
@@ -260,28 +272,28 @@ pub const ProtoReader = struct {
     }
 };
 
-pub const ProtoWriter = struct {
-    buffer: []u8,
+const ProtoWriter = struct {
+    buf: []u8,
     cursor: usize = 0,
 
-    pub fn encodeBaseStruct(self: *ProtoWriter, s: anytype) []u8 {
-        self.cursor = 0;
-        const varint_byte_length = self.encodeElementStruct(s);
-        const total_size = self.cursor;
-        return self.buffer[varint_byte_length..total_size];
+    fn checkWrite(self: *ProtoWriter, len: usize) !void {
+        std.debug.assert(self.cursor <= self.buf.len);
+        if (len > self.buf.len - self.cursor) return ParseError.EndOfBuffer;
     }
 
-    fn encodeProtoHeader(self: *ProtoWriter, header: ProtoHeader) void {
+    fn encodeProtoHeader(self: *ProtoWriter, header: ProtoHeader) !void {
         var num = @as(u64, header.field_number) << 3;
         num += @intFromEnum(header.wire_type);
-        self.encodeUInt64(num);
+        try self.encodeUInt64(num);
     }
 
     // Returns the number of bytes the preceding varint takes
     // so encodeBaseStruct can use it
-    fn encodeElementStruct(self: *ProtoWriter, s: anytype) usize {
+    fn encodeElementStruct(self: *ProtoWriter, s: anytype) !usize {
 
         // Leave 1 space for varint size by default
+        try self.checkWrite(1);
+        self.buf[self.cursor] = 0;
         self.cursor += 1;
 
         const content_start: usize = self.cursor;
@@ -297,21 +309,21 @@ pub const ProtoWriter = struct {
                 switch (info) {
                     .@"struct" => {
                         const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
-                        self.encodeProtoHeader(field_header);
-                        _ = self.encodeElementStruct(data);
+                        try self.encodeProtoHeader(field_header);
+                        _ = try self.encodeElementStruct(data);
                     },
                     .pointer => |ptr| {
                         if (ptr.child == u8) {
                             const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
 
-                            self.encodeProtoHeader(field_header);
-                            self.encodeBytes(data);
+                            try self.encodeProtoHeader(field_header);
+                            try self.encodeBytes(data);
                         } else if (ptr.child == []const u8) {
                             const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
 
                             for (data) |string| {
-                                self.encodeProtoHeader(field_header);
-                                self.encodeBytes(string);
+                                try self.encodeProtoHeader(field_header);
+                                try self.encodeBytes(string);
                             }
                         } else {
                             const child_info = @typeInfo(ptr.child);
@@ -320,19 +332,19 @@ pub const ProtoWriter = struct {
                                     const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
 
                                     for (data) |d| {
-                                        self.encodeProtoHeader(field_header);
-                                        _ = self.encodeElementStruct(d);
+                                        try self.encodeProtoHeader(field_header);
+                                        _ = try self.encodeElementStruct(d);
                                     }
                                 },
                                 .int => |int| {
                                     const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
 
                                     for (data) |integer_val| {
-                                        self.encodeProtoHeader(field_header);
+                                        try self.encodeProtoHeader(field_header);
                                         if (int.signedness == .unsigned) {
-                                            self.encodeUInt64(@as(u64, integer_val));
+                                            try self.encodeUInt64(@as(u64, integer_val));
                                         } else {
-                                            self.encodeInt64(@as(i64, integer_val));
+                                            try self.encodeInt64(@as(i64, integer_val));
                                         }
                                     }
                                 },
@@ -340,8 +352,8 @@ pub const ProtoWriter = struct {
                                     const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
 
                                     for (data) |enum_val| {
-                                        self.encodeProtoHeader(field_header);
-                                        self.encodeUInt64(@intFromEnum(enum_val));
+                                        try self.encodeProtoHeader(field_header);
+                                        try self.encodeUInt64(@intFromEnum(enum_val));
                                     }
                                 },
                                 else => @compileError("Unsupported type in repeated field"),
@@ -350,36 +362,36 @@ pub const ProtoWriter = struct {
                     },
                     .int => |int| {
                         const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
-                        self.encodeProtoHeader(field_header);
+                        try self.encodeProtoHeader(field_header);
 
                         if (int.signedness == .unsigned) {
-                            self.encodeUInt64(@as(u64, data));
+                            try self.encodeUInt64(@as(u64, data));
                         } else {
-                            self.encodeInt64(@as(i64, data));
+                            try self.encodeInt64(@as(i64, data));
                         }
                     },
                     .float => |float| {
                         if (float.bits == 32) {
                             const field_header = ProtoHeader{ .wire_type = ._32bit, .field_number = field_num };
-                            self.encodeProtoHeader(field_header);
-                            self.encodeFloat(data);
+                            try self.encodeProtoHeader(field_header);
+                            try self.encodeFloat(data);
                         } else @compileError("64bit floats not supported");
                     },
                     .bool => {
                         const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
-                        self.encodeProtoHeader(field_header);
-                        self.encodeUInt64(@as(u64, @intFromBool(data)));
+                        try self.encodeProtoHeader(field_header);
+                        try self.encodeUInt64(@as(u64, @intFromBool(data)));
                     },
                     .@"enum" => {
                         const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
-                        self.encodeProtoHeader(field_header);
-                        self.encodeUInt64(@as(u64, @intFromEnum(data)));
+                        try self.encodeProtoHeader(field_header);
+                        try self.encodeUInt64(@as(u64, @intFromEnum(data)));
                     },
                     .void => {
                         // This only comes up when the proto file has an empty embedded message
                         const field_header = ProtoHeader{ .wire_type = .length_delim, .field_number = field_num };
-                        self.encodeProtoHeader(field_header);
-                        self.encodeUInt64(0);
+                        try self.encodeProtoHeader(field_header);
+                        try self.encodeUInt64(0);
                     },
                     else => @compileError("Unsupported field type"),
                 }
@@ -387,16 +399,16 @@ pub const ProtoWriter = struct {
         }
 
         const struct_encoding_size = self.cursor - content_start;
-
         const varint_byte_length = varIntByteLength(@as(u64, struct_encoding_size));
         self.cursor = content_start - 1;
 
         if (varint_byte_length == 1) {
-            self.encodeUInt64(@as(u64, struct_encoding_size));
+            try self.encodeUInt64(@as(u64, struct_encoding_size));
         } else {
+            try self.checkWrite(varint_byte_length - 1);
             const new_start = content_start - 1 + varint_byte_length;
-            @memmove(self.buffer[new_start .. new_start + struct_encoding_size], self.buffer[content_start .. content_start + struct_encoding_size]);
-            self.encodeUInt64(@as(u64, struct_encoding_size));
+            @memmove(self.buf[new_start .. new_start + struct_encoding_size], self.buf[content_start .. content_start + struct_encoding_size]);
+            try self.encodeUInt64(@as(u64, struct_encoding_size));
         }
 
         const total_size = varint_byte_length + struct_encoding_size;
@@ -404,9 +416,12 @@ pub const ProtoWriter = struct {
         return varint_byte_length;
     }
 
-    fn encodeUInt64(self: *ProtoWriter, data: u64) void {
+    fn encodeUInt64(self: *ProtoWriter, data: u64) !void {
+        const l = varIntByteLength(data);
+        try self.checkWrite(l);
+
         if (data == 0) {
-            self.buffer[self.cursor] = 0;
+            self.buf[self.cursor] = 0;
             self.cursor += 1;
             return;
         }
@@ -416,28 +431,29 @@ pub const ProtoWriter = struct {
 
         // MSB of all bytes before last to 1
         while (value > 0) : (i += 1) {
-            self.buffer[self.cursor + i] = @as(u8, 0x80) + @as(u7, @truncate(value));
+            self.buf[self.cursor] = @as(u8, 0x80) + @as(u7, @truncate(value));
             value >>= 7;
+            self.cursor += 1;
         }
 
         // Set MSB of last byte to 0
-        self.buffer[self.cursor + i - 1] &= 0x7F;
-        self.cursor += i;
+        self.buf[self.cursor - 1] &= 0x7F;
     }
 
-    fn encodeInt64(self: *ProtoWriter, data: i64) void {
-        self.encodeUInt64(@as(u64, @bitCast(data)));
+    fn encodeInt64(self: *ProtoWriter, data: i64) !void {
+        try self.encodeUInt64(@as(u64, @bitCast(data)));
     }
 
-    fn encodeBytes(self: *ProtoWriter, bytes: []const u8) void {
-        self.encodeUInt64(bytes.len);
-        @memcpy(self.buffer[self.cursor..(self.cursor + bytes.len)], bytes);
+    fn encodeBytes(self: *ProtoWriter, bytes: []const u8) !void {
+        try self.encodeUInt64(bytes.len);
+        try self.checkWrite(bytes.len);
+        @memcpy(self.buf[self.cursor .. self.cursor + bytes.len], bytes);
         self.cursor += bytes.len;
     }
 
-    fn encodeFloat(self: *ProtoWriter, data: f32) void {
-        const result = self.buffer[self.cursor..][0..4];
-        mem.writeInt(u32, result, @as(u32, @bitCast(data)), .little);
+    fn encodeFloat(self: *ProtoWriter, data: f32) !void {
+        try self.checkWrite(4);
+        std.mem.writeInt(u32, self.buf[self.cursor..][0..4], @as(u32, @bitCast(data)), .little);
         self.cursor += 4;
     }
 };

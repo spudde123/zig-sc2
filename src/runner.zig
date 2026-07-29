@@ -495,13 +495,12 @@ fn connectAndHandshake(
     io: Io,
     host: []const u8,
     port: u16,
-    perm_alloc: mem.Allocator,
     step_alloc: mem.Allocator,
 ) !ws.WebSocketClient {
     var attempt: u32 = 0;
     var client = while (attempt < connection_attempts) : (attempt += 1) {
         log.debug("Doing ws connection loop {d}", .{attempt});
-        const client = ws.WebSocketClient.init(io, host, port, perm_alloc, step_alloc) catch {
+        const client = ws.WebSocketClient.init(io, host, port, step_alloc) catch {
             try io.sleep(.fromSeconds(connection_retry_delay_s), .awake);
             continue;
         };
@@ -546,7 +545,7 @@ fn runHumanGame(
 
     var sc2_process = try launchSc2(io, arena, sc2_paths, env, host, game_port, proton);
 
-    var client = connectAndHandshake(io, host, game_port, arena, step_arena) catch |err| {
+    var client = connectAndHandshake(io, host, game_port, step_arena) catch |err| {
         sc2_process.kill(io);
         return err;
     };
@@ -658,7 +657,7 @@ pub fn run(
         );
     }
 
-    var client = connectAndHandshake(params.io, config.host, config.game_port, arena, step_arena) catch |err| {
+    var client = connectAndHandshake(params.io, config.host, config.game_port, step_arena) catch |err| {
         if (sc2_process) |*sc2| {
             sc2.kill(params.io);
         }
