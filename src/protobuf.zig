@@ -475,8 +475,8 @@ test "protobuf_floats" {
     var buffer: [256]u8 = undefined;
 
     const data: f32 = 9.81;
-    var writer = ProtoWriter{ .buffer = buffer[0..] };
-    writer.encodeFloat(data);
+    var writer = ProtoWriter{ .buf = buffer[0..] };
+    try writer.encodeFloat(data);
 
     var reader = ProtoReader{ .bytes = buffer[0..writer.cursor] };
     const decoded_data = try reader.decodeFloat();
@@ -488,8 +488,8 @@ test "protobuf_bytes" {
     var buffer: [256]u8 = undefined;
 
     const comparison = [_]u8{ 0x07, 0x74, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x67 };
-    var writer = ProtoWriter{ .buffer = buffer[0..] };
-    writer.encodeBytes("testing");
+    var writer = ProtoWriter{ .buf = buffer[0..] };
+    try writer.encodeBytes("testing");
     try std.testing.expectEqualSlices(
         u8,
         comparison[0..],
@@ -519,11 +519,11 @@ test "protobuf_varint" {
     var buf1: [1000]u8 = undefined;
     var buf2: [1000]u8 = undefined;
 
-    var writer1 = ProtoWriter{ .buffer = buf1[0..] };
-    var writer2 = ProtoWriter{ .buffer = buf2[0..] };
+    var writer1 = ProtoWriter{ .buf = buf1[0..] };
+    var writer2 = ProtoWriter{ .buf = buf2[0..] };
 
-    writer1.encodeUInt64(std.math.maxInt(u64));
-    writer2.encodeInt64(-1);
+    try writer1.encodeUInt64(std.math.maxInt(u64));
+    try writer2.encodeInt64(-1);
 
     try std.testing.expectEqualSlices(
         u8,
@@ -532,14 +532,13 @@ test "protobuf_varint" {
     );
 
     var buffer: [256]u8 = undefined;
-    var writer3 = ProtoWriter{ .buffer = buffer[0..] };
+    var writer3 = ProtoWriter{ .buf = buffer[0..] };
 
-    writer3.encodeUInt64(300);
+    try writer3.encodeUInt64(300);
 }
 
 test "protobuf_struct" {
     var buf1: [2048]u8 = undefined;
-    var writer = ProtoWriter{ .buffer = buf1[0..] };
 
     const Test1 = struct {
         pub const field_nums = .{
@@ -558,7 +557,7 @@ test "protobuf_struct" {
     const t1 = Test1{ .a = 150 };
     const t2 = Test2{ .c = t1 };
 
-    const encoding = writer.encodeBaseStruct(t2);
+    const encoding = try encode(&buf1, t2);
     const comparison1 = [_]u8{ 0b00011010, 0b00000011, 0b00001000, 0b10010110, 0b00000001 };
     try std.testing.expectEqualSlices(u8, comparison1[0..], encoding);
 
@@ -645,13 +644,12 @@ test "protobuf_struct" {
         .n = bytes_array[0..],
     };
 
-    const res = writer.encodeBaseStruct(t4);
-    var reader = ProtoReader{ .bytes = res };
+    const res = try encode(&buf1, t4);
 
     var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_instance.deinit();
     const arena = arena_instance.allocator();
-    const decoded_t4 = try reader.decodeStruct(res.len, Test4, arena);
+    const decoded_t4 = try decode(Test4, res, arena);
 
     try std.testing.expectEqual(t4.f.?, decoded_t4.f.?);
     try std.testing.expectEqualSlices(u8, t4.g.?, decoded_t4.g.?);
@@ -667,7 +665,6 @@ test "protobuf_struct" {
 
 test "protobuf_decode_non_optional_defaults" {
     var buf: [512]u8 = undefined;
-    var writer = ProtoWriter{ .buffer = buf[0..] };
 
     const OptionalStyle = struct {
         pub const field_nums = .{ .{ "a", 1 }, .{ "b", 2 }, .{ "c", 3 } };
@@ -682,30 +679,26 @@ test "protobuf_decode_non_optional_defaults" {
         c: bool = true,
     };
 
-    const encoded = writer.encodeBaseStruct(OptionalStyle{ .a = 42, .b = 7.25, .c = false });
-    var reader = ProtoReader{ .bytes = encoded };
-    const decoded = try reader.decodeStruct(encoded.len, DirectStyle, std.testing.allocator);
+    const encoded = try encode(&buf, OptionalStyle{ .a = 42, .b = 7.25, .c = false });
+    const decoded = try decode(DirectStyle, encoded, std.testing.allocator);
     try std.testing.expectEqual(@as(u32, 42), decoded.a);
     try std.testing.expectEqual(@as(f32, 7.25), decoded.b);
     try std.testing.expectEqual(false, decoded.c);
 
-    var empty_reader = ProtoReader{ .bytes = &.{} };
-    const empty = try empty_reader.decodeStruct(0, DirectStyle, std.testing.allocator);
+    var empty_bytes: [0]u8 = .{};
+    const empty = try decode(DirectStyle, &empty_bytes, std.testing.allocator);
     try std.testing.expectEqual(@as(u32, 10), empty.a);
     try std.testing.expectEqual(@as(f32, 2.5), empty.b);
     try std.testing.expectEqual(true, empty.c);
 
-    writer.cursor = 0;
-    const partial = writer.encodeBaseStruct(OptionalStyle{ .c = false });
-    var partial_reader = ProtoReader{ .bytes = partial };
-    const partial_decoded = try partial_reader.decodeStruct(partial.len, DirectStyle, std.testing.allocator);
+    const partial = try encode(&buf, OptionalStyle{ .c = false });
+    const partial_decoded = try decode(DirectStyle, partial, std.testing.allocator);
     try std.testing.expectEqual(@as(u32, 10), partial_decoded.a);
     try std.testing.expectEqual(false, partial_decoded.c);
 }
 
 test "protobuf_decode_non_optional_repeated_concat_and_mixed" {
     var buf: [1024]u8 = undefined;
-    var writer = ProtoWriter{ .buffer = buf[0..] };
 
     const OptionalStyle = struct {
         pub const field_nums = .{ .{ "xs", 1 }, .{ "gap", 2 }, .{ "maybe", 3 } };
@@ -724,17 +717,15 @@ test "protobuf_decode_non_optional_repeated_concat_and_mixed" {
     var second = [_]u32{3};
     var buf2: [512]u8 = undefined;
     var combined_buf: [1024]u8 = undefined;
-    var writer2 = ProtoWriter{ .buffer = buf2[0..] };
-    const one = writer.encodeBaseStruct(OptionalStyle{ .xs = first[0..], .gap = 9 });
-    const two = writer2.encodeBaseStruct(OptionalStyle{ .xs = second[0..], .maybe = 4 });
+    const one = try encode(&buf, OptionalStyle{ .xs = first[0..], .gap = 9 });
+    const two = try encode(&buf2, OptionalStyle{ .xs = second[0..], .maybe = 4 });
     @memcpy(combined_buf[0..one.len], one);
     @memcpy(combined_buf[one.len..][0..two.len], two);
     const encoded = combined_buf[0 .. one.len + two.len];
 
     var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_instance.deinit();
-    var reader = ProtoReader{ .bytes = encoded };
-    const decoded = try reader.decodeStruct(encoded.len, DirectStyle, arena_instance.allocator());
+    const decoded = try decode(DirectStyle, encoded, arena_instance.allocator());
     try std.testing.expectEqualSlices(u32, &.{ 1, 2, 3 }, decoded.xs);
     try std.testing.expectEqual(@as(u32, 9), decoded.gap);
     try std.testing.expectEqual(@as(u32, 4), decoded.maybe.?);
@@ -742,7 +733,6 @@ test "protobuf_decode_non_optional_repeated_concat_and_mixed" {
 
 test "protobuf_post_decode_top_level_and_repeated" {
     var buf: [512]u8 = undefined;
-    var writer = ProtoWriter{ .buffer = buf[0..] };
 
     const OptionalChild = struct {
         pub const field_nums = .{.{ "value", 1 }};
@@ -775,11 +765,10 @@ test "protobuf_post_decode_top_level_and_repeated" {
     };
 
     var children = [_]OptionalChild{ .{ .value = 5 }, .{ .value = 9 } };
-    const encoded = writer.encodeBaseStruct(OptionalParent{ .children = children[0..], .marker = 10 });
+    const encoded = try encode(&buf, OptionalParent{ .children = children[0..], .marker = 10 });
     var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_instance.deinit();
-    var reader = ProtoReader{ .bytes = encoded };
-    const decoded = try reader.decodeStruct(encoded.len, Parent, arena_instance.allocator());
+    const decoded = try decode(Parent, encoded, arena_instance.allocator());
     try std.testing.expect(decoded.touched);
     try std.testing.expectEqual(@as(u32, 11), decoded.marker);
     try std.testing.expectEqual(@as(u32, 10), decoded.children[0].doubled);
