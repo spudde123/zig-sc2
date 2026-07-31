@@ -131,6 +131,27 @@ pub const ObservationRaw = struct {
     radars: []SensorTower = &.{},
 };
 
+pub const Passenger = struct {
+    pub const field_nums = .{
+        .{ "tag", 1 },
+        .{ "health", 2 },
+        .{ "health_max", 3 },
+        .{ "shield", 4 },
+        .{ "shield_max", 7 },
+        .{ "energy", 5 },
+        .{ "energy_max", 8 },
+        .{ "unit_type", 6 },
+    };
+    tag: u64 = 0,
+    health: f32 = 0,
+    health_max: f32 = 0,
+    shield: f32 = 0,
+    shield_max: f32 = 0,
+    energy: f32 = 0,
+    energy_max: f32 = 0,
+    unit_type: UnitId = @enumFromInt(0),
+};
+
 pub const Unit = struct {
     pub const field_nums = .{
         .{ "display_type", 1 },
@@ -154,7 +175,7 @@ pub const Unit = struct {
         .{ "is_burrowed", 21 },
         .{ "orders", 22 },
         .{ "addon_tag", 23 },
-        .{ "passengers_raw", 24 },
+        .{ "passengers", 24 },
         .{ "cargo_space_taken", 25 },
         .{ "cargo_space_max", 26 },
         .{ "buff_ids", 27 },
@@ -209,11 +230,11 @@ pub const Unit = struct {
     shield_upgrade_level: i32 = 0,
 
     health: f32 = 0,
-    health_max: f32 = 10,
+    health_max: f32 = 0,
     shield: f32 = 0,
-    shield_max: f32 = 10,
+    shield_max: f32 = 0,
     energy: f32 = 0,
-    energy_max: f32 = 10,
+    energy_max: f32 = 0,
     mineral_contents: i32 = 0,
     vespene_contents: i32 = 0,
     is_flying: bool = false,
@@ -222,7 +243,7 @@ pub const Unit = struct {
 
     orders: []UnitOrder = &.{},
     addon_tag: u64 = 0,
-    passengers: []u64 = &.{},
+    passengers: []Passenger = &.{},
     cargo_space_taken: i32 = 0,
     cargo_space_max: i32 = 0,
 
@@ -236,27 +257,15 @@ pub const Unit = struct {
 
     available_abilities: []AbilityId = &.{},
 
-    // Internal decode staging fields. `pos3` and `passengers_raw` receive the
-    // raw wire data; postDecode derives `position`, `z` and `passengers` from
-    // them. Bot code should not read or mutate these.
+    // Internal decode staging fields. `pos3` receive the
+    // raw wire data; postDecode derives `position`, `z` from
+    // them.
     pos3: Point3 = .{},
-    passengers_raw: []PassengerTag = &.{},
-
-    const PassengerTag = struct {
-        pub const field_nums = .{.{ "tag", 1 }};
-        tag: u64 = 0,
-    };
 
     pub fn postDecode(self: *Unit, allocator: mem.Allocator) !void {
+        _ = allocator;
         self.position = .{ .x = self.pos3.x, .y = self.pos3.y };
         self.z = self.pos3.z;
-        if (self.passengers_raw.len > 0) {
-            const tags = try allocator.alloc(u64, self.passengers_raw.len);
-            for (self.passengers_raw, 0..) |passenger, i| {
-                tags[i] = passenger.tag;
-            }
-            self.passengers = tags;
-        }
     }
 
     pub fn isIdle(self: Unit) bool {
