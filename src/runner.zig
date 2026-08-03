@@ -286,24 +286,30 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                 current_input_type = InputType.none;
             }
         } else if (current_input_type != InputType.none) {
-            switch (current_input_type) {
+            s: switch (current_input_type) {
                 InputType.ladder_server => {
-                    program_args.ladder_server = allocator.dupe(u8, argument) catch return program_args;
+                    program_args.ladder_server = allocator.dupe(u8, argument) catch {
+                        log.err("Failed to dupe ladder server", .{});
+                        break :s;
+                    };
                 },
                 InputType.game_port => {
                     program_args.game_port = fmt.parseUnsigned(u16, argument, 0) catch {
                         log.err("Invalid game port {s}", .{argument});
-                        continue;
+                        break :s;
                     };
                 },
                 InputType.start_port => {
                     program_args.start_port = fmt.parseUnsigned(u16, argument, 0) catch {
                         log.err("Invalid start port {s}", .{argument});
-                        continue;
+                        break :s;
                     };
                 },
                 InputType.opponent_id => {
-                    program_args.opponent_id = allocator.dupe(u8, argument) catch return program_args;
+                    program_args.opponent_id = allocator.dupe(u8, argument) catch {
+                        log.err("Failed to dupe opponent id", .{});
+                        break :s;
+                    };
                 },
                 InputType.computer_difficulty => {
                     if (difficulty_map.get(argument)) |difficulty| {
@@ -339,7 +345,10 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     }
                 },
                 InputType.map => {
-                    program_args.map_file_name = allocator.dupe(u8, argument) catch return program_args;
+                    program_args.map_file_name = allocator.dupe(u8, argument) catch {
+                        log.err("Failed to dupe map file name", .{});
+                        break :s;
+                    };
                 },
                 InputType.human_race => {
                     if (race_map.get(argument)) |race| {
@@ -353,25 +362,40 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     }
                 },
                 InputType.sc2_path => {
-                    program_args.sc2_path = allocator.dupe(u8, argument) catch return program_args;
+                    program_args.sc2_path = allocator.dupe(u8, argument) catch {
+                        log.err("Failed to dupe sc2 path", .{});
+                        break :s;
+                    };
                 },
                 InputType.proton => {
-                    program_args.proton = allocator.dupe(u8, argument) catch return program_args;
+                    program_args.proton = allocator.dupe(u8, argument) catch {
+                        log.err("Failed to dupe proton", .{});
+                        break :s;
+                    };
                 },
                 InputType.steam_compat_data_path => {
-                    program_args.steam_compat_data_path = allocator.dupe(u8, argument) catch return program_args;
+                    program_args.steam_compat_data_path = allocator.dupe(u8, argument) catch {
+                        log.err("Failed to dupe steam compat data path", .{});
+                        break :s;
+                    };
                 },
                 InputType.replay => {
-                    program_args.replay_path = allocator.dupe(u8, argument) catch return program_args;
+                    program_args.replay_path = allocator.dupe(u8, argument) catch {
+                        log.err("Failed to dupe replay path", .{});
+                        break :s;
+                    };
                 },
                 InputType.observed_player => {
                     program_args.observed_player_id = fmt.parseUnsigned(u32, argument, 0) catch {
                         log.err("Invalid observed player id {s}", .{argument});
-                        continue;
+                        break :s;
                     };
                 },
                 InputType.observed_bot => {
-                    program_args.observed_bot_name = allocator.dupe(u8, argument) catch return program_args;
+                    program_args.observed_bot_name = allocator.dupe(u8, argument) catch {
+                        log.err("Failed to dupe observed bot name", .{});
+                        break :s;
+                    };
                 },
                 else => {},
             }
