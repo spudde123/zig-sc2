@@ -288,7 +288,7 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
         } else if (current_input_type != InputType.none) {
             switch (current_input_type) {
                 InputType.ladder_server => {
-                    program_args.ladder_server = argument;
+                    program_args.ladder_server = allocator.dupe(u8, argument) catch return program_args;
                 },
                 InputType.game_port => {
                     program_args.game_port = fmt.parseUnsigned(u16, argument, 0) catch {
@@ -303,7 +303,7 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     };
                 },
                 InputType.opponent_id => {
-                    program_args.opponent_id = argument;
+                    program_args.opponent_id = allocator.dupe(u8, argument) catch return program_args;
                 },
                 InputType.computer_difficulty => {
                     if (difficulty_map.get(argument)) |difficulty| {
@@ -339,7 +339,7 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     }
                 },
                 InputType.map => {
-                    program_args.map_file_name = argument;
+                    program_args.map_file_name = allocator.dupe(u8, argument) catch return program_args;
                 },
                 InputType.human_race => {
                     if (race_map.get(argument)) |race| {
@@ -353,16 +353,16 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     }
                 },
                 InputType.sc2_path => {
-                    program_args.sc2_path = argument;
+                    program_args.sc2_path = allocator.dupe(u8, argument) catch return program_args;
                 },
                 InputType.proton => {
-                    program_args.proton = argument;
+                    program_args.proton = allocator.dupe(u8, argument) catch return program_args;
                 },
                 InputType.steam_compat_data_path => {
-                    program_args.steam_compat_data_path = argument;
+                    program_args.steam_compat_data_path = allocator.dupe(u8, argument) catch return program_args;
                 },
                 InputType.replay => {
-                    program_args.replay_path = argument;
+                    program_args.replay_path = allocator.dupe(u8, argument) catch return program_args;
                 },
                 InputType.observed_player => {
                     program_args.observed_player_id = fmt.parseUnsigned(u32, argument, 0) catch {
@@ -371,7 +371,7 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
                     };
                 },
                 InputType.observed_bot => {
-                    program_args.observed_bot_name = argument;
+                    program_args.observed_bot_name = allocator.dupe(u8, argument) catch return program_args;
                 },
                 else => {},
             }
