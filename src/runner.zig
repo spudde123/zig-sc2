@@ -69,14 +69,14 @@ const ProgramArguments = struct {
 /// Which player to observe when watching a replay.
 /// A bot name needs to be resolved to a player id
 /// through a replay info request once we are connected.
-pub const ObservedPlayer = union(enum) {
+const ObservedPlayer = union(enum) {
     player_id: u32,
     bot_name: []const u8,
 };
 
 /// Explicit representation of what the runner should do,
 /// resolved from the command line arguments.
-pub const GameMode = union(enum) {
+const GameMode = union(enum) {
     ladder: struct {
         opponent_id: ?[]const u8,
     },
@@ -610,7 +610,7 @@ fn runHumanGame(
     }
 }
 
-const RunParams = struct {
+pub const RunParams = struct {
     /// Should be greater than 1.
     step_count: u32 = 2,
     arena: *std.heap.ArenaAllocator,
@@ -619,6 +619,7 @@ const RunParams = struct {
     args: std.process.Args,
     io: std.Io,
 };
+
 pub fn run(
     user_bot: anytype,
     params: RunParams,
