@@ -1044,32 +1044,43 @@ pub const Bot = struct {
 
         const player_common = response.observation.?.player_common.?;
 
-        var enemy_iter = prev_enemy.iterator();
-        while (enemy_iter.next()) |enemy_val| {
-            if (enemy_val.value_ptr.prev_seen_loop == game_loop) continue;
-            if (mem.indexOfScalar(u64, dead_unit_tags, enemy_val.value_ptr.tag)) |_| {
-                try dead_units.append(step_arena, enemy_val.value_ptr.*);
-            } else {
-                try enemies_left_vision.append(step_arena, enemy_val.value_ptr.*);
+        var enemy_index: usize = 0;
+        while (enemy_index < prev_enemy.count()) {
+            const enemy_ptr = &prev_enemy.values()[enemy_index];
+            if (enemy_ptr.prev_seen_loop == game_loop) {
+                enemy_index += 1;
+                continue;
             }
 
-            prev_enemy.swapRemoveAt(enemy_iter.index - 1);
-            enemy_iter.index -= 1;
-            enemy_iter.len -= 1;
+            var enemy = enemy_ptr.*;
+            enemy.clearEphemeralSlices();
+            if (mem.indexOfScalar(u64, dead_unit_tags, enemy.tag) != null) {
+                try dead_units.append(step_arena, enemy);
+            } else {
+                try enemies_left_vision.append(step_arena, enemy);
+            }
+
+            prev_enemy.swapRemoveAt(enemy_index);
         }
 
         var disappeared_units: std.ArrayList(Unit) = .empty;
-        var units_iter = prev_units.iterator();
-        while (units_iter.next()) |unit_val| {
-            if (unit_val.value_ptr.prev_seen_loop == game_loop) continue;
-            if (mem.indexOfScalar(u64, dead_unit_tags, unit_val.value_ptr.tag)) |_| {
-                try dead_units.append(step_arena, unit_val.value_ptr.*);
-            } else {
-                try disappeared_units.append(step_arena, unit_val.value_ptr.*);
+        var unit_index: usize = 0;
+        while (unit_index < prev_units.count()) {
+            const unit_ptr = &prev_units.values()[unit_index];
+            if (unit_ptr.prev_seen_loop == game_loop) {
+                unit_index += 1;
+                continue;
             }
-            prev_units.swapRemoveAt(units_iter.index - 1);
-            units_iter.index -= 1;
-            units_iter.len -= 1;
+
+            var unit = unit_ptr.*;
+            unit.clearEphemeralSlices();
+            if (mem.indexOfScalar(u64, dead_unit_tags, unit.tag) != null) {
+                try dead_units.append(step_arena, unit);
+            } else {
+                try disappeared_units.append(step_arena, unit);
+            }
+
+            prev_units.swapRemoveAt(unit_index);
         }
 
         return Bot{

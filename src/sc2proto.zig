@@ -268,6 +268,16 @@ pub const Unit = struct {
         self.z = self.pos3.z;
     }
 
+    /// Clears slices backed by step memory before an old unit is exposed after
+    /// dying, disappearing, or leaving vision.
+    pub fn clearEphemeralSlices(self: *Unit) void {
+        self.available_abilities = &.{};
+        self.rally_targets = &.{};
+        self.orders = &.{};
+        self.buff_ids = &.{};
+        self.passengers = &.{};
+    }
+
     pub fn isIdle(self: Unit) bool {
         return self.orders.len == 0;
     }
