@@ -3,7 +3,6 @@ const net = std.Io.net;
 const base64 = std.base64;
 const ascii = std.ascii;
 const math = std.math;
-const rand = std.Random;
 const time = std.time;
 const mem = std.mem;
 const fs = std.fs;
@@ -66,7 +65,6 @@ pub const WebSocketClient = struct {
     io: std.Io,
     addr: net.IpAddress,
     socket: net.Stream,
-    prng: rand.DefaultPrng,
     step_allocator: mem.Allocator,
     status: sc2p.Status = .default,
 
@@ -78,15 +76,10 @@ pub const WebSocketClient = struct {
             .protocol = .tcp,
         });
 
-        const seed = @as(u64, @truncate(@as(u96, @bitCast(std.Io.Timestamp.now(io, .real).toNanoseconds()))));
-        // Replay save responses can exceed 5 MiB in long validation wins. The old
-        // fixed buffer caused an index-out-of-bounds panic after victory while saving
-        // the replay, turning a won game into a reported crash.
         return WebSocketClient{
             .io = io,
             .addr = addr,
             .socket = socket,
-            .prng = rand.DefaultPrng.init(seed),
             .step_allocator = step_alloc,
         };
     }
@@ -99,7 +92,7 @@ pub const WebSocketClient = struct {
         var raw_key: [handshake_key_length]u8 = undefined;
         var handshake_key: [handshake_key_length_b64]u8 = undefined;
 
-        self.prng.random().bytes(&raw_key);
+        self.io.random(&raw_key);
 
         _ = base64.standard.Encoder.encode(&handshake_key, &raw_key);
 
@@ -131,10 +124,8 @@ pub const WebSocketClient = struct {
         const string_to_find = "sec-websocket-accept: ";
 
         while (split_iter.next()) |line| {
-            const line_lowered = try self.step_allocator.alloc(u8, line.len);
-            _ = ascii.lowerString(line_lowered, line);
-            if (mem.startsWith(u8, line_lowered, string_to_find)) {
-                const received_key = line[string_to_find.len..line.len];
+            if (ascii.startsWithIgnoreCase(line, string_to_find)) {
+                const received_key = line[string_to_find.len..];
                 if (checkHandshakeKey(handshake_key[0..handshake_key_length_b64], received_key)) {
                     return;
                 }
@@ -549,7 +540,7 @@ pub const WebSocketClient = struct {
             //Mask
             msg[1] |= 0x80;
             const masking_key = msg[pre_payload - 4 .. pre_payload];
-            self.prng.random().bytes(masking_key);
+            self.io.random(masking_key);
             for (0..payload.len) |i| {
                 const j = i % 4;
                 msg[pre_payload + i] ^= masking_key[j];
