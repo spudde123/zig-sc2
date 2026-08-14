@@ -21,27 +21,6 @@ pub const BotContext = struct {
     io: Io,
 };
 
-const InputType = enum(u8) {
-    none,
-    ladder_server,
-    game_port,
-    start_port,
-    opponent_id,
-    realtime,
-    computer_race,
-    computer_difficulty,
-    computer_build,
-    map,
-    human_race,
-    sc2_path,
-    proton,
-    steam_compat_data_path,
-    replay,
-    observed_player,
-    observed_bot,
-    disable_fog,
-};
-
 const ProgramArguments = struct {
     ladder_server: ?[]const u8 = null,
     game_port: ?u16 = null,
@@ -185,11 +164,7 @@ const Sc2PathError = error{
 };
 
 fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, io: std.Io, proton: bool) !Sc2Paths {
-    const map_concat = [_][]const u8{ base_folder, "/Maps/" };
-    const support64_concat = [_][]const u8{ base_folder, "/Support64/" };
-    const versions_concat = [_][]const u8{ base_folder, "/Versions/" };
-
-    const versions_path = try mem.concat(allocator, u8, &versions_concat);
+    const versions_path = try std.fs.path.join(allocator, &.{ base_folder, "Versions" });
 
     var dir = Io.Dir.openDirAbsolute(io, versions_path, .{ .iterate = true }) catch {
         log.err("Couldn't open versions folder {s}", .{versions_path});
@@ -210,21 +185,22 @@ fn getSc2Paths(base_folder: []const u8, allocator: mem.Allocator, io: std.Io, pr
     if (max_version == 0) return Sc2PathError.NoVersionFoldersFound;
 
     log.debug("Using game version {d}", .{max_version});
+    const base_version = try fmt.allocPrint(allocator, "Base{d}", .{max_version});
     return Sc2Paths{
         .base_folder = base_folder,
-        .map_folder = try mem.concat(allocator, u8, &map_concat),
+        .map_folder = try std.fs.path.join(allocator, &.{ base_folder, "Maps" }),
         .working_directory = switch (builtin.os.tag) {
-            .windows => try mem.concat(allocator, u8, &support64_concat),
+            .windows => try std.fs.path.join(allocator, &.{ base_folder, "Support64" }),
             .macos => null,
-            .linux => if (proton) try mem.concat(allocator, u8, &support64_concat) else null,
+            .linux => if (proton) try std.fs.path.join(allocator, &.{ base_folder, "Support64" }) else null,
             else => @compileError("OS not supported"),
         },
         .latest_binary = switch (builtin.os.tag) {
-            .windows => try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{ versions_path, max_version }),
-            .macos => try fmt.allocPrint(allocator, "{s}Base{d}/SC2.app/Contents/MacOS/SC2", .{ versions_path, max_version }),
+            .windows => try std.fs.path.join(allocator, &.{ versions_path, base_version, "SC2_x64.exe" }),
+            .macos => try std.fs.path.join(allocator, &.{ versions_path, base_version, "SC2.app", "Contents", "MacOS", "SC2" }),
             .linux => l: {
-                if (proton) break :l try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64.exe", .{ versions_path, max_version });
-                break :l try fmt.allocPrint(allocator, "{s}Base{d}/SC2_x64", .{ versions_path, max_version });
+                if (proton) break :l try std.fs.path.join(allocator, &.{ versions_path, base_version, "SC2_x64.exe" });
+                break :l try std.fs.path.join(allocator, &.{ versions_path, base_version, "SC2_x64" });
             },
             else => @compileError("OS not supported"),
         },
@@ -241,165 +217,137 @@ fn readArguments(allocator: mem.Allocator, args: std.process.Args) ProgramArgume
     // Skip exe name
     _ = arg_iter.skip();
 
-    var current_input_type = InputType.none;
-
     while (arg_iter.next()) |argument| {
-        if (mem.startsWith(u8, argument, "-")) {
-            if (mem.eql(u8, argument, "--LadderServer")) {
-                current_input_type = InputType.ladder_server;
-            } else if (mem.eql(u8, argument, "--GamePort")) {
-                current_input_type = InputType.game_port;
-            } else if (mem.eql(u8, argument, "--StartPort")) {
-                current_input_type = InputType.start_port;
-            } else if (mem.eql(u8, argument, "--OpponentId")) {
-                current_input_type = InputType.opponent_id;
-            } else if (mem.eql(u8, argument, "--RealTime")) {
-                current_input_type = InputType.realtime;
-                program_args.realtime = true;
-            } else if (mem.eql(u8, argument, "--CompRace")) {
-                current_input_type = InputType.computer_race;
-            } else if (mem.eql(u8, argument, "--CompDifficulty")) {
-                current_input_type = InputType.computer_difficulty;
-            } else if (mem.eql(u8, argument, "--CompBuild")) {
-                current_input_type = InputType.computer_build;
-            } else if (mem.eql(u8, argument, "--Map")) {
-                current_input_type = InputType.map;
-            } else if (mem.eql(u8, argument, "--Human")) {
-                current_input_type = InputType.human_race;
-                program_args.human_game = true;
-            } else if (mem.eql(u8, argument, "--SC2")) {
-                current_input_type = InputType.sc2_path;
-            } else if (mem.eql(u8, argument, "--Proton")) {
-                current_input_type = InputType.proton;
-            } else if (mem.eql(u8, argument, "--SteamCompatDataPath")) {
-                current_input_type = InputType.steam_compat_data_path;
-            } else if (mem.eql(u8, argument, "--Replay")) {
-                current_input_type = InputType.replay;
-            } else if (mem.eql(u8, argument, "--ObservedPlayer")) {
-                current_input_type = InputType.observed_player;
-            } else if (mem.eql(u8, argument, "--ObservedBot")) {
-                current_input_type = InputType.observed_bot;
-            } else if (mem.eql(u8, argument, "--DisableFog")) {
-                current_input_type = InputType.disable_fog;
-                program_args.disable_fog = true;
-            } else {
-                current_input_type = InputType.none;
+        if (mem.eql(u8, argument, "--RealTime")) {
+            program_args.realtime = true;
+        } else if (mem.eql(u8, argument, "--DisableFog")) {
+            program_args.disable_fog = true;
+        } else if (mem.eql(u8, argument, "--LadderServer")) {
+            if (arg_iter.next()) |val| {
+                program_args.ladder_server = allocator.dupe(u8, val) catch {
+                    log.err("Failed to dupe ladder server", .{});
+                    continue;
+                };
             }
-        } else if (current_input_type != InputType.none) {
-            s: switch (current_input_type) {
-                InputType.ladder_server => {
-                    program_args.ladder_server = allocator.dupe(u8, argument) catch {
-                        log.err("Failed to dupe ladder server", .{});
-                        break :s;
-                    };
-                },
-                InputType.game_port => {
-                    program_args.game_port = fmt.parseUnsigned(u16, argument, 0) catch {
-                        log.err("Invalid game port {s}", .{argument});
-                        break :s;
-                    };
-                },
-                InputType.start_port => {
-                    program_args.start_port = fmt.parseUnsigned(u16, argument, 0) catch {
-                        log.err("Invalid start port {s}", .{argument});
-                        break :s;
-                    };
-                },
-                InputType.opponent_id => {
-                    program_args.opponent_id = allocator.dupe(u8, argument) catch {
-                        log.err("Failed to dupe opponent id", .{});
-                        break :s;
-                    };
-                },
-                InputType.computer_difficulty => {
-                    if (difficulty_map.get(argument)) |difficulty| {
-                        program_args.computer_difficulty = difficulty;
-                    } else {
-                        log.err("Unknown difficulty {s}", .{argument});
-                        log.err("Available difficulties:", .{});
-                        for (difficulty_map.keys()) |key| {
-                            log.err("{s}", .{key});
-                        }
-                    }
-                },
-                InputType.computer_race => {
-                    if (race_map.get(argument)) |race| {
-                        program_args.computer_race = race;
-                    } else {
-                        log.err("Unknown race {s}", .{argument});
-                        log.err("Available races:", .{});
-                        for (race_map.keys()) |key| {
-                            log.err("{s}", .{key});
-                        }
-                    }
-                },
-                InputType.computer_build => {
-                    if (build_map.get(argument)) |build| {
-                        program_args.computer_build = build;
-                    } else {
-                        log.err("Unknown build {s}", .{argument});
-                        log.err("Available builds:", .{});
-                        for (build_map.keys()) |key| {
-                            log.err("{s}", .{key});
-                        }
-                    }
-                },
-                InputType.map => {
-                    program_args.map_file_name = allocator.dupe(u8, argument) catch {
-                        log.err("Failed to dupe map file name", .{});
-                        break :s;
-                    };
-                },
-                InputType.human_race => {
-                    if (race_map.get(argument)) |race| {
-                        program_args.human_race = race;
-                    } else {
-                        log.err("Unknown race {s}", .{argument});
-                        log.err("Available races:", .{});
-                        for (race_map.keys()) |key| {
-                            log.err("{s}", .{key});
-                        }
-                    }
-                },
-                InputType.sc2_path => {
-                    program_args.sc2_path = allocator.dupe(u8, argument) catch {
-                        log.err("Failed to dupe sc2 path", .{});
-                        break :s;
-                    };
-                },
-                InputType.proton => {
-                    program_args.proton = allocator.dupe(u8, argument) catch {
-                        log.err("Failed to dupe proton", .{});
-                        break :s;
-                    };
-                },
-                InputType.steam_compat_data_path => {
-                    program_args.steam_compat_data_path = allocator.dupe(u8, argument) catch {
-                        log.err("Failed to dupe steam compat data path", .{});
-                        break :s;
-                    };
-                },
-                InputType.replay => {
-                    program_args.replay_path = allocator.dupe(u8, argument) catch {
-                        log.err("Failed to dupe replay path", .{});
-                        break :s;
-                    };
-                },
-                InputType.observed_player => {
-                    program_args.observed_player_id = fmt.parseUnsigned(u32, argument, 0) catch {
-                        log.err("Invalid observed player id {s}", .{argument});
-                        break :s;
-                    };
-                },
-                InputType.observed_bot => {
-                    program_args.observed_bot_name = allocator.dupe(u8, argument) catch {
-                        log.err("Failed to dupe observed bot name", .{});
-                        break :s;
-                    };
-                },
-                else => {},
+        } else if (mem.eql(u8, argument, "--GamePort")) {
+            if (arg_iter.next()) |val| {
+                program_args.game_port = fmt.parseUnsigned(u16, val, 0) catch {
+                    log.err("Invalid game port {s}", .{val});
+                    continue;
+                };
             }
-            current_input_type = InputType.none;
+        } else if (mem.eql(u8, argument, "--StartPort")) {
+            if (arg_iter.next()) |val| {
+                program_args.start_port = fmt.parseUnsigned(u16, val, 0) catch {
+                    log.err("Invalid start port {s}", .{val});
+                    continue;
+                };
+            }
+        } else if (mem.eql(u8, argument, "--OpponentId")) {
+            if (arg_iter.next()) |val| {
+                program_args.opponent_id = allocator.dupe(u8, val) catch {
+                    log.err("Failed to dupe opponent id", .{});
+                    continue;
+                };
+            }
+        } else if (mem.eql(u8, argument, "--CompDifficulty")) {
+            if (arg_iter.next()) |val| {
+                if (difficulty_map.get(val)) |difficulty| {
+                    program_args.computer_difficulty = difficulty;
+                } else {
+                    log.err("Unknown difficulty {s}", .{val});
+                    log.err("Available difficulties:", .{});
+                    for (difficulty_map.keys()) |key| {
+                        log.err("{s}", .{key});
+                    }
+                }
+            }
+        } else if (mem.eql(u8, argument, "--CompRace")) {
+            if (arg_iter.next()) |val| {
+                if (race_map.get(val)) |race| {
+                    program_args.computer_race = race;
+                } else {
+                    log.err("Unknown race {s}", .{val});
+                    log.err("Available races:", .{});
+                    for (race_map.keys()) |key| {
+                        log.err("{s}", .{key});
+                    }
+                }
+            }
+        } else if (mem.eql(u8, argument, "--CompBuild")) {
+            if (arg_iter.next()) |val| {
+                if (build_map.get(val)) |build| {
+                    program_args.computer_build = build;
+                } else {
+                    log.err("Unknown build {s}", .{val});
+                    log.err("Available builds:", .{});
+                    for (build_map.keys()) |key| {
+                        log.err("{s}", .{key});
+                    }
+                }
+            }
+        } else if (mem.eql(u8, argument, "--Map")) {
+            if (arg_iter.next()) |val| {
+                program_args.map_file_name = allocator.dupe(u8, val) catch {
+                    log.err("Failed to dupe map file name", .{});
+                    continue;
+                };
+            }
+        } else if (mem.eql(u8, argument, "--Human")) {
+            program_args.human_game = true;
+            if (arg_iter.next()) |val| {
+                if (race_map.get(val)) |race| {
+                    program_args.human_race = race;
+                } else {
+                    log.err("Unknown race {s}", .{val});
+                    log.err("Available races:", .{});
+                    for (race_map.keys()) |key| {
+                        log.err("{s}", .{key});
+                    }
+                }
+            }
+        } else if (mem.eql(u8, argument, "--SC2")) {
+            if (arg_iter.next()) |val| {
+                program_args.sc2_path = allocator.dupe(u8, val) catch {
+                    log.err("Failed to dupe sc2 path", .{});
+                    continue;
+                };
+            }
+        } else if (mem.eql(u8, argument, "--Proton")) {
+            if (arg_iter.next()) |val| {
+                program_args.proton = allocator.dupe(u8, val) catch {
+                    log.err("Failed to dupe proton", .{});
+                    continue;
+                };
+            }
+        } else if (mem.eql(u8, argument, "--SteamCompatDataPath")) {
+            if (arg_iter.next()) |val| {
+                program_args.steam_compat_data_path = allocator.dupe(u8, val) catch {
+                    log.err("Failed to dupe steam compat data path", .{});
+                    continue;
+                };
+            }
+        } else if (mem.eql(u8, argument, "--Replay")) {
+            if (arg_iter.next()) |val| {
+                program_args.replay_path = allocator.dupe(u8, val) catch {
+                    log.err("Failed to dupe replay path", .{});
+                    continue;
+                };
+            }
+        } else if (mem.eql(u8, argument, "--ObservedPlayer")) {
+            if (arg_iter.next()) |val| {
+                program_args.observed_player_id = fmt.parseUnsigned(u32, val, 0) catch {
+                    log.err("Invalid observed player id {s}", .{val});
+                    continue;
+                };
+            }
+        } else if (mem.eql(u8, argument, "--ObservedBot")) {
+            if (arg_iter.next()) |val| {
+                program_args.observed_bot_name = allocator.dupe(u8, val) catch {
+                    log.err("Failed to dupe observed bot name", .{});
+                    continue;
+                };
+            }
         }
     }
     return program_args;
