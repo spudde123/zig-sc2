@@ -636,6 +636,7 @@ pub fn run(
         }
         return err;
     };
+    defer client.deinit();
 
     defer {
         if (sc2_process) |*sc2| {
