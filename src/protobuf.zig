@@ -400,12 +400,13 @@ const ProtoWriter = struct {
 
         const struct_encoding_size = self.cursor - content_start;
         const varint_byte_length = varIntByteLength(@as(u64, struct_encoding_size));
+        // Check prefix growth against the end of the payload before rewinding.
+        try self.checkWrite(varint_byte_length - 1);
         self.cursor = content_start - 1;
 
         if (varint_byte_length == 1) {
             try self.encodeUInt64(@as(u64, struct_encoding_size));
         } else {
-            try self.checkWrite(varint_byte_length - 1);
             const new_start = content_start - 1 + varint_byte_length;
             @memmove(self.buf[new_start .. new_start + struct_encoding_size], self.buf[content_start .. content_start + struct_encoding_size]);
             try self.encodeUInt64(@as(u64, struct_encoding_size));
