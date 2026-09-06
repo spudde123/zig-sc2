@@ -1841,7 +1841,7 @@ pub const Actions = struct {
             .quantity = quantity,
         };
 
-        self.debug_create_unit.append(debug_unit) catch return;
+        self.debug_create_unit.append(self.temp_allocator, debug_unit) catch return;
     }
 };
 
