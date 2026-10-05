@@ -1,8 +1,8 @@
 .{
     .name = .zig_sc2,
     .fingerprint = 0x924305cd9362925a,
-    .version = "0.1.2",
-    .minimum_zig_version = "0.16.0",
+    .version = "0.1.3",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{},
     .paths = .{
         "src",

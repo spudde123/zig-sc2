@@ -1202,7 +1202,7 @@ test "packed_bits" {
     const expected_mask: PackedBits.Mask = .{ true, false, true, true, false, false, false, true };
     try std.testing.expectEqual(expected_mask, PackedBits.maskForByte(0b10110001));
 
-    var test_data = [_]u8{0} ** 10;
+    var test_data: [10]u8 = @splat(0);
 
     PackedBits.write(&test_data, 0, 1);
     try std.testing.expectEqual(@as(u8, 0b10000000), test_data[0]);
@@ -1232,7 +1232,7 @@ test "packed_bits" {
 test "influence map uses packed masks including scalar tail" {
     var base_data = [_]u8{ 0b10101010, 0b10000000 };
     const base_grid = Grid(u1){ .data = &base_data, .w = 10, .h = 1 };
-    var terrain_data = [_]u8{0} ** 10;
+    var terrain_data: [10]u8 = @splat(0);
     const terrain_grid = Grid(u8){ .data = &terrain_data, .w = 10, .h = 1 };
 
     var map = try InfluenceMap.fromGrid(std.testing.allocator, base_grid, terrain_grid);
