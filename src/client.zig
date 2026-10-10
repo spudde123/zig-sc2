@@ -539,12 +539,7 @@ pub const WebSocketClient = struct {
             msg[0] |= 0x80;
             //Mask
             msg[1] |= 0x80;
-            const masking_key = msg[pre_payload - 4 .. pre_payload];
-            self.io.random(masking_key);
-            for (0..payload.len) |i| {
-                const j = i % 4;
-                msg[pre_payload + i] ^= masking_key[j];
-            }
+            @memset(msg[pre_payload - 4 .. pre_payload], 0);
 
             const payload_end = pre_payload + payload.len;
 
