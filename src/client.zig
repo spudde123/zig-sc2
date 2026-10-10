@@ -56,6 +56,14 @@ const default_interface_options = sc2p.InterfaceOptions{
     .show_burrowed_shadows = true,
 };
 
+fn RequestPayload(comptime field: []const u8) type {
+    return @typeInfo(@FieldType(sc2p.Request, field)).optional.child;
+}
+
+fn ResponsePayload(comptime field: []const u8) type {
+    return @typeInfo(@FieldType(sc2p.Response, field)).optional.child;
+}
+
 /// Sc2 uses websockets for communication
 /// with a protobuf 2 format
 /// https://github.com/Blizzard/s2client-proto.
@@ -143,80 +151,17 @@ pub const WebSocketClient = struct {
         computer: ComputerSetup,
         realtime: bool,
     ) !u32 {
-        // Create game
-        const bot_proto = sc2p.PlayerSetup{
-            .player_type = .participant,
+        var setups = [_]sc2p.PlayerSetup{
+            .{ .player_type = .participant },
+            .{
+                .player_type = .computer,
+                .race = computer.race,
+                .difficulty = computer.difficulty,
+                .ai_build = computer.build,
+            },
         };
-        const computer_proto = sc2p.PlayerSetup{
-            .player_type = .computer,
-            .race = computer.race,
-            .difficulty = computer.difficulty,
-            .ai_build = computer.build,
-        };
-
-        var setups = [_]sc2p.PlayerSetup{ bot_proto, computer_proto };
-        const map = sc2p.LocalMap{
-            .map_path = map_name,
-        };
-
-        const create_game = sc2p.RequestCreateGame{
-            .map = map,
-            .player_setup = setups[0..],
-            .disable_fog = false,
-            .realtime = realtime,
-        };
-
-        const create_game_req = sc2p.Request{ .create_game = create_game };
-
-        const create_game_res = try self.writeAndWaitForMessage(create_game_req);
-        if (create_game_res.create_game == null or create_game_res.status == null) {
-            std.log.err("Did not get create game response", .{});
-            return ClientError.BadResponse;
-        }
-
-        const cg_data = create_game_res.create_game.?;
-
-        if (cg_data.error_code) |code| {
-            std.log.err("Create game error: {d}", .{@intFromEnum(code)});
-            if (cg_data.error_details) |details| {
-                std.log.err("{s}", .{details});
-            }
-            return ClientError.BadResponse;
-        }
-
-        if (create_game_res.status.? != sc2p.Status.init_game) {
-            std.log.err("Wrong status after create game: {d}", .{@intFromEnum(create_game_res.status.?)});
-            return ClientError.BadResponse;
-        }
-
-        // Join game
-
-        const join_game = sc2p.RequestJoinGame{
-            .race = bot_setup.race,
-            .options = default_interface_options,
-            .server_ports = null,
-            .client_ports = null,
-            .player_name = bot_setup.name,
-        };
-
-        const join_game_req = sc2p.Request{ .join_game = join_game };
-        const join_game_res = try self.writeAndWaitForMessage(join_game_req);
-        if (join_game_res.join_game == null) {
-            std.log.err("Did not get join game response", .{});
-            return ClientError.BadResponse;
-        }
-
-        const jg_data = join_game_res.join_game.?;
-
-        if (jg_data.error_code) |code| {
-            std.log.err("Join game error: {d}", .{code});
-            if (jg_data.error_details) |details| {
-                std.log.err("{s}", .{details});
-            }
-            return ClientError.BadResponse;
-        }
-
-        return jg_data.player_id.?;
+        try self.createGame(&setups, map_name, realtime);
+        return self.joinGame(bot_setup, null);
     }
 
     pub fn createGameVsHuman(
@@ -224,48 +169,11 @@ pub const WebSocketClient = struct {
         map_name: []const u8,
         realtime: bool,
     ) !void {
-        // Create game
-        const bot_proto = sc2p.PlayerSetup{
-            .player_type = .participant,
+        var setups = [_]sc2p.PlayerSetup{
+            .{ .player_type = .participant },
+            .{ .player_type = .participant },
         };
-        const human_proto = sc2p.PlayerSetup{
-            .player_type = .participant,
-        };
-
-        var setups = [_]sc2p.PlayerSetup{ bot_proto, human_proto };
-        const map = sc2p.LocalMap{
-            .map_path = map_name,
-        };
-
-        const create_game = sc2p.RequestCreateGame{
-            .map = map,
-            .player_setup = setups[0..],
-            .disable_fog = false,
-            .realtime = realtime,
-        };
-
-        const create_game_req = sc2p.Request{ .create_game = create_game };
-
-        const create_game_res = try self.writeAndWaitForMessage(create_game_req);
-        if (create_game_res.create_game == null or create_game_res.status == null) {
-            std.log.err("Did not get create game response", .{});
-            return ClientError.BadResponse;
-        }
-
-        const cg_data = create_game_res.create_game.?;
-
-        if (cg_data.error_code) |code| {
-            std.log.err("Create game error: {d}", .{@intFromEnum(code)});
-            if (cg_data.error_details) |details| {
-                std.log.err("{s}", .{details});
-            }
-            return ClientError.BadResponse;
-        }
-
-        if (create_game_res.status.? != sc2p.Status.init_game) {
-            std.log.err("Wrong status after create game: {d}", .{@intFromEnum(create_game_res.status.?)});
-            return ClientError.BadResponse;
-        }
+        try self.createGame(&setups, map_name, realtime);
     }
 
     pub fn joinMultiplayerGame(
@@ -274,44 +182,41 @@ pub const WebSocketClient = struct {
         start_port: u16,
     ) !u32 {
         const int_port = @as(i32, start_port);
+        return self.joinGame(bot_setup, .{
+            .server = .{ .game_port = int_port + 1, .base_port = int_port + 2 },
+            .client = .{ .game_port = int_port + 3, .base_port = int_port + 4 },
+        });
+    }
 
-        const server_ports = sc2p.PortSet{
-            .game_port = int_port + 1,
-            .base_port = int_port + 2,
-        };
+    fn createGame(
+        self: *WebSocketClient,
+        setups: []sc2p.PlayerSetup,
+        map_name: []const u8,
+        realtime: bool,
+    ) !void {
+        _ = try self.call("create_game", .{
+            .map = .{ .map_path = map_name },
+            .player_setup = setups,
+            .disable_fog = false,
+            .realtime = realtime,
+        });
+        try self.expectStatus(.init_game);
+    }
 
-        const client_ports = sc2p.PortSet{
-            .game_port = int_port + 3,
-            .base_port = int_port + 4,
-        };
+    const GamePorts = struct {
+        server: sc2p.PortSet,
+        client: sc2p.PortSet,
+    };
 
-        const join_game = sc2p.RequestJoinGame{
+    fn joinGame(self: *WebSocketClient, bot_setup: BotSetup, ports: ?GamePorts) !u32 {
+        const jg_data = try self.call("join_game", .{
             .race = bot_setup.race,
             .options = default_interface_options,
-            .server_ports = server_ports,
-            .client_ports = client_ports,
+            .server_ports = if (ports) |p| p.server else null,
+            .client_ports = if (ports) |p| p.client else null,
             .player_name = bot_setup.name,
-        };
-
-        const join_game_req = sc2p.Request{ .join_game = join_game };
-
-        const join_game_res = try self.writeAndWaitForMessage(join_game_req);
-        if (join_game_res.join_game == null) {
-            std.log.err("Did not get join game response", .{});
-            return ClientError.BadResponse;
-        }
-
-        const jg_data = join_game_res.join_game.?;
-
-        if (jg_data.error_code) |code| {
-            std.log.err("Join game error: {d}", .{code});
-            if (jg_data.error_details) |details| {
-                std.log.err("{s}", .{details});
-            }
-            return ClientError.BadResponse;
-        }
-
-        return jg_data.player_id.?;
+        });
+        return jg_data.player_id orelse ClientError.BadResponse;
     }
 
     /// Fetches metadata about a replay, including which
@@ -321,28 +226,10 @@ pub const WebSocketClient = struct {
     /// Note: The response is allocated with the step allocator,
     /// so it is only valid until the next step arena reset.
     pub fn getReplayInfo(self: *WebSocketClient, replay_path: []const u8) !sc2p.ResponseReplayInfo {
-        const replay_info = sc2p.RequestReplayInfo{
+        return self.call("replay_info", .{
             .replay_path = replay_path,
             .download_data = false,
-        };
-
-        const request = sc2p.Request{ .replay_info = replay_info };
-        const res = try self.writeAndWaitForMessage(request);
-
-        const ri_data = res.replay_info orelse {
-            std.log.err("Did not get replay info response", .{});
-            return ClientError.BadResponse;
-        };
-
-        if (ri_data.error_code) |code| {
-            std.log.err("Replay info error: {d}", .{@intFromEnum(code)});
-            if (ri_data.error_details) |details| {
-                std.log.err("{s}", .{details});
-            }
-            return ClientError.BadResponse;
-        }
-
-        return ri_data;
+        });
     }
 
     /// Starts watching a replay from the given path.
@@ -355,156 +242,129 @@ pub const WebSocketClient = struct {
         disable_fog: bool,
         realtime: bool,
     ) !void {
-        const start_replay = sc2p.RequestStartReplay{
+        _ = try self.call("start_replay", .{
             .replay_path = replay_path,
             .observed_player_id = @as(i32, @intCast(observed_player_id)),
             .options = default_interface_options,
             .disable_fog = disable_fog,
             .realtime = realtime,
-        };
-
-        const request = sc2p.Request{ .start_replay = start_replay };
-        const res = try self.writeAndWaitForMessage(request);
-
-        if (res.start_replay == null or res.status == null) {
-            std.log.err("Did not get start replay response", .{});
-            return ClientError.BadResponse;
-        }
-
-        const sr_data = res.start_replay.?;
-
-        if (sr_data.error_code) |code| {
-            std.log.err("Start replay error: {d}", .{@intFromEnum(code)});
-            if (sr_data.error_details) |details| {
-                std.log.err("{s}", .{details});
-            }
-            return ClientError.BadResponse;
-        }
-
-        if (res.status.? != sc2p.Status.in_replay) {
-            std.log.err("Wrong status after start replay: {d}", .{@intFromEnum(res.status.?)});
-            return ClientError.BadResponse;
-        }
+        });
+        try self.expectStatus(.in_replay);
     }
 
     pub fn getObservation(self: *WebSocketClient, game_loop: ?u32) !sc2p.ResponseObservation {
-        const obs_req = sc2p.RequestObservation{
+        return self.call("observation", .{
             .disable_fog = false,
             .game_loop = game_loop,
-        };
-
-        const base_req = sc2p.Request{
-            .observation = obs_req,
-        };
-
-        const res = try self.writeAndWaitForMessage(base_req);
-        return res.observation orelse ClientError.BadResponse;
+        });
     }
 
     pub fn getGameInfo(self: *WebSocketClient) !sc2p.ResponseGameInfo {
-        const request = sc2p.Request{ .game_info = {} };
-        const res = try self.writeAndWaitForMessage(request);
-        return res.game_info orelse ClientError.BadResponse;
+        return self.call("game_info", {});
     }
 
     pub fn getGameData(self: *WebSocketClient) !sc2p.ResponseData {
-        const data_request = sc2p.RequestData{
+        return self.call("game_data", .{
             .unit_id = true,
             .upgrade_id = true,
-        };
-        const request = sc2p.Request{ .game_data = data_request };
-        const res = try self.writeAndWaitForMessage(request);
-        return res.game_data orelse ClientError.BadResponse;
+        });
     }
 
     pub fn sendActions(self: *WebSocketClient, action_proto: sc2p.RequestAction) !void {
-        const request = sc2p.Request{ .action = action_proto };
-        _ = try self.writeAndWaitForMessage(request);
+        _ = try self.send("action", action_proto);
     }
 
     pub fn sendDebugRequest(self: *WebSocketClient, debug_proto: sc2p.RequestDebug) !void {
         // This can silently fail without a big problem.
-        const request = sc2p.Request{ .debug = debug_proto };
-        _ = try self.writeAndWaitForMessage(request);
+        _ = try self.send("debug", debug_proto);
     }
 
     pub fn getAvailableAbilities(self: *WebSocketClient, unit_tags: []u64, ignore_resource_requirements: bool) ?[]sc2p.ResponseQueryAvailableAbilities {
-        var query_list = self.step_allocator.alloc(sc2p.RequestQueryAvailableAbilities, unit_tags.len) catch return null;
-
-        for (unit_tags, 0..) |tag, i| {
-            const abil_req = sc2p.RequestQueryAvailableAbilities{
-                .unit_tag = tag,
-            };
-            query_list[i] = abil_req;
+        const query_list = self.step_allocator.alloc(sc2p.RequestQueryAvailableAbilities, unit_tags.len) catch return null;
+        for (unit_tags, query_list) |tag, *query| {
+            query.* = .{ .unit_tag = tag };
         }
-        const query_req = sc2p.RequestQuery{
+
+        const query_res = self.call("query", .{
             .abilities = query_list,
             .ignore_resource_requirements = ignore_resource_requirements,
-        };
-
-        const request = sc2p.Request{ .query = query_req };
-        const res = self.writeAndWaitForMessage(request) catch return null;
-
-        if (res.query) |query_proto| {
-            return query_proto.abilities;
-        }
-        return null;
+        }) catch return null;
+        return query_res.abilities;
     }
 
     pub fn sendPlacementQuery(self: *WebSocketClient, query: sc2p.RequestQuery) ?[]sc2p.ResponseQueryBuildingPlacement {
-        const request = sc2p.Request{ .query = query };
-        const res = self.writeAndWaitForMessage(request) catch return null;
-
-        if (res.query) |query_proto| {
-            return query_proto.placements;
-        }
-        return null;
+        const query_res = self.call("query", query) catch return null;
+        return query_res.placements;
     }
 
     pub fn step(self: *WebSocketClient, count: u32) !void {
-        const step_req = sc2p.RequestStep{
-            .count = count,
-        };
-        const base_req = sc2p.Request{
-            .step = step_req,
-        };
-        _ = try self.writeAndWaitForMessage(base_req);
+        _ = try self.send("step", .{ .count = count });
     }
 
     pub fn leave(self: *WebSocketClient) !void {
-        const request = sc2p.Request{ .leave_game = {} };
-        _ = try self.writeAndWaitForMessage(request);
+        _ = try self.send("leave_game", {});
     }
 
     pub fn saveReplay(self: *WebSocketClient, replay_path: []const u8) !void {
-        const request = sc2p.Request{ .save_replay = {} };
-        const res = try self.writeAndWaitForMessage(request);
+        const replay_proto = try self.call("save_replay", {});
+        const bytes = replay_proto.bytes orelse return ClientError.ReplayBytes;
+        const file = std.Io.Dir.cwd().createFile(self.io, replay_path, .{}) catch return ClientError.ReplayFile;
+        defer file.close(self.io);
 
-        if (res.save_replay) |replay_proto| {
-            const bytes = replay_proto.bytes orelse return ClientError.ReplayBytes;
-            const file = std.Io.Dir.cwd().createFile(self.io, replay_path, .{}) catch return ClientError.ReplayFile;
-            defer file.close(self.io);
-
-            _ = file.writeStreamingAll(self.io, bytes) catch return ClientError.ReplayWrite;
-            return;
-        }
-        return ClientError.BadResponse;
+        _ = file.writeStreamingAll(self.io, bytes) catch return ClientError.ReplayWrite;
     }
 
     pub fn quit(self: *WebSocketClient) !void {
-        const request = sc2p.Request{ .quit = {} };
-        _ = try self.writeAndWaitForMessage(request);
+        _ = try self.send("quit", {});
     }
 
     pub fn ping(self: *WebSocketClient) !sc2p.ResponsePing {
-        const request = sc2p.Request{ .ping = {} };
-        const res = try self.writeAndWaitForMessage(request);
+        return self.call("ping", {});
+    }
 
-        if (res.ping) |ping_res| {
-            return ping_res;
+    /// Sends a request with only `field` set and returns the whole response.
+    fn send(
+        self: *WebSocketClient,
+        comptime field: []const u8,
+        payload: RequestPayload(field),
+    ) !sc2p.Response {
+        var request: sc2p.Request = .{};
+        @field(request, field) = payload;
+        return self.writeAndWaitForMessage(request);
+    }
+
+    /// Like `send`, but returns the response field with the same name
+    /// as the request field. A missing response field or a set
+    /// `error_code` are turned into errors.
+    fn call(
+        self: *WebSocketClient,
+        comptime field: []const u8,
+        payload: RequestPayload(field),
+    ) !ResponsePayload(field) {
+        const res = try self.send(field, payload);
+        const data = @field(res, field) orelse {
+            std.log.err("Did not get {s} response", .{field});
+            return ClientError.BadResponse;
+        };
+
+        const T = @TypeOf(data);
+        if (@typeInfo(T) == .@"struct" and @hasField(T, "error_code")) {
+            if (data.error_code) |code| {
+                std.log.err("{s} error: {d}", .{ field, @intFromEnum(code) });
+                if (data.error_details) |details| {
+                    std.log.err("{s}", .{details});
+                }
+                return ClientError.BadResponse;
+            }
         }
+        return data;
+    }
 
-        return error.NoPingResponse;
+    fn expectStatus(self: *WebSocketClient, expected: sc2p.Status) !void {
+        if (self.status != expected) {
+            std.log.err("Wrong status: expected {s}, got {d}", .{ @tagName(expected), @intFromEnum(self.status) });
+            return ClientError.BadResponse;
+        }
     }
 
     fn writeAndWaitForMessage(self: *WebSocketClient, request: sc2p.Request) !sc2p.Response {
