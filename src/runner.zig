@@ -735,10 +735,6 @@ pub fn run(
 
     const is_replay = config.mode == .replay;
 
-    var game_info: bot_data.GameInfo = undefined;
-
-    var first_step_done = false;
-
     const game_data_proto = client.getGameData() catch |err| {
         log.err("Error getting game data: {s}", .{@errorName(err)});
         return RunError.NoGameData;
@@ -747,101 +743,60 @@ pub fn run(
     const game_data = try bot_data.GameData.fromProto(game_data_proto, arena);
     var actions = try bot_data.Actions.init(game_data, &client, arena, step_arena);
 
-    var own_units: std.array_hash_map.Auto(u64, bot_data.Unit) = .empty;
-    try own_units.ensureTotalCapacity(arena, 200);
+    var observer: Observer = .{
+        .client = &client,
+        .game_data = game_data,
+        .player_id = player_id,
+        .arena = arena,
+        .step_arena = step_arena,
+        .realtime = config.realtime,
+        .step_count = params.step_count,
+        .query_abilities = !is_replay,
+    };
+    try observer.own_units.ensureTotalCapacity(arena, 200);
+    try observer.enemy_units.ensureTotalCapacity(arena, 200);
 
-    var enemy_units: std.array_hash_map.Auto(u64, bot_data.Unit) = .empty;
-    try enemy_units.ensureTotalCapacity(arena, 200);
+    // First step is handled separately because game info
+    // depends on the first observation
+    var bot = try observer.next();
 
-    var requested_game_loop: u32 = 0;
+    const game_info_proto = client.getGameInfo() catch {
+        log.err("Error getting game info", .{});
+        return RunError.NoGameInfo;
+    };
+    var game_info = try bot_data.GameInfo.fromProto(
+        game_info_proto,
+        player_id,
+        program_args.opponent_id,
+        findStartLocation(&bot),
+        bot.mineral_patches,
+        bot.vespene_geysers,
+        bot.destructibles,
+        arena,
+        step_arena,
+    );
+    game_info.updateGrids(bot);
+
+    // All pointers stay valid for the whole game, `bot` is
+    // overwritten in place each step
+    const ctx: BotContext = .{
+        .bot = &bot,
+        .game_info = &game_info,
+        .actions = &actions,
+        .step_allocator = step_arena,
+        .io = params.io,
+    };
+
+    // We only save replays and leave on games we host ourselves
+    const save_replay = !is_replay and sc2_process != null;
+
+    if (gameResult(&bot, client.status, is_replay)) |res| {
+        return finishGame(user_bot, ctx, &client, res, save_replay, save_replay);
+    }
+
+    try user_bot.onStart(ctx);
+
     while (true) {
-        defer _ = step_arena_instance.reset(.retain_capacity);
-
-        const obs = if (config.realtime) try client.getObservation(requested_game_loop) else try client.getObservation(null);
-
-        var bot = try bot_data.Bot.fromProto(&own_units, &enemy_units, obs, game_data, player_id, arena, step_arena);
-        // Not sure if the given game loop may be larger than what was requested
-        // if the bot takes too long to make the step.
-        // Regardless doesn't hurt to sync it
-        requested_game_loop = bot.game_loop + params.step_count;
-
-        // In a replay we may not get a player result and instead
-        // the status just changes to ended once the replay is over
-        const replay_ended = is_replay and client.status == .ended;
-        if (bot.result != null or replay_ended) {
-            const res: bot_data.Result = bot.result orelse .undecided;
-            if (!is_replay and sc2_process != null) {
-                if (first_step_done) {
-                    if (createReplayName(params.io, arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
-                        _ = client.saveReplay(replay_name) catch |err| {
-                            log.err("Unable to save replay: {s}", .{@errorName(err)});
-                        };
-                    }
-                }
-                client.leave() catch {
-                    log.err("Unable to leave game", .{});
-                };
-            }
-            try user_bot.onResult(.{
-                .bot = &bot,
-                .game_info = &game_info,
-                .actions = &actions,
-                .step_allocator = step_arena,
-                .io = params.io,
-            }, res);
-            return res;
-        }
-
-        if (!is_replay) {
-            const all_own_unit_tags = bot.units.keys();
-            if (all_own_unit_tags.len > 0) {
-                if (client.getAvailableAbilities(all_own_unit_tags, false)) |abilities_proto| {
-                    bot.setUnitAbilitiesFromProto(abilities_proto, step_arena);
-                }
-            }
-        }
-
-        if (!first_step_done) {
-            const game_info_proto = client.getGameInfo() catch {
-                log.err("Error getting game info", .{});
-                return RunError.NoGameInfo;
-            };
-
-            const start_location: bot_data.Point2 = sl: {
-                const unit_slice = bot.units.values();
-                for (unit_slice) |unit| {
-                    if (unit.unit_type == bot_data.UnitId.CommandCenter or
-                        unit.unit_type == bot_data.UnitId.Hatchery or
-                        unit.unit_type == bot_data.UnitId.Nexus)
-                    {
-                        break :sl unit.position;
-                    }
-                }
-                break :sl bot_data.Point2{ .x = 0, .y = 0 };
-            };
-
-            game_info = try bot_data.GameInfo.fromProto(
-                game_info_proto,
-                player_id,
-                program_args.opponent_id,
-                start_location,
-                bot.mineral_patches,
-                bot.vespene_geysers,
-                bot.destructibles,
-                arena,
-                step_arena,
-            );
-            game_info.updateGrids(bot);
-            try user_bot.onStart(.{
-                .bot = &bot,
-                .game_info = &game_info,
-                .actions = &actions,
-                .step_allocator = step_arena,
-                .io = params.io,
-            });
-            first_step_done = true;
-        } else game_info.updateGrids(bot);
-
         // Set enemy race to the observed race when we can
         if (game_info.enemy_race == .random and bot.enemy_units.count() > 0) {
             const enemy_unit = bot.enemy_units.values()[0];
@@ -852,37 +807,12 @@ pub fn run(
             }
         }
 
-        try user_bot.onStep(.{
-            .bot = &bot,
-            .game_info = &game_info,
-            .actions = &actions,
-            .step_allocator = step_arena,
-            .io = params.io,
-        });
+        try user_bot.onStep(ctx);
 
         if (actions.leave_game) {
+            // On the ladder we also need to leave to actually surrender
             const res: bot_data.Result = if (is_replay) .undecided else .defeat;
-            if (!is_replay) {
-                if (sc2_process) |_| {
-                    if (createReplayName(params.io, arena, user_bot.name, game_info.enemy_name, game_info.map_name)) |replay_name| {
-                        _ = client.saveReplay(replay_name) catch |err| {
-                            log.err("Unable to save replay: {s}", .{@errorName(err)});
-                        };
-                    }
-                }
-
-                client.leave() catch {
-                    log.err("Unable to leave game", .{});
-                };
-            }
-            try user_bot.onResult(.{
-                .bot = &bot,
-                .game_info = &game_info,
-                .actions = &actions,
-                .step_allocator = step_arena,
-                .io = params.io,
-            }, res);
-            return res;
+            return finishGame(user_bot, ctx, &client, res, save_replay, !is_replay);
         }
 
         if (!is_replay) {
@@ -900,7 +830,107 @@ pub fn run(
             try client.step(params.step_count);
         }
         actions.clear();
+        _ = step_arena_instance.reset(.retain_capacity);
+
+        bot = try observer.next();
+
+        if (gameResult(&bot, client.status, is_replay)) |res| {
+            return finishGame(user_bot, ctx, &client, res, save_replay, save_replay);
+        }
+
+        game_info.updateGrids(bot);
     }
+}
+
+/// Fetches observations from sc2 and turns them into `Bot` snapshots,
+/// keeping track of the unit state carried over between steps.
+const Observer = struct {
+    client: *ws.WebSocketClient,
+    game_data: bot_data.GameData,
+    player_id: u32,
+    arena: mem.Allocator,
+    step_arena: mem.Allocator,
+    realtime: bool,
+    step_count: u32,
+    query_abilities: bool,
+    own_units: std.array_hash_map.Auto(u64, bot_data.Unit) = .empty,
+    enemy_units: std.array_hash_map.Auto(u64, bot_data.Unit) = .empty,
+    requested_game_loop: u32 = 0,
+
+    fn next(self: *Observer) !bot_data.Bot {
+        // In realtime mode we ask for a specific game loop instead of stepping
+        const obs = try self.client.getObservation(if (self.realtime) self.requested_game_loop else null);
+
+        var bot = try bot_data.Bot.fromProto(
+            &self.own_units,
+            &self.enemy_units,
+            obs,
+            self.game_data,
+            self.player_id,
+            self.arena,
+            self.step_arena,
+        );
+        // Not sure if the given game loop may be larger than what was requested
+        // if the bot takes too long to make the step.
+        // Regardless doesn't hurt to sync it
+        self.requested_game_loop = bot.game_loop + self.step_count;
+
+        if (self.query_abilities) {
+            const all_own_unit_tags = bot.units.keys();
+            if (all_own_unit_tags.len > 0) {
+                if (self.client.getAvailableAbilities(all_own_unit_tags, false)) |abilities_proto| {
+                    bot.setUnitAbilitiesFromProto(abilities_proto, self.step_arena);
+                }
+            }
+        }
+        return bot;
+    }
+};
+
+/// Returns the result if the game is over.
+fn gameResult(bot: *const bot_data.Bot, status: sc2p.Status, is_replay: bool) ?bot_data.Result {
+    if (bot.result) |res| return res;
+    // In a replay we may not get a player result and instead
+    // the status just changes to ended once the replay is over
+    if (is_replay and status == .ended) return .undecided;
+    return null;
+}
+
+/// Optionally saves a replay and leaves the game, then lets the bot know the result.
+fn finishGame(
+    user_bot: anytype,
+    ctx: BotContext,
+    client: *ws.WebSocketClient,
+    result: bot_data.Result,
+    save_replay: bool,
+    leave: bool,
+) !bot_data.Result {
+    if (save_replay) {
+        if (createReplayName(ctx.io, ctx.step_allocator, user_bot.name, ctx.game_info.enemy_name, ctx.game_info.map_name)) |replay_name| {
+            client.saveReplay(replay_name) catch |err| {
+                log.err("Unable to save replay: {s}", .{@errorName(err)});
+            };
+        }
+    }
+    if (leave) {
+        client.leave() catch {
+            log.err("Unable to leave game", .{});
+        };
+    }
+    try user_bot.onResult(ctx, result);
+    return result;
+}
+
+fn findStartLocation(bot: *const bot_data.Bot) bot_data.Point2 {
+    for (bot.units.values()) |unit| {
+        if (unit.unit_type == bot_data.UnitId.CommandCenter or
+            unit.unit_type == bot_data.UnitId.Hatchery or
+            unit.unit_type == bot_data.UnitId.Nexus)
+        {
+            return unit.position;
+        }
+    }
+    return .{ .x = 0, .y = 0 };
 }
 
 /// Asks sc2 for info about the replay and finds the player id
