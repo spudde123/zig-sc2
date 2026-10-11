@@ -49,7 +49,7 @@ const ProtoReader = struct {
         const header = try self.decodeUInt64();
 
         return ProtoHeader{
-            .wire_type = @as(WireType, @enumFromInt(header & 7)),
+            .wire_type = @as(WireType, @fromBackingInt(@intCast(header & 7))),
             .field_number = @as(u8, @truncate(header >> 3)),
         };
     }
@@ -149,7 +149,7 @@ const ProtoReader = struct {
                             },
                             .@"enum" => {
                                 const enum_int = try self.decodeUInt64();
-                                obj_field.* = @as(child_type, @enumFromInt(enum_int));
+                                obj_field.* = @as(child_type, @fromBackingInt(@intCast(enum_int)));
                             },
                             else => @compileError("Unsupported field type"),
                         }
@@ -218,7 +218,7 @@ const ProtoReader = struct {
             },
             .@"enum" => {
                 const enum_int = try self.decodeUInt64();
-                return @as(T, @enumFromInt(enum_int));
+                return @as(T, @fromBackingInt(@intCast(enum_int)));
             },
             else => @compileError("Unsupported type in repeated field"),
         }
@@ -283,7 +283,7 @@ const ProtoWriter = struct {
 
     fn encodeProtoHeader(self: *ProtoWriter, header: ProtoHeader) !void {
         var num = @as(u64, header.field_number) << 3;
-        num += @intFromEnum(header.wire_type);
+        num += @backingInt(header.wire_type);
         try self.encodeUInt64(num);
     }
 
@@ -353,7 +353,7 @@ const ProtoWriter = struct {
 
                                     for (data) |enum_val| {
                                         try self.encodeProtoHeader(field_header);
-                                        try self.encodeUInt64(@intFromEnum(enum_val));
+                                        try self.encodeUInt64(@backingInt(enum_val));
                                     }
                                 },
                                 else => @compileError("Unsupported type in repeated field"),
@@ -385,7 +385,7 @@ const ProtoWriter = struct {
                     .@"enum" => {
                         const field_header = ProtoHeader{ .wire_type = .varint, .field_number = field_num };
                         try self.encodeProtoHeader(field_header);
-                        try self.encodeUInt64(@as(u64, @intFromEnum(data)));
+                        try self.encodeUInt64(@as(u64, @backingInt(data)));
                     },
                     .void => {
                         // This only comes up when the proto file has an empty embedded message

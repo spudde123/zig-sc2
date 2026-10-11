@@ -1012,7 +1012,7 @@ pub const Bot = struct {
         const player_raw = obs.player.?;
         if (player_raw.upgrade_ids) |upgrade_slice| {
             for (upgrade_slice) |upgrade| {
-                const upgrade_id = @as(UpgradeId, @enumFromInt(upgrade));
+                const upgrade_id = @as(UpgradeId, @fromBackingInt(@intCast(upgrade)));
                 try pending_upgrades.put(upgrade_id, 1);
             }
         }
@@ -1131,7 +1131,7 @@ pub const Bot = struct {
                 var ability_slice = allocator.alloc(AbilityId, ability_slice_proto.len) catch continue;
 
                 for (ability_slice_proto, 0..) |ability_proto, j| {
-                    ability_slice[j] = @as(AbilityId, @enumFromInt(ability_proto.ability_id orelse 0));
+                    ability_slice[j] = @as(AbilityId, @fromBackingInt(@intCast(ability_proto.ability_id orelse 0)));
                 }
 
                 unit_slice[i].available_abilities = ability_slice;
@@ -1538,7 +1538,7 @@ pub const Actions = struct {
                 };
             } else {
                 var unit_command = sc2p.ActionRawUnitCommand{
-                    .ability_id = @as(i32, @intCast(@intFromEnum(order.data.ability_id))),
+                    .ability_id = @as(i32, @intCast(@backingInt(order.data.ability_id))),
                     .queue_command = order.data.queue,
                 };
                 switch (order.data.target) {
@@ -1754,7 +1754,7 @@ pub const Actions = struct {
 
         if (self.queryPlacementForAbility(ability, near)) return near;
 
-        const ability_int = @as(i32, @intCast(@intFromEnum(ability)));
+        const ability_int = @as(i32, @intCast(@backingInt(ability)));
         var options: [256]sc2p.RequestQueryBuildingPlacement = undefined;
         var outer_dist: f32 = 1;
         while (outer_dist <= max_distance) : (outer_dist += 1) {
@@ -1817,7 +1817,7 @@ pub const Actions = struct {
 
     pub fn queryPlacementForAbility(self: *Actions, ability: AbilityId, spot: Point2) bool {
         var placements = [_]sc2p.RequestQueryBuildingPlacement{.{
-            .ability_id = @as(i32, @intCast(@intFromEnum(ability))),
+            .ability_id = @as(i32, @intCast(@backingInt(ability))),
             .target_pos = .{ .x = spot.x, .y = spot.y },
         }};
         const query = sc2p.RequestQuery{
@@ -1835,7 +1835,7 @@ pub const Actions = struct {
     /// and 2 if creating for the opponent
     pub fn debugCreateUnit(self: *Actions, unit_type: UnitId, owner: i32, pos: Point2, quantity: u32) void {
         const debug_unit = sc2p.DebugCreateUnit{
-            .unit_type = @intFromEnum(unit_type),
+            .unit_type = @backingInt(unit_type),
             .owner = owner,
             .pos = .{ .x = pos.x, .y = pos.y },
             .quantity = quantity,
@@ -1891,11 +1891,11 @@ pub const GameData = struct {
 
         for (proto_upgrades) |proto_upgrade| {
             const upg = UpgradeData{
-                .id = @as(UpgradeId, @enumFromInt(proto_upgrade.upgrade_id.?)),
+                .id = @as(UpgradeId, @fromBackingInt(@intCast(proto_upgrade.upgrade_id.?))),
                 .mineral_cost = @as(i32, @intCast(proto_upgrade.mineral_cost orelse 0)),
                 .vespene_cost = @as(i32, @intCast(proto_upgrade.vespene_cost orelse 0)),
                 .research_time = proto_upgrade.research_time orelse 0,
-                .research_ability_id = @as(AbilityId, @enumFromInt(proto_upgrade.ability_id orelse 0)),
+                .research_ability_id = @as(AbilityId, @fromBackingInt(@intCast(proto_upgrade.ability_id orelse 0))),
             };
 
             try gd.upgrades.put(upg.id, upg);
@@ -1951,7 +1951,7 @@ pub const GameData = struct {
             }
 
             const unit = UnitData{
-                .id = @as(UnitId, @enumFromInt(proto_unit.unit_id.?)),
+                .id = @as(UnitId, @fromBackingInt(@intCast(proto_unit.unit_id.?))),
                 .cargo_size = @as(i32, @intCast(proto_unit.cargo_size orelse 0)),
                 .movement_speed = proto_unit.movement_speed orelse 0,
                 .armor = proto_unit.armor orelse 0,
@@ -1963,7 +1963,7 @@ pub const GameData = struct {
                 .vespene_cost = @as(i32, @intCast(proto_unit.vespene_cost orelse 0)),
                 .food_required = proto_unit.food_required orelse 0,
                 .food_provided = proto_unit.food_provided orelse 0,
-                .train_ability_id = @as(AbilityId, @enumFromInt(proto_unit.ability_id orelse 0)),
+                .train_ability_id = @as(AbilityId, @fromBackingInt(@intCast(proto_unit.ability_id orelse 0))),
                 .race = proto_unit.race orelse Race.none,
                 .build_time = proto_unit.build_time orelse 0,
                 .sight_range = proto_unit.sight_range orelse 0,

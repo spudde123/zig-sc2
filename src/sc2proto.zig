@@ -30,7 +30,7 @@ pub const Effect = struct {
         .{ "radius", 5 },
     };
 
-    id: EffectId = @enumFromInt(0),
+    id: EffectId = @fromBackingInt(@intCast(0)),
     // Effects are normally sent with alliance. Default to neutral to avoid
     // accidentally classifying missing data as self/allied/enemy-owned.
     alliance: Alliance = .neutral,
@@ -68,7 +68,7 @@ pub const UnitOrder = struct {
         .{ "progress", 4 },
     };
 
-    ability_id: AbilityId = @enumFromInt(0),
+    ability_id: AbilityId = @fromBackingInt(@intCast(0)),
     target: OrderTarget = .{ .empty = {} },
     progress: f32 = 0,
 
@@ -149,7 +149,7 @@ pub const Passenger = struct {
     shield_max: f32 = 0,
     energy: f32 = 0,
     energy_max: f32 = 0,
-    unit_type: UnitId = @enumFromInt(0),
+    unit_type: UnitId = @fromBackingInt(@intCast(0)),
 };
 
 pub const Unit = struct {
@@ -205,7 +205,7 @@ pub const Unit = struct {
     display_type: DisplayType = .visible,
     alliance: Alliance = .neutral,
     tag: u64 = 0,
-    unit_type: UnitId = @enumFromInt(0),
+    unit_type: UnitId = @fromBackingInt(@intCast(0)),
     owner: i32 = 0,
     prev_seen_loop: u32 = 0,
 
