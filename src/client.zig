@@ -177,7 +177,7 @@ pub const WebSocketClient = struct {
         const cg_data = create_game_res.create_game.?;
 
         if (cg_data.error_code) |code| {
-            std.log.err("Create game error: {d}", .{@intFromEnum(code)});
+            std.log.err("Create game error: {d}", .{@backingInt(code)});
             if (cg_data.error_details) |details| {
                 std.log.err("{s}", .{details});
             }
@@ -185,7 +185,7 @@ pub const WebSocketClient = struct {
         }
 
         if (create_game_res.status.? != sc2p.Status.init_game) {
-            std.log.err("Wrong status after create game: {d}", .{@intFromEnum(create_game_res.status.?)});
+            std.log.err("Wrong status after create game: {d}", .{@backingInt(create_game_res.status.?)});
             return ClientError.BadResponse;
         }
 
@@ -255,7 +255,7 @@ pub const WebSocketClient = struct {
         const cg_data = create_game_res.create_game.?;
 
         if (cg_data.error_code) |code| {
-            std.log.err("Create game error: {d}", .{@intFromEnum(code)});
+            std.log.err("Create game error: {d}", .{@backingInt(code)});
             if (cg_data.error_details) |details| {
                 std.log.err("{s}", .{details});
             }
@@ -263,7 +263,7 @@ pub const WebSocketClient = struct {
         }
 
         if (create_game_res.status.? != sc2p.Status.init_game) {
-            std.log.err("Wrong status after create game: {d}", .{@intFromEnum(create_game_res.status.?)});
+            std.log.err("Wrong status after create game: {d}", .{@backingInt(create_game_res.status.?)});
             return ClientError.BadResponse;
         }
     }
@@ -335,7 +335,7 @@ pub const WebSocketClient = struct {
         };
 
         if (ri_data.error_code) |code| {
-            std.log.err("Replay info error: {d}", .{@intFromEnum(code)});
+            std.log.err("Replay info error: {d}", .{@backingInt(code)});
             if (ri_data.error_details) |details| {
                 std.log.err("{s}", .{details});
             }
@@ -374,7 +374,7 @@ pub const WebSocketClient = struct {
         const sr_data = res.start_replay.?;
 
         if (sr_data.error_code) |code| {
-            std.log.err("Start replay error: {d}", .{@intFromEnum(code)});
+            std.log.err("Start replay error: {d}", .{@backingInt(code)});
             if (sr_data.error_details) |details| {
                 std.log.err("{s}", .{details});
             }
@@ -382,7 +382,7 @@ pub const WebSocketClient = struct {
         }
 
         if (res.status.? != sc2p.Status.in_replay) {
-            std.log.err("Wrong status after start replay: {d}", .{@intFromEnum(res.status.?)});
+            std.log.err("Wrong status after start replay: {d}", .{@backingInt(res.status.?)});
             return ClientError.BadResponse;
         }
     }
@@ -534,7 +534,7 @@ pub const WebSocketClient = struct {
                 msg[1] = 127;
                 mem.writeInt(u64, msg[2..10], payload.len, .big);
             }
-            msg[0] = @intFromEnum(OpCode.binary);
+            msg[0] = @backingInt(OpCode.binary);
             //Last frame
             msg[0] |= 0x80;
             //Mask
