@@ -13,6 +13,14 @@ pub const ReplaySession = struct {
     map_name: []const u8,
     map_width: f32,
     map_height: f32,
+    players: [16]Player,
+    player_count: usize,
+
+    /// Value-owned display metadata, independent of the response allocator.
+    pub const Player = struct {
+        id: u32 = 0,
+        name: [32:0]u8 = @splat(0),
+    };
 
     pub const Config = struct {
         installation: []const u8,
@@ -51,6 +59,20 @@ pub const ReplaySession = struct {
         const info = try client.getReplayInfo(config.replay);
         const map_name = try allocator.dupe(u8, info.map_name orelse "Replay");
         errdefer allocator.free(map_name);
+        var players: [16]Player = @splat(.{});
+        var player_count: usize = 0;
+        for (info.player_info orelse &.{}) |extra| {
+            const player = extra.player_info orelse continue;
+            const id = player.player_id orelse continue;
+            if (id == 0 or player.player_type == .observer) continue;
+            if (player_count == players.len) break;
+            players[player_count].id = id;
+            if (player.player_name) |name| {
+                const len = @min(name.len, players[player_count].name.len);
+                @memcpy(players[player_count].name[0..len], name[0..len]);
+            }
+            player_count += 1;
+        }
         const duration = info.game_duration_loops orelse 0;
         const observed = try selectPlayer(info.player_info orelse &.{}, config.player_id);
         std.log.info("Replay: {s}, player {d}, {d} loops", .{ map_name, observed, duration });
@@ -76,6 +98,8 @@ pub const ReplaySession = struct {
             .player_id = observed,
             .duration_loops = duration,
             .map_name = map_name,
+            .players = players,
+            .player_count = player_count,
             .map_width = @floatFromInt(if (size) |s| s.x orelse 256 else 256),
             .map_height = @floatFromInt(if (size) |s| s.y orelse 256 else 256),
         };
