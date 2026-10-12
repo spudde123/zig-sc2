@@ -14,9 +14,11 @@ Start from [zig-sc2-template](https://github.com/spudde123/zig-sc2-template) to 
 The package also exports `ReplaySession`, `sc2p`, and `ws` for tools
 that need to control playback independently of the bot runner.
 
-`ReplaySession.open(allocator, io, config, response_allocator)` launches a
-bootstrap client, reads replay metadata, and relaunches the matching base build
-with the replay's data version. Configuration accepts an installation root,
+`ReplaySession.open(allocator, io, config, response_allocator)` launches the
+highest installed build once, reads replay metadata, and starts playback in the
+same process. It assumes the headless Linux SC2 4.10 client with matching replays
+and game data; it does not select replay-specific builds or pass `-dataVersion`.
+Configuration accepts an installation root,
 absolute replay path, optional player/port/fog settings, render resolution, and
 EGL/OSMesa library paths. Player ID `0` requests the all-player observer view;
 `null` selects the first participant. The configuration's fog flag is forwarded

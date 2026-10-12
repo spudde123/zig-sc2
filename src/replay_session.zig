@@ -43,34 +43,20 @@ pub const ReplaySession = struct {
         };
         reservation.deinit(io);
         const latest = try latestBuild(allocator, io, config.installation);
-        var child = try launch(allocator, io, config, latest, null);
+        var child = try launch(allocator, io, config, latest);
         errdefer child.kill(io);
         var client = try connect(io, config.port, response_allocator);
-        var connected = true;
-        errdefer if (connected) client.deinit();
+        errdefer client.deinit();
 
         const info = try client.getReplayInfo(config.replay);
-        const base_build = info.base_build orelse return error.MissingReplayVersion;
-        const data_version = try allocator.dupe(u8, info.data_version orelse return error.MissingReplayVersion);
-        defer allocator.free(data_version);
         const map_name = try allocator.dupe(u8, info.map_name orelse "Replay");
         errdefer allocator.free(map_name);
         const duration = info.game_duration_loops orelse 0;
         const observed = try selectPlayer(info.player_info orelse &.{}, config.player_id);
-        std.log.info("Replay: {s}, player {d}, {d} loops, Base{d}, data {s}", .{ map_name, observed, duration, base_build, data_version });
+        std.log.info("Replay: {s}, player {d}, {d} loops", .{ map_name, observed, duration });
 
-        // Always relaunch with the replay's data hash, even when the base build matches.
-        // Linux cannot download missing game versions or map cache dependencies.
-        client.deinit();
-        connected = false;
-        child.kill(io);
-        child = try launch(allocator, io, config, base_build, data_version);
-        // Avoid double-closing the bootstrap socket if launch/connect fails.
-        client = connect(io, config.port, response_allocator) catch |err| {
-            child.kill(io);
-            return err;
-        };
-        connected = true;
+        // Replays must match the installed 4.10 Linux client and game data.
+        // Reuse this process rather than selecting another build/data version.
         try client.startReplayWithOptions(config.replay, observed, config.disable_fog, false, .{
             .raw = true,
             .score = false,
@@ -156,7 +142,7 @@ fn latestBuild(allocator: std.mem.Allocator, io: std.Io, installation: []const u
     return latest;
 }
 
-fn launch(allocator: std.mem.Allocator, io: std.Io, config: ReplaySession.Config, build: u32, data_version: ?[]const u8) !std.process.Child {
+fn launch(allocator: std.mem.Allocator, io: std.Io, config: ReplaySession.Config, build: u32) !std.process.Child {
     const binary = try std.fmt.allocPrint(allocator, "{s}/Versions/Base{d}/SC2_x64", .{ config.installation, build });
     defer allocator.free(binary);
     std.Io.Dir.accessAbsolute(io, binary, .{}) catch |err| {
@@ -168,7 +154,6 @@ fn launch(allocator: std.mem.Allocator, io: std.Io, config: ReplaySession.Config
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(allocator);
     try argv.appendSlice(allocator, &.{ binary, "-listen", "127.0.0.1", "-port", port, "-dataDir", config.installation });
-    if (data_version) |hash| try argv.appendSlice(allocator, &.{ "-dataVersion", hash });
     if (config.osmesa_path) |path| {
         try argv.appendSlice(allocator, &.{ "-osmesapath", path });
     } else if (config.egl_path) |path| {
