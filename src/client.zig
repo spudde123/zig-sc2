@@ -474,7 +474,12 @@ pub const WebSocketClient = struct {
     }
 
     pub fn moveObserverCamera(self: *WebSocketClient, x: f32, y: f32) !void {
-        const actions = [_]sc2p.ObserverAction{.{ .camera_move = .{ .world_pos = .{ .x = x, .y = y } } }};
+        return self.setObserverCamera(x, y, null);
+    }
+
+    /// Replay observer camera position and optional zoom distance.
+    pub fn setObserverCamera(self: *WebSocketClient, x: f32, y: f32, distance: ?f32) !void {
+        const actions = [_]sc2p.ObserverAction{.{ .camera_move = .{ .world_pos = .{ .x = x, .y = y }, .distance = distance } }};
         const res = try self.writeAndWaitForMessage(.{ .observer_action = .{ .actions = &actions } });
         if (res.observer_action == null) return ClientError.BadResponse;
     }
