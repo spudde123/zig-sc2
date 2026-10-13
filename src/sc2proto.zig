@@ -74,13 +74,16 @@ pub const UnitOrder = struct {
 
     // Internal decode staging fields; postDecode derives `target` from them.
     // Bot code should use `target` instead.
-    target_world_space_pos: ?Point2 = null,
+    target_world_space_pos: ?Point = null,
     target_unit_tag: ?u64 = null,
+    // Preserve optional elevation without changing the bot-facing XY target.
+    target_z: ?f32 = null,
 
     pub fn postDecode(self: *UnitOrder, allocator: mem.Allocator) !void {
         _ = allocator;
+        self.target_z = if (self.target_world_space_pos) |pos| pos.z else null;
         self.target = if (self.target_world_space_pos) |pos|
-            .{ .position = pos }
+            .{ .position = .{ .x = pos.x orelse 0, .y = pos.y orelse 0 } }
         else if (self.target_unit_tag) |tag|
             .{ .tag = tag }
         else
@@ -101,10 +104,12 @@ pub const RallyTarget = struct {
 pub const PlayerRaw = struct {
     pub const field_nums = .{
         .{ "power_sources", 1 },
+        .{ "camera", 2 },
         .{ "upgrade_ids", 3 },
     };
 
     power_sources: []PowerSource = &.{},
+    camera: ?Point3 = null,
     upgrade_ids: ?[]u32 = null,
 };
 
@@ -164,6 +169,7 @@ pub const Unit = struct {
         .{ "radius", 8 },
         .{ "build_progress", 9 },
         .{ "cloak", 10 },
+        .{ "is_on_screen", 12 },
         .{ "is_blip", 13 },
         .{ "health", 14 },
         .{ "health_max", 15 },
@@ -220,6 +226,7 @@ pub const Unit = struct {
     detect_range: f32 = 0,
     radar_range: f32 = 0,
 
+    is_on_screen: ?bool = null,
     is_blip: bool = false,
     is_powered: bool = false,
     is_active: bool = false,
