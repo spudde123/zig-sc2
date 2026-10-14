@@ -35,6 +35,8 @@ pub const ReplaySession = struct {
         height: i32 = 480,
         minimap_size: i32 = 128,
         verbose: bool = false,
+        /// Optional participant-count restriction, checked before starting the replay.
+        required_player_count: ?usize = null,
     };
 
     /// Metadata is owned until close(). All protocol responses use response_allocator,
@@ -57,6 +59,12 @@ pub const ReplaySession = struct {
         errdefer client.deinit();
 
         const info = try client.getReplayInfo(config.replay);
+        if (config.required_player_count) |count| {
+            validatePlayerCount(info.player_info orelse &.{}, count) catch |err| {
+                std.log.err("Replay must have exactly {d} non-observer participants: {s}.", .{ count, @errorName(err) });
+                return err;
+            };
+        }
         const map_name = try allocator.dupe(u8, info.map_name orelse "Replay");
         errdefer allocator.free(map_name);
         var players: [16]Player = @splat(.{});
@@ -189,6 +197,34 @@ fn launch(allocator: std.mem.Allocator, io: std.Io, config: ReplaySession.Config
         .stdout = if (config.verbose) .inherit else .ignore,
         .stderr = if (config.verbose) .inherit else .ignore,
     });
+}
+
+fn validatePlayerCount(players: []const protocol.PlayerInfoExtra, expected: usize) !void {
+    var count: usize = 0;
+    for (players, 0..) |extra, i| {
+        const player = extra.player_info orelse continue;
+        const id = player.player_id orelse continue;
+        if (id == 0 or player.player_type == .observer) continue;
+        for (players[0..i]) |prior| {
+            const other = prior.player_info orelse continue;
+            if (other.player_type != .observer and other.player_id == id) return error.DuplicatePlayerId;
+        }
+        count += 1;
+    }
+    if (count != expected) return error.UnsupportedPlayerCount;
+}
+
+test "participant restriction ignores observers and accepts sparse IDs, rejects other counts and duplicates" {
+    const players = [_]protocol.PlayerInfoExtra{
+        .{ .player_info = .{ .player_id = 9, .player_type = .observer } },
+        .{ .player_info = .{ .player_id = 3, .player_type = .participant } },
+        .{ .player_info = .{ .player_id = 7, .player_type = .participant } },
+        .{ .player_info = .{ .player_id = 5, .player_type = .computer } },
+    };
+    try validatePlayerCount(players[0..3], 2);
+    try std.testing.expectError(error.UnsupportedPlayerCount, validatePlayerCount(players[0..2], 2));
+    try std.testing.expectError(error.UnsupportedPlayerCount, validatePlayerCount(&players, 2));
+    try std.testing.expectError(error.DuplicatePlayerId, validatePlayerCount(&.{ players[1], players[1] }, 2));
 }
 
 fn connect(io: std.Io, port: u16, allocator: std.mem.Allocator) !Client {
