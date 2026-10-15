@@ -74,13 +74,16 @@ pub const UnitOrder = struct {
 
     // Internal decode staging fields; postDecode derives `target` from them.
     // Bot code should use `target` instead.
-    target_world_space_pos: ?Point2 = null,
+    target_world_space_pos: ?Point = null,
     target_unit_tag: ?u64 = null,
+    // Preserve optional elevation without changing the bot-facing XY target.
+    target_z: ?f32 = null,
 
     pub fn postDecode(self: *UnitOrder, allocator: mem.Allocator) !void {
         _ = allocator;
+        self.target_z = if (self.target_world_space_pos) |pos| pos.z else null;
         self.target = if (self.target_world_space_pos) |pos|
-            .{ .position = pos }
+            .{ .position = .{ .x = pos.x orelse 0, .y = pos.y orelse 0 } }
         else if (self.target_unit_tag) |tag|
             .{ .tag = tag }
         else
@@ -101,10 +104,12 @@ pub const RallyTarget = struct {
 pub const PlayerRaw = struct {
     pub const field_nums = .{
         .{ "power_sources", 1 },
+        .{ "camera", 2 },
         .{ "upgrade_ids", 3 },
     };
 
     power_sources: []PowerSource = &.{},
+    camera: ?Point3 = null,
     upgrade_ids: ?[]u32 = null,
 };
 
@@ -164,6 +169,7 @@ pub const Unit = struct {
         .{ "radius", 8 },
         .{ "build_progress", 9 },
         .{ "cloak", 10 },
+        .{ "is_on_screen", 12 },
         .{ "is_blip", 13 },
         .{ "health", 14 },
         .{ "health_max", 15 },
@@ -220,6 +226,7 @@ pub const Unit = struct {
     detect_range: f32 = 0,
     radar_range: f32 = 0,
 
+    is_on_screen: ?bool = null,
     is_blip: bool = false,
     is_powered: bool = false,
     is_active: bool = false,
@@ -357,6 +364,7 @@ pub const Request = struct {
         .{ "replay_info", 16 },
         .{ "ping", 19 },
         .{ "debug", 20 },
+        .{ "observer_action", 21 },
         .{ "id", 97 },
     };
     create_game: ?RequestCreateGame = null,
@@ -374,6 +382,7 @@ pub const Request = struct {
     replay_info: ?RequestReplayInfo = null,
     ping: ?void = null,
     debug: ?RequestDebug = null,
+    observer_action: ?RequestObserverAction = null,
     id: ?u32 = null,
 };
 
@@ -394,6 +403,7 @@ pub const Response = struct {
         .{ "replay_info", 16 },
         .{ "ping", 19 },
         .{ "debug", 20 },
+        .{ "observer_action", 21 },
         .{ "id", 97 },
         .{ "errors", 98 },
         .{ "status", 99 },
@@ -413,6 +423,7 @@ pub const Response = struct {
     replay_info: ?ResponseReplayInfo = null,
     ping: ?ResponsePing = null,
     debug: ?void = null,
+    observer_action: ?void = null,
 
     id: ?u32 = null,
     errors: ?[][]const u8 = null,
@@ -690,7 +701,7 @@ pub const Observation = struct {
         .{ "score", 4 },
         .{ "raw", 5 },
         //.{"feature_layer", 6},
-        //.{"render", 7},
+        .{ "render", 7 },
         //.{"ui", 8},
         .{ "game_loop", 9 },
         .{ "alerts", 10 },
@@ -701,7 +712,7 @@ pub const Observation = struct {
 
     raw: ?ObservationRaw = null,
     //feature_layer: ?ObservationFeatureLayer = null,
-    //render: ?ObservationRender = null,
+    render: ?ObservationRender = null,
     //ui: ?ObservationUI = null,
     game_loop: ?u32 = null,
     alerts: ?[]Alert = null,
@@ -1001,7 +1012,7 @@ pub const InterfaceOptions = struct {
         .{ "raw", 1 },
         .{ "score", 2 },
         //.{"feature_layer", 3},
-        //.{"render", 4},
+        .{ "render", 4 },
         .{ "show_cloaked", 5 },
         .{ "raw_affects_selection", 6 },
         .{ "raw_crop_to_playable_area", 7 },
@@ -1011,12 +1022,50 @@ pub const InterfaceOptions = struct {
     raw: ?bool = null,
     score: ?bool = null,
     //feature_layer: ?SpatialCameraSetu = null,
-    //render: ?SpatialCameraSetup = null,
+    render: ?SpatialCameraSetup = null,
     show_cloaked: ?bool = null,
     raw_affects_selection: ?bool = null,
     raw_crop_to_playable_area: ?bool = null,
     show_placeholders: ?bool = null,
     show_burrowed_shadows: ?bool = null,
+};
+
+/// Offscreen rendered RGB images; payloads borrow the observation arena.
+pub const ObservationRender = struct {
+    pub const field_nums = .{ .{ "map", 1 }, .{ "minimap", 2 } };
+    map: ?ImageData = null,
+    minimap: ?ImageData = null,
+};
+
+pub const SpatialCameraSetup = struct {
+    pub const field_nums = .{
+        .{ "width", 1 },
+        .{ "resolution", 2 },
+        .{ "minimap_resolution", 3 },
+        .{ "crop_to_playable_area", 4 },
+        .{ "allow_cheating_layers", 5 },
+    };
+    width: ?f32 = null,
+    resolution: ?Size2DI = null,
+    minimap_resolution: ?Size2DI = null,
+    crop_to_playable_area: ?bool = null,
+    allow_cheating_layers: ?bool = null,
+};
+
+pub const RequestObserverAction = struct {
+    pub const field_nums = .{.{ "actions", 1 }};
+    actions: ?[]const ObserverAction = null,
+};
+
+pub const ObserverAction = struct {
+    pub const field_nums = .{.{ "camera_move", 2 }};
+    camera_move: ?ActionObserverCameraMove = null,
+};
+
+pub const ActionObserverCameraMove = struct {
+    pub const field_nums = .{ .{ "world_pos", 1 }, .{ "distance", 2 } };
+    world_pos: ?Point2D = null,
+    distance: ?f32 = null,
 };
 
 pub const PortSet = struct {

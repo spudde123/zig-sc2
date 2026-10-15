@@ -98,14 +98,14 @@ pub const WebSocketClient = struct {
 
         const request = "GET {s} HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: Websocket\r\nSec-WebSocket-Key: {s}\r\nSec-WebSocket-Version: 13\r\n\r\n";
         var stream_writer = self.socket.writer(self.io, &.{});
-        try stream_writer.interface.print(request, .{ path, handshake_key });
+        stream_writer.interface.print(request, .{ path, handshake_key }) catch |err| return stream_writer.err orelse err;
 
         var buf: [256]u8 = undefined;
         var total_read: usize = 0;
         var stream_reader = self.socket.reader(self.io, &.{});
         while (total_read < buf.len) {
             var bufs = [_][]u8{buf[total_read..]};
-            total_read += try stream_reader.interface.readVec(&bufs);
+            total_read += stream_reader.interface.readVec(&bufs) catch |err| return stream_reader.err orelse err;
             if (total_read >= 4 and mem.eql(u8, buf[total_read - 4 .. total_read], "\r\n\r\n")) break;
         }
 
@@ -355,10 +355,22 @@ pub const WebSocketClient = struct {
         disable_fog: bool,
         realtime: bool,
     ) !void {
+        return self.startReplayWithOptions(replay_path, observed_player_id, disable_fog, realtime, default_interface_options);
+    }
+
+    /// Like startReplay, but permits rendered/other interfaces without changing bot defaults.
+    pub fn startReplayWithOptions(
+        self: *WebSocketClient,
+        replay_path: []const u8,
+        observed_player_id: u32,
+        disable_fog: bool,
+        realtime: bool,
+        options: sc2p.InterfaceOptions,
+    ) !void {
         const start_replay = sc2p.RequestStartReplay{
             .replay_path = replay_path,
             .observed_player_id = @as(i32, @intCast(observed_player_id)),
-            .options = default_interface_options,
+            .options = options,
             .disable_fog = disable_fog,
             .realtime = realtime,
         };
@@ -461,6 +473,17 @@ pub const WebSocketClient = struct {
         return null;
     }
 
+    pub fn moveObserverCamera(self: *WebSocketClient, x: f32, y: f32) !void {
+        return self.setObserverCamera(x, y, null);
+    }
+
+    /// Replay observer camera position and optional zoom distance.
+    pub fn setObserverCamera(self: *WebSocketClient, x: f32, y: f32, distance: ?f32) !void {
+        const actions = [_]sc2p.ObserverAction{.{ .camera_move = .{ .world_pos = .{ .x = x, .y = y }, .distance = distance } }};
+        const res = try self.writeAndWaitForMessage(.{ .observer_action = .{ .actions = &actions } });
+        if (res.observer_action == null) return ClientError.BadResponse;
+    }
+
     pub fn step(self: *WebSocketClient, count: u32) !void {
         const step_req = sc2p.RequestStep{
             .count = count,
@@ -549,39 +572,29 @@ pub const WebSocketClient = struct {
             const payload_end = pre_payload + payload.len;
 
             var stream_writer = self.socket.writer(self.io, &.{});
-            errdefer {
-                if (stream_writer.err) |err| {
-                    std.log.err("Write error: {s}", .{@errorName(err)});
-                }
-            }
-            try stream_writer.interface.writeAll(msg[0..payload_end]);
+            stream_writer.interface.writeAll(msg[0..payload_end]) catch |err| return stream_writer.err orelse err;
         }
 
         var stream_reader = self.socket.reader(self.io, &.{});
-        errdefer {
-            if (stream_reader.err) |err| {
-                std.log.err("Read error: {s}", .{@errorName(err)});
-            }
-        }
         var reader = &stream_reader.interface;
 
         var header: [2]u8 = undefined;
-        try reader.readSliceAll(&header);
+        reader.readSliceAll(&header) catch |err| return stream_reader.err orelse err;
 
         const payload_desc = header[1];
         var payload_length = @as(u64, payload_desc);
 
         if (payload_desc == 126) {
             var length: [2]u8 = undefined;
-            try reader.readSliceAll(&length);
+            reader.readSliceAll(&length) catch |err| return stream_reader.err orelse err;
             payload_length = mem.readInt(u16, &length, .big);
         } else if (payload_desc == 127) {
             var length: [8]u8 = undefined;
-            try reader.readSliceAll(&length);
+            reader.readSliceAll(&length) catch |err| return stream_reader.err orelse err;
             payload_length = mem.readInt(u64, &length, .big);
         }
         const payload_len: usize = @intCast(payload_length);
-        const response_payload = try reader.readAlloc(self.step_allocator, payload_len);
+        const response_payload = reader.readAlloc(self.step_allocator, payload_len) catch |err| return stream_reader.err orelse err;
 
         const res = try proto.decode(sc2p.Response, response_payload, self.step_allocator);
 
