@@ -117,7 +117,7 @@ pub const WebSocketClient = struct {
         var split_iter = mem.tokenizeSequence(u8, buf[0..total_read], "\r\n");
         if (split_iter.next()) |line| {
             if (!mem.startsWith(u8, line, "HTTP/1.1 101")) {
-                return error.sc2pError;
+                return error.ProtocolError;
             }
         }
 
