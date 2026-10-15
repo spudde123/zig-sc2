@@ -10,7 +10,6 @@ const builtin = @import("builtin");
 pub const sc2p = @import("sc2proto.zig");
 pub const ws = @import("client.zig");
 pub const bot_data = @import("bot.zig");
-pub const ReplaySession = @import("replay_session.zig").ReplaySession;
 
 pub const BotContext = struct {
     bot: *const bot_data.Bot,

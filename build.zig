@@ -19,18 +19,6 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_lib_tests.step);
 
-    // Pure wire-format tests: no game installation required.
-    const render_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/render_tests.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    const run_render_tests = b.addRunArtifact(render_tests);
-    b.step("test-render", "Test rendered replay protocol without SC2").dependOn(&run_render_tests.step);
-    test_step.dependOn(&run_render_tests.step);
-
     // Add the option to run a dummy bot
     // and test if all the main base ramps exist
     const ladder_maps = [_][]const u8{

@@ -9,31 +9,10 @@ be missing.
 
 Start from [zig-sc2-template](https://github.com/spudde123/zig-sc2-template) to make your own bot.
 
-## Native Linux replay sessions
+## Replay and rendering APIs
 
-The package also exports `ReplaySession`, `sc2p`, and `ws` for tools
-that need to control playback independently of the bot runner.
-
-`ReplaySession.open(allocator, io, config, response_allocator)` launches the
-highest installed build once, reads replay metadata, and starts playback in the
-same process. It assumes the headless Linux SC2 4.10 client with matching replays
-and game data; it does not select replay-specific builds or pass `-dataVersion`.
-Configuration accepts an installation root,
-absolute replay path, optional player/port/fog settings, render resolution, and
-EGL/OSMesa library paths. Player ID `0` requests the all-player observer view;
-`null` selects the first participant. The configuration's fog flag is forwarded
-at startup only; observations use the original `getObservation()` method. The
-startup flag is not a substitute for choosing perspective 0 for RGB visibility
-(verified on SC2 4.10). It always starts replays with `realtime=false`.
-
-Use `session.observe()`, `session.advance(count)`, and
-`session.client.moveObserverCamera(x, y)`. RGB images are in
-`response.observation.?.render.?.map` / `.minimap`. The `ImageData.image` slices
-borrow the response allocator: copy/consume before resetting its arena. Use a
-persistent arena for `allocator` (metadata strings last for the session), and
-call `session.close()` to close the socket and terminate/reap the owned process.
-Blocking I/O supports Zig `std.Io` cancellation.
-
-Existing `WebSocketClient.startReplay()` still uses the bot's raw defaults;
-`startReplayWithOptions()` accepts explicit interface options. Protocol-only
-render tests require neither SC2 nor a display: `zig build test-render`.
+The package exports `sc2p` and `ws` for low-level protocol and WebSocket access.
+`WebSocketClient.startReplay()` uses the bot's raw defaults;
+`startReplayWithOptions()` accepts explicit interface options, including rendering.
+Response data borrows the supplied response allocator and must be consumed or
+copied before that allocator is reset.
